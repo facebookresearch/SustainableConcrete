@@ -179,10 +179,71 @@ def load_concrete_strength(
     )
 
 
+def get_mortar_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
+    """Returns bounds of columns in X for mortart mixes."""
+    bounds_dict = {
+        "Cement": (150, 350), # these are now in grams, as opposed to the original concrete bounds
+        "Fly Ash": (0, 175),
+        "Slag": (0, 225),
+        "Fine Aggregate": (0, 1700), # will be fixed to 1375 with equality constraint
+        "Time": (0, 28),  # up to 28 days
+    }
+
+    total_binder = 500.0
+    bounds_dict.update(
+        {
+            "Water": (0.2 * total_binder, 0.5 * total_binder),
+        }
+    )
+    bounds = torch.tensor([bounds_dict[col] for col in X_columns]).T
+    if verbose:
+        print("The lower and upper bounds for the respective variables are set to:")
+        for col, bound in zip(X_columns, bounds.T):
+            print(f"\t- {col}: [{bound[0].item()}, {bound[1].item()}]")
+        print()
+    return bounds
+
+
+def get_mortar_constraints(X_columns, verbose: bool = _VERBOSE) -> Tuple[List, List]:
+    # inequality constraints
+    equality_dict = {
+        "Total Binder": 500.0,
+        "Fine Aggregate": 1375.0,
+    }
+    # inequality_dict = {
+    #     "Water": (0.2, 0.5),  # as a proportion of total binder
+    # }
+    if verbose:
+        print("Adding linear constraints with lower and upper limits:")
+        for key in inequality_dict:
+            print("\t-", key, ":", inequality_dict[key])
+        print(
+            "NOTE: the paste content constraint is proportional to the total mass, "
+            "and the water and HRWR constraints are proportional to the total binder."
+        )
+        print()
+
+    equality_constraints = [
+        get_sum_equality_constraint(
+            X_columns=X_columns,
+            subset_names=_TOTAL_BINDER_NAMES,
+            value=equality_dict["Total Binder"],
+        ),
+        get_sum_equality_constraint(
+            X_columns=X_columns,
+            subset_names=["Fine Aggregate"],
+            value=equality_dict["Fine Aggregate"],
+        )
+    ]
+    inequality_constraints = [
+        # as long as binder is constant, the water constraint is just a bound
+        # *get_water_constraints(X_columns, *inequality_dict["Water"]),
+    ]
+    return equality_constraints, inequality_constraints
+
+
 def get_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
-    """Returns bounds of columns in X, ignoring time, assumed to be the last dimension."""
-    # if X_columns[-1] != "Time":
-    #     raise ValueError(f"Last dimension of X assumed to be time, but is {X_columns[-1]}.")
+    """Returns bounds of columns in X for concrete mixes."""
     bounds_dict = {
         # NOTE: the pure cement baseline is outside of these bounds (~752), as is Dec_2022_2 (~211)
         "Cement": (300, 700),
@@ -194,7 +255,7 @@ def get_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
     }
 
     min_binder, max_binder = 0, 0
-    for name in _BINDER_NAMES:
+    for name in _TOTAL_BINDER_NAMES:
         min_binder += bounds_dict[name][0]
         max_binder += bounds_dict[name][1]
 
@@ -294,11 +355,21 @@ def get_hrwr_constraints(X_columns: List[str], lower: float, upper: float):
 def get_sum_constraints(
     X_columns: List[str], subset_names: List[str], lower: float, upper: float
 ) -> List:
+    lower_constraint = get_sum_equality_constraint(X_columns, subset_names, value=lower)
+    upper_constraint = get_sum_equality_constraint(X_columns, subset_names, value=upper)
+    upper_constraint[1] = -upper_constraint[1]  # rephrasing the upper as a lower bound
+    upper_constraint[2] = -upper_constraint[2]
+    return [lower_constraint, upper_constraint]
+
+
+def get_sum_equality_constraint(
+    X_columns: List[str], subset_names: List[str], value: float
+) -> Tuple[Tensor, Tensor, float]:
     _, coeffs = get_subset_sum_tensors(X_columns=X_columns, subset_names=subset_names)
     # can throw out indices for which coeffs is zero if we don't recombine coefficients
     nz_ind = coeffs != 0
     ind, coeffs = torch.arange(len(coeffs))[nz_ind], coeffs[nz_ind]
-    return [(ind, coeffs, lower), (ind, -coeffs, -upper)]
+    return (ind, coeffs, value)
 
 
 def get_proportional_sum_constraints(
