@@ -191,10 +191,17 @@ def fit_strength_gp(X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor):
 
     # IDEA: + scaled_water_kernel and other additive components
     kernel = scaled_base_kernel + scaled_time_kernel
-    model = FixedNoiseGP(
+    # model = FixedNoiseGP(
+    #     train_X=X,
+    #     train_Y=Y,
+    #     train_Yvar=Yvar,
+    #     covar_module=kernel,
+    #     input_transform=get_strength_gp_input_transform(X_bounds),
+    #     outcome_transform=Standardize(d_out),
+    # )
+    model = SingleTaskGP(
         train_X=X,
         train_Y=Y,
-        train_Yvar=Yvar,
         covar_module=kernel,
         input_transform=get_strength_gp_input_transform(X_bounds),
         outcome_transform=Standardize(d_out),

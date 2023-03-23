@@ -50,7 +50,7 @@ class SustainableConcreteDataset(object):
 
     @property
     def strength_data(self):
-        X_bounds = get_bounds(self.X_columns)
+        X_bounds = get_mortar_bounds(self.X_columns)
         return self.X, self.Y[:, [1]], self.Yvar[:, [1]], X_bounds
 
     @property
@@ -76,7 +76,9 @@ class SustainableConcreteDataset(object):
         X = self.X[unique_indices, :-1]
         Y = self.Y[unique_indices, 0].unsqueeze(-1)
         Yvar = self.Yvar[unique_indices, 0].unsqueeze(-1)
-        X_bounds = get_bounds(self.X_columns[:-1])  # without time dimension
+        X_bounds = get_mortar_bounds(self.X_columns[:-1])  # without time dimension
+        if (X.min(dim=0).values < X_bounds[0, :]).any() or (X.max(dim=0).values > X_bounds[1, :]).any():
+            raise Exception("Bounds do not hold.")
         return X, Y, Yvar, X_bounds
 
     @property
@@ -114,25 +116,11 @@ def load_concrete_strength(
             print("\t-", name, "has", missing.item(), "missing entries.")
         print()
 
-    # throw out one row with missing strength std
-    ind = df.isna().any(axis=1)
-    df = df.drop(df[ind].index)
-    if verbose:
-        print(
-            "Removed rows with missing entries."
-            f"The data now has {len(df)} rows and {len(df.columns)} columns."
-        )
-        print()
-
-    if verbose:
-        print("Removing Dec_2022_6 data since it was cured at a different temperature.")
-        print()
-    df = df.drop(df[df["Mix ID"] == "Dec_2022_6"].index, axis=0)
 
     # separating columns as inputs, outputs, and output uncertainties
-    X_columns = df.columns[3:-6].to_list()
-    Y_columns = df.columns[[-6, -4]].to_list()
-    Ystd_columns = df.columns[[-5, -3]].to_list()
+    X_columns = df.columns[3:-4].to_list()
+    Y_columns = ["GWP", "Strength (Mean)"]
+    Ystd_columns = ["Strength (Std)"]
     if verbose:
         print("Separating model inputs and outputs:")
         print(f"Input columns: ")
@@ -149,7 +137,6 @@ def load_concrete_strength(
     # casting dataframe to torch tensors
     X = torch.tensor(df[X_columns].to_numpy(), dtype=dtype)
     Y = torch.tensor(df[Y_columns].to_numpy(), dtype=dtype)
-    Ystd = torch.tensor(df[Ystd_columns].to_numpy(), dtype=dtype)
 
     if verbose:
         print(f"Negating GWP to frame as joint maximization problem.")
@@ -158,22 +145,31 @@ def load_concrete_strength(
 
     if verbose:
         print(
-            "Setting standard deviation of GWP to uniformly small value "
+            "Adding and setting standard deviation of GWP to uniformly small value "
             "since our estimates are deterministic."
         )
         print()
-    Ystd[:, 0] = 1e-3  # allowing us to use the same model type (FixedNoiseGP)
+    if len(Ystd_columns) == 1:
+        Ystd = torch.cat(
+            (  # to use FixedNoiseGP with noiseless observations
+                torch.full_like(Y[:, 0], 1e-3).unsqueeze(-1),
+                torch.tensor(df[Ystd_columns].to_numpy(), dtype=dtype),
+            ),
+            dim=-1,
+        )
+    else:  # assumed to have GWP as first data source
+        Ystd[:, 0] = 1e-3  # allowing us to use the same model type (FixedNoiseGP)
 
     # dividing empirical standard deviations of strength by the number of measurements.
     if verbose:
         print(
             "Computing strength standard error of by "
-            f"dividing standard deviation by sqrt({df.columns[-2]})."
+            "dividing standard deviation by sqrt(# of measurements)."
         )
         print()
-    n_measurements = torch.tensor(df[df.columns[-2]].to_numpy(), dtype=dtype)
-    Ystd[:, 1] /= n_measurements.sqrt()
 
+    n_measurements = torch.tensor(df["# of measurements"].to_numpy(), dtype=dtype)
+    Ystd[:, 1] /= n_measurements.sqrt()
     return SustainableConcreteDataset(
         X=X, Y=Y, Ystd=Ystd, X_columns=X_columns, Y_columns=Y_columns, Ystd_columns=Ystd_columns
     )
@@ -193,6 +189,7 @@ def get_mortar_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
     bounds_dict.update(
         {
             "Water": (0.2 * total_binder, 0.5 * total_binder),
+            "HRWR": (0, 0.1 * total_binder),  # we are not optimizing this, but need this to fit the model
         }
     )
     bounds = torch.tensor([bounds_dict[col] for col in X_columns]).T
@@ -208,15 +205,15 @@ def get_mortar_constraints(X_columns, verbose: bool = _VERBOSE) -> Tuple[List, L
     # inequality constraints
     equality_dict = {
         "Total Binder": 500.0,
-        "Fine Aggregate": 1375.0,
+        # "Fine Aggregate": 1375.0,
     }
     # inequality_dict = {
     #     "Water": (0.2, 0.5),  # as a proportion of total binder
     # }
     if verbose:
-        print("Adding linear constraints with lower and upper limits:")
-        for key in inequality_dict:
-            print("\t-", key, ":", inequality_dict[key])
+        print("Adding linear equality constraints:")
+        for key in equality_dict:
+            print("\t-", key, ":", equality_dict[key])
         print(
             "NOTE: the paste content constraint is proportional to the total mass, "
             "and the water and HRWR constraints are proportional to the total binder."
@@ -229,17 +226,17 @@ def get_mortar_constraints(X_columns, verbose: bool = _VERBOSE) -> Tuple[List, L
             subset_names=_TOTAL_BINDER_NAMES,
             value=equality_dict["Total Binder"],
         ),
-        get_sum_equality_constraint(
-            X_columns=X_columns,
-            subset_names=["Fine Aggregate"],
-            value=equality_dict["Fine Aggregate"],
-        )
+        # get_sum_equality_constraint(
+        #     X_columns=X_columns,
+        #     subset_names=["Fine Aggregate"],
+        #     value=equality_dict["Fine Aggregate"],
+        # )
     ]
-    inequality_constraints = [
+    # inequality_constraints = [
         # as long as binder is constant, the water constraint is just a bound
         # *get_water_constraints(X_columns, *inequality_dict["Water"]),
-    ]
-    return equality_constraints, inequality_constraints
+    # ]
+    return equality_constraints # , inequality_constraints
 
 
 def get_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
@@ -274,8 +271,8 @@ def get_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
     return bounds
 
 
-def get_constraints(X_columns, verbose: bool = _VERBOSE):
-    # inequality constraints
+def get_concrete_constraints(X_columns, verbose: bool = _VERBOSE):
+    # inequality constraints for concrete (vs. mortar) mixtures
     inequality_dict = {
         "Total Binder": (510, 1000),
         "Total Mass": (3600, 4400),
