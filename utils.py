@@ -78,7 +78,12 @@ class SustainableConcreteDataset(object):
         Yvar = self.Yvar[unique_indices, 0].unsqueeze(-1)
         X_bounds = get_mortar_bounds(self.X_columns[:-1])  # without time dimension
         if (X.min(dim=0).values < X_bounds[0, :]).any() or (X.max(dim=0).values > X_bounds[1, :]).any():
-            raise Exception("Bounds do not hold.")
+            # raise Exception(
+            print(
+                "Bounds do not hold in training data: "
+                f"{X_bounds[0, :], X.amin(dim=0) = }"
+                f"{X_bounds[1, :], X.amax(dim=0) = }"
+            )
         return X, Y, Yvar, X_bounds
 
     @property
