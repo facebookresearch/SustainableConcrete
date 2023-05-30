@@ -113,14 +113,25 @@ def load_concrete_strength(
 
     data_index = 3
     data_columns = df.columns[data_index:]
-    n_missing = torch.tensor(df[data_columns].to_numpy()).isnan().sum(dim=0)
-    missing_ind = n_missing > 0
-    if verbose and missing_ind.any():
-        print(f"There are {missing_ind.sum()} columns with missing entries:")
-        for name, missing in zip(data_columns[missing_ind], n_missing[missing_ind]):
-            print("\t-", name, "has", missing.item(), "missing entries.")
-        print()
-
+    is_missing = torch.tensor(df[data_columns].to_numpy()).isnan()
+    n_missing = is_missing.sum(dim=0)
+    missing_col_ind = n_missing > 0
+    if missing_col_ind.any():
+        if verbose:
+            print(f"There are {missing_col_ind.sum()} columns with missing entries:")
+            for name, missing in zip(
+                data_columns[missing_col_ind], n_missing[missing_col_ind]
+            ):
+                print("\t-", name, "has", missing.item(), "missing entries.")
+            print("Removing missing rows with missing entries from data.")
+        missing_row_ind = [i for i in range(len(df)) if is_missing[i].any()]
+        print(f"\t-Rows indices to be removed: {missing_row_ind = }")
+        df = df.drop(missing_row_ind)
+        print(
+            "\t-Number of missing values after deletion (Should be zero): "
+            f"{torch.tensor(df[data_columns].to_numpy()).isnan().sum() = }"
+        )
+        print("")
 
     # separating columns as inputs, outputs, and output uncertainties
     X_columns = df.columns[3:-4].to_list()
