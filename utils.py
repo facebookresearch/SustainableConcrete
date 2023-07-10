@@ -268,7 +268,7 @@ def get_mortar_constraints(X_columns, verbose: bool = _VERBOSE) -> Tuple[List, L
     inequality_constraints = [
         *get_binder_constraints(X_columns, *inequality_dict["Total Binder"]),
         # as long as binder is constant, the water constraint is just a bound (earlier)
-        # *get_water_constraints(X_columns, *inequality_dict["Water"]),
+        *get_water_constraints(X_columns, *inequality_dict["Water"]),
     ]
     return equality_constraints, inequality_constraints
 
