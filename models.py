@@ -20,7 +20,7 @@ from gpytorch.likelihoods import GaussianLikelihood, Likelihood
 from gpytorch.models import ExactGP
 from gpytorch.priors.torch_priors import GammaPrior
 from torch import Tensor
-from utils import SustainableConcreteDataset, get_bounds, get_day_zero_data
+from utils import SustainableConcreteDataset, get_bounds, get_day_zero_data, LogTransformedInterval
 
 
 class SustainableConcreteModel(object):
@@ -34,15 +34,15 @@ class SustainableConcreteModel(object):
         self.gwp_model = None
         self.d = d
 
-    def fit_strength_model(self, data: SustainableConcreteDataset) -> None:
+    def fit_strength_model(self, data: SustainableConcreteDataset, use_fixed_noise: bool = False) -> None:
         X, Y, Yvar, X_bounds = data.strength_data
         self._set_d(X.shape[-1])
-        self.strength_model = fit_strength_gp(X, Y, Yvar, X_bounds)
+        self.strength_model = fit_strength_gp(X=X, Y=Y, Yvar=Yvar, X_bounds=X_bounds, use_fixed_noise=use_fixed_noise)
 
-    def fit_gwp_model(self, data: SustainableConcreteDataset) -> None:
+    def fit_gwp_model(self, data: SustainableConcreteDataset, use_fixed_noise: bool = False) -> None:
         X, Y, Yvar, X_bounds = data.gwp_data
         self._set_d(X.shape[-1] + 1)
-        self.gwp_model = fit_gwp_gp(X, Y, Yvar, X_bounds)
+        self.gwp_model = fit_gwp_gp(X=X, Y=Y, Yvar=Yvar, X_bounds=X_bounds, use_fixed_noise=use_fixed_noise)
 
     def _set_d(self, d: int) -> None:
         if self.d is None:
@@ -101,7 +101,8 @@ class FixedFeatureModel(Model):
         Output:
             A (n x (d + len(self._indices)))-dim Tensor.
         """
-        Z = torch.zeros(*X.shape[:-1], X.shape[-1] + len(self._indices))
+        tkwargs = {"dtype": X.dtype, "device": X.device}
+        Z = torch.zeros(*X.shape[:-1], X.shape[-1] + len(self._indices), **tkwargs)
         Z[..., self._fixed] = self._values
         Z[..., ~self._fixed] = X
         return Z
@@ -113,7 +114,7 @@ class FixedFeatureModel(Model):
         return self.base_model.posterior(self._add_fixed_features(X), *args, **kwargs)
 
 
-def fit_gwp_gp(X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor):
+def fit_gwp_gp(X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor, use_fixed_noise: bool = False):
     """
     Input:
         X: Tensor of composition inputs without time (n x d).
@@ -128,21 +129,28 @@ def fit_gwp_gp(X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor):
     if d_out != 1:
         raise ValueError("Output dimensions is not one in gwp fitting.")
     # GWP is a linear function of the inputs
-    kernel = LinearKernel()
-    model = FixedNoiseGP(
-        train_X=X,
-        train_Y=Y,
-        train_Yvar=Yvar,
-        covar_module=kernel,
-        input_transform=Normalize(d_in, bounds=X_bounds),
-        outcome_transform=Standardize(d_out),
-    )
+    covar_module = LinearKernel()
+    model_class = FixedNoiseGP if use_fixed_noise else SingleTaskGP
+    model_kwargs = {
+        "train_X": X,
+        "train_Y": Y,
+        "covar_module": covar_module,
+        "input_transform": Normalize(d_in, bounds=X_bounds),
+        "outcome_transform": Standardize(d_out),
+    }
+    if use_fixed_noise:
+        model_kwargs["train_Yvar"] = Yvar
+    else:
+        model_kwargs["likelihood"] = GaussianLikelihood(
+            noise_constraint=LogTransformedInterval(1e-4, 1.0, initial_value=1e-2)
+        )
+    model = model_class(**model_kwargs)
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
     fit_gpytorch_model(mll)
     return model
 
 
-def fit_strength_gp(X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor):
+def fit_strength_gp(X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor, use_fixed_noise: bool = False) -> ExactGP:
     """
     Input:
         X: Tensor of composition inputs including time (n x d).
@@ -167,12 +175,13 @@ def fit_strength_gp(X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor):
     base_kernel = MaternKernel(
         nu=2.5,
         ard_num_dims=d_in,
-        lengthscale_constraint=None,
+        lengthscale_constraint=LogTransformedInterval(1e-2, 1e3, initial_value=1.0),
         lengthscale_prior=None,
     )
     scaled_base_kernel = ScaleKernel(
         base_kernel=base_kernel,
-        outputscale_prior=GammaPrior(2.0, 0.15),
+        outputscale_constraint=LogTransformedInterval(1e-2, 1e2, initial_value=1.0),
+        outputscale_prior=None,
     )
 
     # additive kernel to model behavior w.r.t. time
@@ -180,32 +189,33 @@ def fit_strength_gp(X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor):
     time_kernel = RBFKernel(  # MaternKernel # smoother RBF seems to work better for additive components
         active_dims=torch.tensor([d_in - 1]),  # last dimension is time
         ard_num_dims=1,
-        lengthscale_constraint=None,
-        # lengthscale_prior=None,
+        lengthscale_constraint=LogTransformedInterval(1e-2, 1e3, initial_value=1.0),
+        lengthscale_prior=None,
     )
     scaled_time_kernel = ScaleKernel(
         base_kernel=time_kernel,
-        outputscale_prior=GammaPrior(2.0, 0.15),
+        outputscale_constraint=LogTransformedInterval(1e-2, 1e2, initial_value=1.0),
+        outputscale_prior=None,
         # batch_shape=batch_shape,
     )
 
     # IDEA: + scaled_water_kernel and other additive components
     kernel = scaled_base_kernel + scaled_time_kernel
-    # model = FixedNoiseGP(
-    #     train_X=X,
-    #     train_Y=Y,
-    #     train_Yvar=Yvar,
-    #     covar_module=kernel,
-    #     input_transform=get_strength_gp_input_transform(X_bounds),
-    #     outcome_transform=Standardize(d_out),
-    # )
-    model = SingleTaskGP(
-        train_X=X,
-        train_Y=Y,
-        covar_module=kernel,
-        input_transform=get_strength_gp_input_transform(X_bounds),
-        outcome_transform=Standardize(d_out),
-    )
+    model_class = FixedNoiseGP if use_fixed_noise else SingleTaskGP
+    model_kwargs = {
+        "train_X": X,
+        "train_Y": Y,
+        "covar_module": kernel,
+        "input_transform": get_strength_gp_input_transform(X_bounds),
+        "outcome_transform": Standardize(d_out),
+    }
+    if use_fixed_noise:
+        model_kwargs["train_Yvar"] = Yvar
+    else:
+        model_kwargs["likelihood"] = GaussianLikelihood(
+            noise_constraint=LogTransformedInterval(1e-6, 1.0, initial_value=1e-1)
+        )
+    model = model_class(**model_kwargs)
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
     fit_gpytorch_model(mll)
     return model

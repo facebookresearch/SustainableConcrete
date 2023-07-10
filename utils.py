@@ -1,12 +1,17 @@
 # utils module with data loaders and more.
-from typing import List, Tuple
+import math
+from typing import List, Tuple, Optional
 
 import pandas as pd
 import torch
+
+from gpytorch import settings
+from gpytorch.constraints import Interval
 from torch import Tensor
 
 _TOTAL_BINDER_NAMES = ["Cement", "Fly Ash", "Slag"]
 _PASTE_CONTENT_NAMES = _TOTAL_BINDER_NAMES + ["Water"]
+_BINDER_PLUS_AGGREGATE = _TOTAL_BINDER_NAMES + ["Fine Aggregate"]
 _TOTAL_MASS_NAMES = _PASTE_CONTENT_NAMES + ["HRWR", "Coarse Aggregate", "Fine Aggregate"]
 _VERBOSE = False
 
@@ -52,6 +57,11 @@ class SustainableConcreteDataset(object):
     def strength_data(self):
         X_bounds = get_mortar_bounds(self.X_columns)
         return self.X, self.Y[:, [1]], self.Yvar[:, [1]], X_bounds
+
+    def strength_data_by_time(self, time: float):
+        X, Y, Yvar, _ = self.strength_data
+        row_ind = torch.where(X[:, -1] == time)[0]
+        return X[row_ind], Y[row_ind], Yvar[row_ind]
 
     @property
     def unique_compositions(self):
@@ -100,7 +110,10 @@ class SustainableConcreteDataset(object):
 
 
 def load_concrete_strength(
-    data_path: str = "data/concrete_strength.csv", verbose: bool = _VERBOSE, dtype=torch.float32
+    data_path: str = "data/concrete_strength.csv",
+    verbose: bool = _VERBOSE,
+    dtype: Optional[torch.dtype] = None,
+    device: Optional[torch.device] = None,
 ):
     # loading csv into dataframe
     df = pd.read_csv(data_path, delimiter=",")
@@ -151,8 +164,9 @@ def load_concrete_strength(
         print()
 
     # casting dataframe to torch tensors
-    X = torch.tensor(df[X_columns].to_numpy(), dtype=dtype)
-    Y = torch.tensor(df[Y_columns].to_numpy(), dtype=dtype)
+    tkwargs = {"dtype": dtype, "device": device}
+    X = torch.tensor(df[X_columns].to_numpy(), **tkwargs)
+    Y = torch.tensor(df[Y_columns].to_numpy(), **tkwargs)
 
     if verbose:
         print(f"Negating GWP to frame as joint maximization problem.")
@@ -169,7 +183,7 @@ def load_concrete_strength(
         Ystd = torch.cat(
             (  # to use FixedNoiseGP with noiseless observations
                 torch.full_like(Y[:, 0], 1e-3).unsqueeze(-1),
-                torch.tensor(df[Ystd_columns].to_numpy(), dtype=dtype),
+                torch.tensor(df[Ystd_columns].to_numpy(), **tkwargs),
             ),
             dim=-1,
         )
@@ -184,7 +198,7 @@ def load_concrete_strength(
         )
         print()
 
-    n_measurements = torch.tensor(df["# of measurements"].to_numpy(), dtype=dtype)
+    n_measurements = torch.tensor(df["# of measurements"].to_numpy(), **tkwargs)
     Ystd[:, 1] /= n_measurements.sqrt()
     return SustainableConcreteDataset(
         X=X, Y=Y, Ystd=Ystd, X_columns=X_columns, Y_columns=Y_columns, Ystd_columns=Ystd_columns
@@ -194,18 +208,19 @@ def load_concrete_strength(
 def get_mortar_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
     """Returns bounds of columns in X for mortart mixes."""
     bounds_dict = {
-        "Cement": (150, 350), # these are now in grams, as opposed to the original concrete bounds
-        "Fly Ash": (0, 175),
-        "Slag": (0, 225),
-        "Fine Aggregate": (0, 1700), # will be fixed to 1375 with equality constraint
+        "Cement": (0, 950), # in grams, as opposed to the original concrete bounds
+        "Fly Ash": (0, 950),
+        "Slag": (0, 950),
+        "Fine Aggregate": (925, 1775), # fixed based on binder + aggregate constraint
         "Time": (0, 28),  # up to 28 days
     }
 
-    total_binder = 500.0
+    min_binder = 100.0
+    max_binder = 950.0
     bounds_dict.update(
         {
-            "Water": (0.2 * total_binder, 0.5 * total_binder),
-            "HRWR": (0, 0.1 * total_binder),  # we are not optimizing this, but need this to fit the model
+            "Water": (0.2 * min_binder, 0.5 * max_binder),
+            "HRWR": (0, 0.1 * max_binder),  # we are not optimizing this, but need this to fit the model
         }
     )
     bounds = torch.tensor([bounds_dict[col] for col in X_columns]).T
@@ -220,12 +235,14 @@ def get_mortar_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
 def get_mortar_constraints(X_columns, verbose: bool = _VERBOSE) -> Tuple[List, List]:
     # inequality constraints
     equality_dict = {
-        "Total Binder": 500.0,
+        # "Total Binder": 500.0,
         # "Fine Aggregate": 1375.0,
+        "Total Binder + Fine Aggregate": 1875.0,
     }
-    # inequality_dict = {
-    #     "Water": (0.2, 0.5),  # as a proportion of total binder
-    # }
+    inequality_dict = {
+        "Total Binder": (100.0, 950.0),
+        "Water": (0.2, 0.5),  # NOTE: as a proportion of total binder
+    }
     if verbose:
         print("Adding linear equality constraints:")
         for key in equality_dict:
@@ -237,22 +254,23 @@ def get_mortar_constraints(X_columns, verbose: bool = _VERBOSE) -> Tuple[List, L
         print()
 
     equality_constraints = [
-        get_sum_equality_constraint(
-            X_columns=X_columns,
-            subset_names=_TOTAL_BINDER_NAMES,
-            value=equality_dict["Total Binder"],
-        ),
         # get_sum_equality_constraint(
         #     X_columns=X_columns,
-        #     subset_names=["Fine Aggregate"],
-        #     value=equality_dict["Fine Aggregate"],
-        # )
+        #     subset_names=_TOTAL_BINDER_NAMES,
+        #     value=equality_dict["Total Binder"],
+        # ),
+        get_sum_equality_constraint(
+            X_columns=X_columns,
+            subset_names=_BINDER_PLUS_AGGREGATE,
+            value=equality_dict["Total Binder + Fine Aggregate"],
+        )
     ]
-    # inequality_constraints = [
-        # as long as binder is constant, the water constraint is just a bound
+    inequality_constraints = [
+        *get_binder_constraints(X_columns, *inequality_dict["Total Binder"]),
+        # as long as binder is constant, the water constraint is just a bound (earlier)
         # *get_water_constraints(X_columns, *inequality_dict["Water"]),
-    # ]
-    return equality_constraints # , inequality_constraints
+    ]
+    return equality_constraints, inequality_constraints
 
 
 def get_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
@@ -370,8 +388,8 @@ def get_sum_constraints(
 ) -> List:
     lower_constraint = get_sum_equality_constraint(X_columns, subset_names, value=lower)
     upper_constraint = get_sum_equality_constraint(X_columns, subset_names, value=upper)
-    upper_constraint[1] = -upper_constraint[1]  # rephrasing the upper as a lower bound
-    upper_constraint[2] = -upper_constraint[2]
+    # rephrasing the upper as a lower bound
+    upper_constraint = (upper_constraint[0], -upper_constraint[1], -upper_constraint[2])
     return [lower_constraint, upper_constraint]
 
 
@@ -447,3 +465,56 @@ def get_day_zero_data(bounds: Tensor, n: int = 128):
     Y_0 = torch.zeros(n, 1)  #  zero strength
     Yvar_0 = torch.full((n, 1), 1e-4)  #  with large certainty
     return X_0, Y_0, Yvar_0
+
+
+# NOTE: copied over from map saas implementation.
+# TODO: move this to OSS.
+class LogTransformedInterval(Interval):
+    """Modification of the GPyTorch interval class.
+
+    The Interval class in GPyTorch will map the parameter to the range [0, 1] before
+    applying the inverse transform. We don't want to do this when using log as an
+    inverse transform. This class will skip this step and apply the log transform
+    directly to the parameter values so we can optimize log(parameter) under the bound
+    constraints log(lower) <= log(parameter) <= log(upper).
+    """
+
+    def __init__(self, lower_bound, upper_bound, initial_value=None):
+        super().__init__(
+            lower_bound=lower_bound,
+            upper_bound=upper_bound,
+            transform=torch.exp,
+            inv_transform=torch.log,
+            initial_value=initial_value,
+        )
+
+        # Save the untransformed initial value
+        self.register_buffer(
+            "initial_value_untransformed",
+            torch.tensor(initial_value).to(self.lower_bound)
+            if initial_value is not None
+            else None,
+        )
+
+        if settings.debug.on():
+            max_bound = torch.max(self.upper_bound)
+            min_bound = torch.min(self.lower_bound)
+            if max_bound == math.inf or min_bound == -math.inf:
+                raise RuntimeError(
+                    "Cannot make an Interval directly with non-finite bounds. Use a "
+                    "derived class like GreaterThan or LessThan instead."
+                )
+
+    def transform(self, tensor):
+        if not self.enforced:
+            return tensor
+
+        transformed_tensor = self._transform(tensor)
+        return transformed_tensor
+
+    def inverse_transform(self, transformed_tensor):
+        if not self.enforced:
+            return transformed_tensor
+
+        tensor = self._inv_transform(transformed_tensor)
+        return tensor
