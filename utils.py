@@ -1,6 +1,8 @@
 # utils module with data loaders and more.
+from __future__ import annotations
+
 import math
-from typing import List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional
 
 import pandas as pd
 import torch
@@ -25,6 +27,7 @@ class SustainableConcreteDataset(object):
         X_columns: List[str],
         Y_columns: List[str],
         Ystd_columns: List[str],
+        batch_name_to_indices: Optional[Dict[str, List[int]]] = None,
     ):
         if X_columns[-1] != "Time":
             raise ValueError(f"Last dimension of X assumed to be time, but is {X_columns[-1]}.")
@@ -36,41 +39,62 @@ class SustainableConcreteDataset(object):
         self._X = X
         self._Y = Y
         self._Ystd = Ystd
+        self._batch_name_to_indices = batch_name_to_indices
 
     @property
-    def X(self):
+    def X(self) -> Tensor:
         return self._X
 
     @property
-    def Y(self):
+    def Y(self) -> Tensor:
         return self._Y
 
     @property
-    def Ystd(self):
+    def Ystd(self) -> Tensor:
         return self._Ystd
 
     @property
-    def Yvar(self):
+    def Yvar(self) -> Tensor:
         return self.Ystd.square()
 
     @property
-    def strength_data(self):
+    def strength_data(self) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         X_bounds = get_mortar_bounds(self.X_columns)
         return self.X, self.Y[:, [1]], self.Yvar[:, [1]], X_bounds
 
-    def strength_data_by_time(self, time: float):
+    def strength_data_by_time(self, time: float) -> Tuple[Tensor, Tensor, Tensor]:
         X, Y, Yvar, _ = self.strength_data
         row_ind = torch.where(X[:, -1] == time)[0]
         return X[row_ind], Y[row_ind], Yvar[row_ind]
 
+    def subselect_batch_names(self, names: List[str]) -> SustainableConcreteDataset:
+        all_inds = []
+        new_batch_name_to_indices = {}
+        for name, inds in self._batch_name_to_indices.items():
+            if name in names:
+                len_all = len(all_inds)
+                new_batch_inds = list(range(len_all, len_all + len(inds)))
+                new_batch_name_to_indices[name] = new_batch_inds
+                all_inds.append(inds)
+
+        return SustainableConcreteDataset(
+            X=self.X[all_inds],
+            Y=self.Y[all_inds],
+            Ystd=self.Ystd[all_inds],
+            X_columns=self.X_columns,
+            Y_columns=self.Y_columns,
+            Ystd_columns=self.Ystd_columns,
+            batch_name_to_indices=new_batch_name_to_indices,
+        )
+
     @property
-    def unique_compositions(self):
+    def unique_compositions(self) -> Tuple[Tensor, Tensor]:
         c = self.X[:, :-1]
         c_unique, rev = c.unique(dim=0, sorted=False, return_inverse=True)
         return c_unique, rev
 
     @property
-    def unique_composition_indices(self):
+    def unique_composition_indices(self) -> List[int]:
         c, rev = self.unique_compositions
         rev = [r.item() for r in rev]  # converting to a list of python ints
         # indices of first occurances of unique compositions
@@ -80,7 +104,7 @@ class SustainableConcreteDataset(object):
         return unique_indices
 
     @property
-    def gwp_data(self):
+    def gwp_data(self) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         # removes duplicates due to multiple measurements in time, which is irrelevant for gwp
         unique_indices = self.unique_composition_indices
         X = self.X[unique_indices, :-1]
@@ -124,6 +148,7 @@ def load_concrete_strength(
             print("\t-", column)
         print()
 
+    # first, remove rows and columns with missing data
     data_index = 3
     data_columns = df.columns[data_index:]
     is_missing = torch.tensor(df[data_columns].to_numpy()).isnan()
@@ -145,6 +170,25 @@ def load_concrete_strength(
             f"{torch.tensor(df[data_columns].to_numpy()).isnan().sum() = }"
         )
         print("")
+
+    # get batch names
+    name_index = 0  # assumes mix ids are the first column of the table
+    name_column = df.columns[name_index]
+    mix_names = df[name_column].to_list()
+    # this removes everything from the last underscore of the name
+    batch_names = [name[:name.rfind("_")] for name in mix_names]
+    # find unique batch names
+    batch_names = unique_elements(batch_names)
+    # maps batch_name to the indices of the mixes associated with the batch
+    batch_name_to_indices = {
+        batch_name: [i for i, name in enumerate(mix_names) if name[:len(batch_name)] == batch_name]
+        for batch_name in batch_names
+    }
+    if verbose:
+        print("Found the following batch names:")
+        for batch_name in batch_names:
+            print("\t-", batch_name)
+        print()
 
     # separating columns as inputs, outputs, and output uncertainties
     X_columns = df.columns[3:-4].to_list()
@@ -201,7 +245,7 @@ def load_concrete_strength(
     n_measurements = torch.tensor(df["# of measurements"].to_numpy(), **tkwargs)
     Ystd[:, 1] /= n_measurements.sqrt()
     return SustainableConcreteDataset(
-        X=X, Y=Y, Ystd=Ystd, X_columns=X_columns, Y_columns=Y_columns, Ystd_columns=Ystd_columns
+        X=X, Y=Y, Ystd=Ystd, X_columns=X_columns, Y_columns=Y_columns, Ystd_columns=Ystd_columns, batch_name_to_indices=batch_name_to_indices,
     )
 
 
@@ -438,6 +482,16 @@ def get_proportional_sum_constraints(
 
 
 def get_subset_sum_tensors(X_columns: List[str], subset_names: List[str]) -> Tuple[Tensor, Tensor]:
+    """Returns indices and coefficients such that `X[indices].dot(coeffs) == X[indices].sum()`,
+    where indices are the indices of subset_names in X_columns.
+
+    Args:
+        X_columns: The column (variable) names.
+        subset_names: The subset of variable names whose sum to compute.
+
+    Returns:
+        A Tuple of Tensors `indices` and `coeffs` with which to compute the subset sum.
+    """
     indices = [X_columns.index(name) for name in subset_names]
     coeffs = torch.zeros(len(X_columns))
     coeffs[indices] = 1
@@ -453,7 +507,7 @@ def get_reference_point():
 
 
 def get_day_zero_data(bounds: Tensor, n: int = 128):
-    """Computes a tensor n sobol points that satisfy the bounds, appended with a
+    """Computes a tensor of n sobol points that satisfy the bounds, appended with a
     zeros tensor. Useful to condition the strength GP to be zero at day zero.
     """
     d = bounds.shape[-1]
@@ -518,3 +572,10 @@ class LogTransformedInterval(Interval):
 
         tensor = self._inv_transform(transformed_tensor)
         return tensor
+
+
+def unique_elements(x: List) -> List:
+    """Returns unique elements of x in the same order as their first
+    occurrance in the input list.
+    """
+    return list(dict.fromkeys(x))

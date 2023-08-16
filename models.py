@@ -60,6 +60,9 @@ class SustainableConcreteModel(object):
                 base_model=self.strength_model, dim=self.d, indices=[self.d - 1], values=[1]
             ),  # strength at day 1
             FixedFeatureModel(
+                base_model=self.strength_model, dim=self.d, indices=[self.d - 1], values=[5]
+            ),  # strength at day 5
+            FixedFeatureModel(
                 base_model=self.strength_model, dim=self.d, indices=[self.d - 1], values=[28]
             ),  # strength at day 28
         ]
@@ -75,7 +78,7 @@ class SustainableConcreteModel(object):
 # BatchedMultiOutputGPyTorchModel, ExactGP
 class FixedFeatureModel(Model):
     # advantage: only need to implement posterior for it to work with qNEHI
-    # disadvantage: makes the strength outputs independent
+    # disadvantage: makes the strength outputs independent (IDEA: could add joint model)
     # TODO: check that these are appended before the InputTransforms are applied, not after.
     def __init__(
         self,
@@ -98,6 +101,7 @@ class FixedFeatureModel(Model):
         """
         Input:
             - X: A (n x d)-dim Tensor.
+
         Output:
             A (n x (d + len(self._indices)))-dim Tensor.
         """
