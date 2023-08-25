@@ -503,7 +503,7 @@ def get_reference_point():
     strength_day_1 = 1000
     # strength_day_7 = 3000
     strength_day_28 = 5000
-    return torch.tensor([gwp, strength_day_1, strength_day_28])
+    return torch.tensor([gwp, strength_day_1, strength_day_28], dtype=torch.double)
 
 
 def get_day_zero_data(bounds: Tensor, n: int = 128):

@@ -26,10 +26,23 @@ from utils import SustainableConcreteDataset, get_bounds, get_day_zero_data, Log
 class SustainableConcreteModel(object):
     def __init__(
         self,
+        strength_days: List[int],
         strength_model: Optional[Model] = None,
         gwp_model: Optional[Model] = None,
         d: Optional[int] = None,
     ):
+        """A multi-output model that jointly predicts GWP and compressive strength at
+        pre-defined days `strength_days`.
+
+        Args:
+            strength_days (List[int]): A list days to predict stength for.
+            strength_model (Optional[Model], optional): The strength model. Defaults to None.
+            gwp_model (Optional[Model], optional): The GWP model. Defaults to None.
+            d (Optional[int], optional): The dimensionality of the input to the strength model.
+                Is inferred automatically if the fit functions are called. NOTE: The model
+                assumes that the last element of the input corresponds to the time dimension.
+        """
+        self.strength_days = strength_days
         self.strength_model = None
         self.gwp_model = None
         self.d = d
@@ -56,15 +69,11 @@ class SustainableConcreteModel(object):
         """
         models = [
             self.gwp_model,
+            *(
             FixedFeatureModel(
-                base_model=self.strength_model, dim=self.d, indices=[self.d - 1], values=[1]
-            ),  # strength at day 1
-            FixedFeatureModel(
-                base_model=self.strength_model, dim=self.d, indices=[self.d - 1], values=[5]
-            ),  # strength at day 5
-            FixedFeatureModel(
-                base_model=self.strength_model, dim=self.d, indices=[self.d - 1], values=[28]
-            ),  # strength at day 28
+                base_model=self.strength_model, dim=self.d, indices=[self.d - 1], values=[day]
+            )
+            for day in self.strength_days)
         ]
         model = ModelList(*models)
         return model  # for use with multi-objective optimization
