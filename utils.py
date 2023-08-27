@@ -136,11 +136,38 @@ class SustainableConcreteDataset(object):
 def load_concrete_strength(
     data_path: str = "data/concrete_strength.csv",
     verbose: bool = _VERBOSE,
+    batch_names: Optional[List[str]] = None,
     dtype: Optional[torch.dtype] = None,
     device: Optional[torch.device] = None,
 ):
     # loading csv into dataframe
     df = pd.read_csv(data_path, delimiter=",")
+
+    used_columns = [
+        "Mix ID",
+        "Name",
+        "Description",
+        "Cement",
+        "Fly Ash",
+        "Slag",
+        "Water",
+        "HRWR",
+        "Fine Aggregate",
+        # "Curing Temp (°C)",  # adding this here because last dimension is assumed to be time
+        "Time",
+        "GWP",  # the last four are output dimensions
+        "Strength (Mean)",
+        "Strength (Std)",
+        "# of measurements",
+    ]
+    df = df[used_columns]
+
+    # dropping any mix id that is not in batch names
+    if batch_names is not None:
+        not_in_names = df["Mix ID"].astype(bool)  # creating True series
+        for batch_name in batch_names:
+            not_in_names = not_in_names & (~df["Mix ID"].str.contains(batch_name))
+        df = df.drop(df[not_in_names].index)
 
     if verbose:
         print(f"The data has {len(df)} rows and {len(df.columns)} columns, which are:")
@@ -161,15 +188,18 @@ def load_concrete_strength(
                 data_columns[missing_col_ind], n_missing[missing_col_ind]
             ):
                 print("\t-", name, "has", missing.item(), "missing entries.")
+            print("")
             print("Removing missing rows with missing entries from data.")
         missing_row_ind = [i for i in range(len(df)) if is_missing[i].any()]
-        print(f"\t-Rows indices to be removed: {missing_row_ind = }")
+        if verbose:
+            print(f"\t-Rows indices to be removed: {missing_row_ind = }")
         df = df.drop(missing_row_ind)
-        print(
-            "\t-Number of missing values after deletion (Should be zero): "
-            f"{torch.tensor(df[data_columns].to_numpy()).isnan().sum() = }"
-        )
-        print("")
+        if verbose:
+            print(
+                "\t-Number of missing values after deletion (Should be zero): "
+                f"{torch.tensor(df[data_columns].to_numpy()).isnan().sum() = }"
+            )
+            print("")
 
     # get batch names
     name_index = 0  # assumes mix ids are the first column of the table
@@ -263,7 +293,7 @@ def get_mortar_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
     max_binder = 950.0
     bounds_dict.update(
         {
-            "Water": (0.2 * min_binder, 0.5 * max_binder),
+            "Water": (0.35 * min_binder, 0.5 * max_binder),
             "HRWR": (0, 0.1 * max_binder),  # we are not optimizing this, but need this to fit the model
         }
     )
@@ -285,7 +315,7 @@ def get_mortar_constraints(X_columns, verbose: bool = _VERBOSE) -> Tuple[List, L
     }
     inequality_dict = {
         "Total Binder": (100.0, 950.0),
-        "Water": (0.2, 0.5),  # NOTE: as a proportion of total binder
+        "Water": (0.35, 0.5),  # NOTE: as a proportion of total binder
     }
     if verbose:
         print("Adding linear equality constraints:")
