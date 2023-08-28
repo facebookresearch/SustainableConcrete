@@ -1,9 +1,10 @@
-from typing import Any, List, Optional, Tuple, Union
+from __future__ import annotations
+
+from typing import List, Optional, Union
 
 import torch
 from botorch import fit_gpytorch_model
 from botorch.models import FixedNoiseGP, ModelList, ModelListGP, SingleTaskGP
-from botorch.models.gpytorch import BatchedMultiOutputGPyTorchModel
 from botorch.models.model import Model
 from botorch.models.transforms.input import (
     AffineInputTransform,
@@ -13,14 +14,11 @@ from botorch.models.transforms.input import (
 )
 from botorch.models.transforms.outcome import Standardize
 from gpytorch import ExactMarginalLogLikelihood
-from gpytorch.constraints import GreaterThan
 from gpytorch.kernels import LinearKernel, MaternKernel, RBFKernel, ScaleKernel
-from gpytorch.kernels.polynomial_kernel import PolynomialKernel
-from gpytorch.likelihoods import GaussianLikelihood, Likelihood
+from gpytorch.likelihoods import GaussianLikelihood
 from gpytorch.models import ExactGP
-from gpytorch.priors.torch_priors import GammaPrior
 from torch import Tensor
-from utils import SustainableConcreteDataset, get_bounds, get_day_zero_data, LogTransformedInterval
+from utils import get_day_zero_data, LogTransformedInterval, SustainableConcreteDataset
 
 
 class SustainableConcreteModel(object):
@@ -47,15 +45,23 @@ class SustainableConcreteModel(object):
         self.gwp_model = None
         self.d = d
 
-    def fit_strength_model(self, data: SustainableConcreteDataset, use_fixed_noise: bool = False) -> None:
+    def fit_strength_model(
+        self, data: SustainableConcreteDataset, use_fixed_noise: bool = False
+    ) -> None:
         X, Y, Yvar, X_bounds = data.strength_data
         self._set_d(X.shape[-1])
-        self.strength_model = fit_strength_gp(X=X, Y=Y, Yvar=Yvar, X_bounds=X_bounds, use_fixed_noise=use_fixed_noise)
+        self.strength_model = fit_strength_gp(
+            X=X, Y=Y, Yvar=Yvar, X_bounds=X_bounds, use_fixed_noise=use_fixed_noise
+        )
 
-    def fit_gwp_model(self, data: SustainableConcreteDataset, use_fixed_noise: bool = False) -> None:
+    def fit_gwp_model(
+        self, data: SustainableConcreteDataset, use_fixed_noise: bool = False
+    ) -> None:
         X, Y, Yvar, X_bounds = data.gwp_data
         self._set_d(X.shape[-1] + 1)
-        self.gwp_model = fit_gwp_gp(X=X, Y=Y, Yvar=Yvar, X_bounds=X_bounds, use_fixed_noise=use_fixed_noise)
+        self.gwp_model = fit_gwp_gp(
+            X=X, Y=Y, Yvar=Yvar, X_bounds=X_bounds, use_fixed_noise=use_fixed_noise
+        )
 
     def _set_d(self, d: int) -> None:
         if self.d is None:
@@ -70,10 +76,14 @@ class SustainableConcreteModel(object):
         models = [
             self.gwp_model,
             *(
-            FixedFeatureModel(
-                base_model=self.strength_model, dim=self.d, indices=[self.d - 1], values=[day]
-            )
-            for day in self.strength_days)
+                FixedFeatureModel(
+                    base_model=self.strength_model,
+                    dim=self.d,
+                    indices=[self.d - 1],
+                    values=[day],
+                )
+                for day in self.strength_days
+            ),
         ]
         model = ModelList(*models)
         return model  # for use with multi-objective optimization
@@ -102,8 +112,11 @@ class FixedFeatureModel(Model):
             raise ValueError("indices and values do not have the same length.")
         indices = torch.as_tensor(indices)
         values = torch.as_tensor(values)
+        self._dim = dim
         self._indices = indices
-        self._fixed = torch.tensor([i in indices for i in torch.arange(dim, dtype=indices.dtype)])
+        self._fixed = torch.tensor(
+            [i in indices for i in torch.arange(dim, dtype=indices.dtype)]
+        )
         self._values = values
 
     def _add_fixed_features(self, X: Tensor):
@@ -126,8 +139,22 @@ class FixedFeatureModel(Model):
     def posterior(self, X: Tensor, *args, **kwargs):
         return self.base_model.posterior(self._add_fixed_features(X), *args, **kwargs)
 
+    @property
+    def num_outputs(self) -> int:
+        return self.base_model.num_outputs  # need to adjust if we batch fixed features
 
-def fit_gwp_gp(X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor, use_fixed_noise: bool = False):
+    def subset_output(self, idcs: List[int]) -> FixedFeatureModel:
+        raise FixedFeatureModel(
+            base_model=self.base_model.subset_output(idcs),
+            dim=self._dim,
+            indices=self._indices,
+            values=self._value,
+        )
+
+
+def fit_gwp_gp(
+    X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor, use_fixed_noise: bool = False
+):
     """
     Input:
         X: Tensor of composition inputs without time (n x d).
@@ -163,7 +190,9 @@ def fit_gwp_gp(X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor, use_fixed_n
     return model
 
 
-def fit_strength_gp(X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor, use_fixed_noise: bool = False) -> ExactGP:
+def fit_strength_gp(
+    X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor, use_fixed_noise: bool = False
+) -> ExactGP:
     """
     Input:
         X: Tensor of composition inputs including time (n x d).
@@ -247,7 +276,11 @@ def get_strength_gp_input_transform(bounds: Tensor):
         indices=time_index,
         reverse=True,
     )
-    tf2 = Log10(indices=time_index)  # taking log of time dimension for better extrapolation
+    tf2 = Log10(
+        indices=time_index
+    )  # taking log of time dimension for better extrapolation
     transformed_bounds = tf2(tf1(bounds))
-    tf3 = Normalize(d, bounds=transformed_bounds)  # normalizing after log(t + 1) transform
+    tf3 = Normalize(
+        d, bounds=transformed_bounds
+    )  # normalizing after log(t + 1) transform
     return ChainedInputTransform(tf1=tf1, tf2=tf2, tf3=tf3)

@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import torch
+from botorch.models import ModelListGP
+from botorch.optim.initializers import sample_q_batches_from_polytope
+from botorch.utils.multi_objective import is_non_dominated
 
 from gpytorch import settings
 from gpytorch.constraints import Interval
@@ -14,7 +17,11 @@ from torch import Tensor
 _TOTAL_BINDER_NAMES = ["Cement", "Fly Ash", "Slag"]
 _PASTE_CONTENT_NAMES = _TOTAL_BINDER_NAMES + ["Water"]
 _BINDER_PLUS_AGGREGATE = _TOTAL_BINDER_NAMES + ["Fine Aggregate"]
-_TOTAL_MASS_NAMES = _PASTE_CONTENT_NAMES + ["HRWR", "Coarse Aggregate", "Fine Aggregate"]
+_TOTAL_MASS_NAMES = _PASTE_CONTENT_NAMES + [
+    "HRWR",
+    "Coarse Aggregate",
+    "Fine Aggregate",
+]
 _VERBOSE = False
 
 
@@ -30,7 +37,9 @@ class SustainableConcreteDataset(object):
         batch_name_to_indices: Optional[Dict[str, List[int]]] = None,
     ):
         if X_columns[-1] != "Time":
-            raise ValueError(f"Last dimension of X assumed to be time, but is {X_columns[-1]}.")
+            raise ValueError(
+                f"Last dimension of X assumed to be time, but is {X_columns[-1]}."
+            )
 
         # making sure we are not overwriting these
         self._X_columns = X_columns
@@ -111,7 +120,9 @@ class SustainableConcreteDataset(object):
         Y = self.Y[unique_indices, 0].unsqueeze(-1)
         Yvar = self.Yvar[unique_indices, 0].unsqueeze(-1)
         X_bounds = get_mortar_bounds(self.X_columns[:-1])  # without time dimension
-        if (X.min(dim=0).values < X_bounds[0, :]).any() or (X.max(dim=0).values > X_bounds[1, :]).any():
+        if (X.min(dim=0).values < X_bounds[0, :]).any() or (
+            X.max(dim=0).values > X_bounds[1, :]
+        ).any():
             # raise Exception(
             print(
                 "Bounds do not hold in training data: "
@@ -206,12 +217,16 @@ def load_concrete_strength(
     name_column = df.columns[name_index]
     mix_names = df[name_column].to_list()
     # this removes everything from the last underscore of the name
-    batch_names = [name[:name.rfind("_")] for name in mix_names]
+    batch_names = [name[: name.rfind("_")] for name in mix_names]
     # find unique batch names
     batch_names = unique_elements(batch_names)
     # maps batch_name to the indices of the mixes associated with the batch
     batch_name_to_indices = {
-        batch_name: [i for i, name in enumerate(mix_names) if name[:len(batch_name)] == batch_name]
+        batch_name: [
+            i
+            for i, name in enumerate(mix_names)
+            if name[: len(batch_name)] == batch_name
+        ]
         for batch_name in batch_names
     }
     if verbose:
@@ -275,17 +290,23 @@ def load_concrete_strength(
     n_measurements = torch.tensor(df["# of measurements"].to_numpy(), **tkwargs)
     Ystd[:, 1] /= n_measurements.sqrt()
     return SustainableConcreteDataset(
-        X=X, Y=Y, Ystd=Ystd, X_columns=X_columns, Y_columns=Y_columns, Ystd_columns=Ystd_columns, batch_name_to_indices=batch_name_to_indices,
+        X=X,
+        Y=Y,
+        Ystd=Ystd,
+        X_columns=X_columns,
+        Y_columns=Y_columns,
+        Ystd_columns=Ystd_columns,
+        batch_name_to_indices=batch_name_to_indices,
     )
 
 
 def get_mortar_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
     """Returns bounds of columns in X for mortart mixes."""
     bounds_dict = {
-        "Cement": (0, 950), # in grams, as opposed to the original concrete bounds
+        "Cement": (0, 950),  # in grams, as opposed to the original concrete bounds
         "Fly Ash": (0, 950),
         "Slag": (0, 950),
-        "Fine Aggregate": (925, 1775), # fixed based on binder + aggregate constraint
+        "Fine Aggregate": (925, 1775),  # fixed based on binder + aggregate constraint
         "Time": (0, 28),  # up to 28 days
     }
 
@@ -294,7 +315,10 @@ def get_mortar_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
     bounds_dict.update(
         {
             "Water": (0.35 * min_binder, 0.5 * max_binder),
-            "HRWR": (0, 0.1 * max_binder),  # we are not optimizing this, but need this to fit the model
+            "HRWR": (
+                0,
+                0.1 * max_binder,
+            ),  # we are not optimizing this, but need this to fit the model
         }
     )
     bounds = torch.tensor([bounds_dict[col] for col in X_columns]).T
@@ -306,7 +330,19 @@ def get_mortar_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
     return bounds
 
 
-def get_mortar_constraints(X_columns, verbose: bool = _VERBOSE) -> Tuple[List, List]:
+def get_mortar_constraints(
+    X_columns, min_wb: float = 0.35, verbose: bool = _VERBOSE
+) -> Tuple[List, List]:
+    """Returns the linear equality and inequality constraints for mortar mixes.
+
+    Args:
+        X_columns (_type_): Names of columns in the input dataset.
+        min_wb (float, optional): Minimum water-binder ratio. Defaults to 0.35.
+        verbose (bool, optional): Whether to print actions. Defaults to _VERBOSE.
+
+    Returns:
+        Tuple[List, List]: A tuple of equality and inequality constraints.
+    """
     # inequality constraints
     equality_dict = {
         # "Total Binder": 500.0,
@@ -315,7 +351,7 @@ def get_mortar_constraints(X_columns, verbose: bool = _VERBOSE) -> Tuple[List, L
     }
     inequality_dict = {
         "Total Binder": (100.0, 950.0),
-        "Water": (0.35, 0.5),  # NOTE: as a proportion of total binder
+        "Water": (min_wb, 0.5),  # NOTE: as a proportion of total binder
     }
     if verbose:
         print("Adding linear equality constraints:")
@@ -484,7 +520,8 @@ def get_proportional_sum_constraints(
     lower: float,
     upper: float,
 ):
-    """Converts a constraint on a fraction of two subset sums into a linear form, i.e. if the constraint is of the form
+    """Converts a constraint on a fraction of two subset sums into a linear form,
+    i.e. if the constraint is of the form
 
         lower < (sum of numerator_names) / (sum of denominator_names) < upper,
 
@@ -493,8 +530,12 @@ def get_proportional_sum_constraints(
         upper * (denominator) - (numerator) > 0, and
         (numerator) - lower * (denominator) > 0.
     """
-    _, num_coeffs = get_subset_sum_tensors(X_columns=X_columns, subset_names=numerator_names)
-    _, den_coeffs = get_subset_sum_tensors(X_columns=X_columns, subset_names=denominator_names)
+    _, num_coeffs = get_subset_sum_tensors(
+        X_columns=X_columns, subset_names=numerator_names
+    )
+    _, den_coeffs = get_subset_sum_tensors(
+        X_columns=X_columns, subset_names=denominator_names
+    )
 
     # upper constraint
     upper_coeffs = upper * den_coeffs - num_coeffs
@@ -511,7 +552,9 @@ def get_proportional_sum_constraints(
     return [(upper_ind, upper_coeffs, 0.0), (lower_ind, lower_coeffs, 0.0)]
 
 
-def get_subset_sum_tensors(X_columns: List[str], subset_names: List[str]) -> Tuple[Tensor, Tensor]:
+def get_subset_sum_tensors(
+    X_columns: List[str], subset_names: List[str]
+) -> Tuple[Tensor, Tensor]:
     """Returns indices and coefficients such that `X[indices].dot(coeffs) == X[indices].sum()`,
     where indices are the indices of subset_names in X_columns.
 
@@ -529,7 +572,8 @@ def get_subset_sum_tensors(X_columns: List[str], subset_names: List[str]) -> Tup
 
 
 def get_reference_point():
-    gwp = -430.0  # based on existing minimum in the data (pure cement)
+    # gwp = -430.0  # based on existing minimum in the data (pure cement)
+    gwp = -150.0  # chosen to hone in on the greener and strong region
     strength_day_1 = 1000
     # strength_day_7 = 3000
     strength_day_28 = 5000
@@ -609,3 +653,47 @@ def unique_elements(x: List) -> List:
     occurrance in the input list.
     """
     return list(dict.fromkeys(x))
+
+
+def predict_pareto(
+    model_list: ModelListGP,
+    pareto_dims: List[int],
+    ref_point: Tensor,
+    bounds: Tensor,
+    equality_constraints,
+    inequality_constraints,
+    num_candidates: int = 1024,
+):
+    X = sample_q_batches_from_polytope(
+        n=num_candidates,
+        q=1,
+        bounds=bounds,
+        n_burnin=10000,
+        thinning=2,  # don't actually need to thin for this problem
+        seed=1234,
+        equality_constraints=equality_constraints,
+        inequality_constraints=inequality_constraints,
+    )
+    post = model_list.posterior(X)
+    Y = post.mean
+    Ystd = post.variance.sqrt()
+    X = X.squeeze(-2)  # squeezing q
+    Y = Y.squeeze(-2)  # squeezing q
+    Ystd = Ystd.squeeze(-2)  # squeezing q
+
+    # subselect dimensions with which to compute Pareto frontier
+    Y = Y[..., pareto_dims]
+    Ystd = Ystd[..., pareto_dims]
+    ref_point = ref_point[pareto_dims]
+
+    # compute pareto optimal points
+    is_pareto = is_non_dominated(Y)
+    X, Y, Ystd = X[is_pareto], Y[is_pareto], Ystd[is_pareto]
+
+    # remove any points that do not satisfy the reference point
+    better_than_ref = (Y > ref_point).all(dim=-1)
+    X, Y, Ystd = X[better_than_ref], Y[better_than_ref], Ystd[better_than_ref]
+    # sort by firt dimension to enable easier plotting
+    indices = Y[..., 0].argsort()
+    X, Y, Ystd = X[indices], Y[indices], Ystd[indices]
+    return Y, Ystd
