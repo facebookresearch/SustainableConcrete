@@ -164,7 +164,7 @@ def load_concrete_strength(
         "Water",
         "HRWR",
         "Fine Aggregate",
-        # "Curing Temp (°C)",  # adding this here because last dimension is assumed to be time
+        "Curing Temp (°C)",  # adding this here because last dimension is assumed to be time
         "Time",
         "GWP",  # the last four are output dimensions
         "Strength (Mean)",
@@ -208,7 +208,7 @@ def load_concrete_strength(
         if verbose:
             print(
                 "\t-Number of missing values after deletion (Should be zero): "
-                f"{torch.tensor(df[data_columns].to_numpy()).isnan().sum() = }"
+                f"{torch.tensor(df[data_columns].to_numpy()).isnan().sum()}"
             )
             print("")
 
@@ -307,6 +307,7 @@ def get_mortar_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
         "Fly Ash": (0, 950),
         "Slag": (0, 950),
         "Fine Aggregate": (925, 1775),  # fixed based on binder + aggregate constraint
+        "Curing Temp (°C)": (0, 40),
         "Time": (0, 28),  # up to 28 days
     }
 
