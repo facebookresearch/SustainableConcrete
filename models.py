@@ -194,6 +194,14 @@ def fit_strength_gp(
     X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor, use_fixed_noise: bool = False
 ) -> ExactGP:
     """
+    IDEAS:
+        - Features:
+            - w / b ratio
+            - maturity i.e. sum_i(max(0, temperature_i) * delta_time_i)
+        - Kernels:
+            - Try orthogonal additive kernel again
+            - temperature modeling via additive kernel?
+
     Input:
         X: Tensor of composition inputs including time (n x d).
         Y: Tensor of strength values (n x 1).

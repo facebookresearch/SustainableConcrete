@@ -174,7 +174,7 @@ def load_concrete_strength(
     df = df[used_columns]
 
     # dropping any mix id that is not in batch names
-    if batch_names is not None:
+    if batch_names is not None:  # TODO: make this safe! "contains" only works if the batch names are unique strings, not numbers
         not_in_names = df["Mix ID"].astype(bool)  # creating True series
         for batch_name in batch_names:
             not_in_names = not_in_names & (~df["Mix ID"].str.contains(batch_name))
