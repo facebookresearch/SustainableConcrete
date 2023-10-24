@@ -19,6 +19,7 @@ from gpytorch.likelihoods import GaussianLikelihood
 from gpytorch.models import ExactGP
 from torch import Tensor
 from utils import get_day_zero_data, LogTransformedInterval, SustainableConcreteDataset
+from botoch.posteriors import Posterior
 
 
 class SustainableConcreteModel(object):
@@ -47,21 +48,43 @@ class SustainableConcreteModel(object):
 
     def fit_strength_model(
         self, data: SustainableConcreteDataset, use_fixed_noise: bool = False
-    ) -> None:
+    ) -> SingleTaskGP:
+        """Fits the strength model to the given `data`. Upon completion, the model
+        can be accessed with the `strength_model` attribute.
+
+        Args:
+            data: A SustainableConcreteDataset containing the strength data.
+            use_fixed_noise: Toggles the use of known observation variances.
+
+        Returns:
+            The fitted strength model.
+        """
         X, Y, Yvar, X_bounds = data.strength_data
         self._set_d(X.shape[-1])
         self.strength_model = fit_strength_gp(
             X=X, Y=Y, Yvar=Yvar, X_bounds=X_bounds, use_fixed_noise=use_fixed_noise
         )
+        return self.strength_model
 
     def fit_gwp_model(
         self, data: SustainableConcreteDataset, use_fixed_noise: bool = False
-    ) -> None:
+    ) -> SingleTaskGP:
+        """Fits the global warming potential (GWP) model to the given `data`.
+        Upon completion, the model can be accessed with the `gwp_model` attribute.
+
+        Args:
+            data: A SustainableConcreteDataset containing the GWP data.
+            use_fixed_noise: Toggles the use of known observation variances.
+
+        Returns:
+            The fitted GWP model.
+        """
         X, Y, Yvar, X_bounds = data.gwp_data
         self._set_d(X.shape[-1] + 1)
         self.gwp_model = fit_gwp_gp(
             X=X, Y=Y, Yvar=Yvar, X_bounds=X_bounds, use_fixed_noise=use_fixed_noise
         )
+        return self.gwp_model
 
     def _set_d(self, d: int) -> None:
         if self.d is None:
@@ -106,6 +129,18 @@ class FixedFeatureModel(Model):
         indices: Union[List[int], Tensor],
         values: Union[List[float], Tensor],
     ):
+        """A wrapper around a GP model that fixes some inputs to specific values.
+
+        Args:
+            base_model: The base model to wrap.
+            dim: The input dimensionality of the FixedFeatureModel. This is usually the
+                input dimensionality of base_model minus the number of fixed features.
+            indices: The indices of the inputs to fix.
+            values: The values to fix the inputs to.
+
+        Raises:
+            ValueError: If indices and values do not have the same length.
+        """
         super().__init__()
         self.base_model = base_model
         if len(indices) != len(values):
@@ -119,13 +154,13 @@ class FixedFeatureModel(Model):
         )
         self._values = values
 
-    def _add_fixed_features(self, X: Tensor):
+    def _add_fixed_features(self, X: Tensor) -> Tensor:
         """
-        Input:
-            - X: A (n x d)-dim Tensor.
+        Args:
+            X: A `n x d`-dim Tensor.
 
-        Output:
-            A (n x (d + len(self._indices)))-dim Tensor.
+        Returns:
+            A `n x (d + len(self._indices))`-dim Tensor.
         """
         tkwargs = {"dtype": X.dtype, "device": X.device}
         Z = torch.zeros(*X.shape[:-1], X.shape[-1] + len(self._indices), **tkwargs)
@@ -133,10 +168,28 @@ class FixedFeatureModel(Model):
         Z[..., ~self._fixed] = X
         return Z
 
-    def forward(self, X: Tensor, *args, **kwargs):
+    def forward(self, X: Tensor, *args, **kwargs) -> Tensor:
+        """The forward method of the FixedFeatureModel, based on the forward method of
+        the base model with the fixed features added.
+
+        Args:
+            X: The `batch_shape x d`-dim input Tensor.
+
+        Returns:
+            The `batch_shape x m`-dim output Tensor.
+        """
         return self.base_model.forward(self._add_fixed_features(X), *args, **kwargs)
 
-    def posterior(self, X: Tensor, *args, **kwargs):
+    def posterior(self, X: Tensor, *args, **kwargs) -> Posterior:
+        """Computes the posterior of the FixedFeatureModel, based on the posterior of
+        the base model with the fixed features added.
+
+        Args:
+            X: The `batch_shape x d`-dim input Tensor.
+
+        Returns:
+            The posterior of the FixedFeatureModel evaluated at `X`.
+        """
         return self.base_model.posterior(self._add_fixed_features(X), *args, **kwargs)
 
     @property
@@ -154,15 +207,16 @@ class FixedFeatureModel(Model):
 
 def fit_gwp_gp(
     X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor, use_fixed_noise: bool = False
-):
-    """
-    Input:
-        X: Tensor of composition inputs without time (n x d).
-        Y: Tensor of GWP values (n x 1).
-        Yvar: Tensor of GWP variances (n x 1).
+) -> SingleTaskGP:
+    """Fits a Gaussian process model to the given global warming potential (GWP) data.
 
-    Output:
-        A FixedNoiseGP model fit to the data.
+    Args:
+        X: `n x d`-dim Tensor of composition inputs without time.
+        Y: `n x 1`-dim Tensor of GWP values.
+        Yvar: `n x 1`-dim Tensor of GWP variances.
+
+    Returns:
+        A SingleTaskGP model fit to the data.
     """
     d_in = X.shape[-1]
     d_out = Y.shape[-1]
@@ -193,7 +247,8 @@ def fit_gwp_gp(
 def fit_strength_gp(
     X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor, use_fixed_noise: bool = False
 ) -> ExactGP:
-    """
+    """Fits a Gaussian process model to the given strength data.
+
     IDEAS:
         - Features:
             - w / b ratio
@@ -202,13 +257,13 @@ def fit_strength_gp(
             - Try orthogonal additive kernel again
             - temperature modeling via additive kernel?
 
-    Input:
+    Args:
         X: Tensor of composition inputs including time (n x d).
         Y: Tensor of strength values (n x 1).
         Yvar: Tensor of strength variances (n x 1).
 
-    Output:
-        A FixedNoiseGP model fit to the data.
+    Returns:
+        A SingleTaskGP model fit to the strength data.
     """
     d_in = X.shape[-1]
     d_out = Y.shape[-1]
@@ -271,9 +326,16 @@ def fit_strength_gp(
     return model
 
 
-def get_strength_gp_input_transform(bounds: Tensor):
+def get_strength_gp_input_transform(bounds: Tensor) -> ChainedInputTransform:
     """Chains a log(time + 1) and Normalize transform on d dimensional input data,
     with the provided bounds.
+
+    Args:
+        bounds: `2 x d` tensor of lower and upper bounds for each dimension.
+
+    Returns:
+        A ChainedInputTransform that log-transforms the time dimension and subsequently
+        normalizes all dimensions to the unit hyper-cube.
     """
     d = bounds.shape[-1]
     time_index = [d - 1]
