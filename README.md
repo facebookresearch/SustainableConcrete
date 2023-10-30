@@ -4,6 +4,8 @@ Concrete is responsbile for up to **8% of anthropogenic carbon dioxide emissions
 We invite researchers and practitioners of both machine learning and civil engineering
 to collaborate on discovering more sustainable concrete formulations that are applicable
 to a wide array of construction projects, at scale.
+For more information,
+please see ["Sustainable Concrete via Bayesian Optimization"](https://arxiv.org/abs/2310.18288).
 
 This repository contains probabilistic models and data for the
 1) compressive strength of concrete / mortar and
@@ -100,6 +102,21 @@ is more signficiant than the exlusion of fly ash - a by-product of coal power pl
 can inform site selection
 for large construction projects that seek to minimize carbon impact.
 
+
+# Citing
+
+If you use the data or models contained in this repository, please cite
+["Sustainable Concrete via Bayesian Optimization"](https://arxiv.org/abs/2310.18288):
+```
+@misc{ament2023sustainable,
+      title={Sustainable Concrete via Bayesian Optimization},
+      author={Sebastian Ament and Andrew Witte and Nishant Garg and Julius Kusuma},
+      year={2023},
+      eprint={2310.18288},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
+}
+```
 
 ## License
 `SustainableConcrete` is MIT licensed, as found in the LICENSE file.

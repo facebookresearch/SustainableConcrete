@@ -1,0 +1,8 @@
+@misc{ament2023sustainable,
+      title={Sustainable Concrete via Bayesian Optimization},
+      author={Sebastian Ament and Andrew Witte and Nishant Garg and Julius Kusuma},
+      year={2023},
+      eprint={2310.18288},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
+}
