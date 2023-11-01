@@ -24,7 +24,7 @@ The models can be used for a variety of tasks, including but not limited to
 
 ## Compressive Strength Model
 
-The `SustainableConcreteModel` in `models.py` contains a `strength_model`, which can be used to predict the evolution of concrete's compressive strength as a function of its composition, i.e. its ingredients.
+The `SustainableConcreteModel` in `models.py` contains a `strength_model`, which can be used to predict the evolution of concrete's compressive strength as a function of its composition, i.e. its ingredients, see also the `strength_model_tutorial.ipynb` in the `notebooks` folder.
 The model is a Gaussian process (GP) and includes several custom modeling steps that make it fit and extropolate concrete strength values well.
 The following figure shows the strength curve predictions of the proposed model (left),
 and for a naive application of a GP (right)
