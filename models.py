@@ -29,7 +29,7 @@ from gpytorch.likelihoods import GaussianLikelihood
 from gpytorch.models import ExactGP
 from torch import Tensor
 from utils import get_day_zero_data, LogTransformedInterval, SustainableConcreteDataset
-from botoch.posteriors import Posterior
+from botorch.posteriors import Posterior
 
 
 class SustainableConcreteModel(object):
