@@ -9,7 +9,7 @@ please see ["Sustainable Concrete via Bayesian Optimization"](https://arxiv.org/
 
 This repository contains probabilistic models and data for the
 1) compressive strength of concrete / mortar and
-2) the associated global warming potential (GWP),
+2) the associated global warming potential (GWP) of the paste,
 
 as a function of their composition, consisting of
 cement, slag, water, to name a few basic ingredients.
