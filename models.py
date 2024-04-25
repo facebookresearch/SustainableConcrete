@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import List, Optional, Union
 
 import torch
-from botorch import fit_gpytorch_model
+from botorch import fit_gpytorch_mll
 from botorch.models import FixedNoiseGP, ModelList, ModelListGP, SingleTaskGP
 from botorch.models.model import Model
 from botorch.models.transforms.input import (
@@ -250,7 +250,7 @@ def fit_gwp_gp(
         )
     model = model_class(**model_kwargs)
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
-    fit_gpytorch_model(mll)
+    fit_gpytorch_mll(mll)
     return model
 
 
@@ -332,7 +332,7 @@ def fit_strength_gp(
         )
     model = model_class(**model_kwargs)
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
-    fit_gpytorch_model(mll)
+    fit_gpytorch_mll(mll)
     return model
 
 
