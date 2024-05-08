@@ -216,7 +216,11 @@ class FixedFeatureModel(Model):
 
 
 def fit_gwp_gp(
-    X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor, use_fixed_noise: bool = False
+    X: Tensor,
+    Y: Tensor,
+    Yvar: Tensor,
+    X_bounds: Optional[Tensor] = None,
+    use_fixed_noise: bool = False,
 ) -> SingleTaskGP:
     """Fits a Gaussian process model to the given global warming potential (GWP) data.
 
@@ -255,7 +259,11 @@ def fit_gwp_gp(
 
 
 def fit_strength_gp(
-    X: Tensor, Y: Tensor, Yvar: Tensor, X_bounds: Tensor, use_fixed_noise: bool = False
+    X: Tensor,
+    Y: Tensor,
+    Yvar: Tensor,
+    X_bounds: Optional[Tensor] = None,
+    use_fixed_noise: bool = False,
 ) -> ExactGP:
     """Fits a Gaussian process model to the given strength data.
 
@@ -281,7 +289,7 @@ def fit_strength_gp(
         raise ValueError("Output dimensions is not one in strength curve fitting.")
 
     # add data to condition GP to be zero at day zero
-    X_0, Y_0, Yvar_0 = get_day_zero_data(bounds=X_bounds, n=128)
+    X_0, Y_0, Yvar_0 = get_day_zero_data(X=X, bounds=X_bounds, n=128)
     X = torch.cat((X, X_0), dim=0)
     Y = torch.cat((Y, Y_0), dim=0)
     Yvar = torch.cat((Yvar, Yvar_0), dim=0)
@@ -321,7 +329,7 @@ def fit_strength_gp(
         "train_X": X,
         "train_Y": Y,
         "covar_module": kernel,
-        "input_transform": get_strength_gp_input_transform(X_bounds),
+        "input_transform": get_strength_gp_input_transform(d=d_in, bounds=X_bounds),
         "outcome_transform": Standardize(d_out),
     }
     if use_fixed_noise:
@@ -336,7 +344,9 @@ def fit_strength_gp(
     return model
 
 
-def get_strength_gp_input_transform(bounds: Tensor) -> ChainedInputTransform:
+def get_strength_gp_input_transform(
+    d: int, bounds: Optional[Tensor]
+) -> ChainedInputTransform:
     """Chains a log(time + 1) and Normalize transform on d dimensional input data,
     with the provided bounds.
 
@@ -347,7 +357,6 @@ def get_strength_gp_input_transform(bounds: Tensor) -> ChainedInputTransform:
         A ChainedInputTransform that log-transforms the time dimension and subsequently
         normalizes all dimensions to the unit hyper-cube.
     """
-    d = bounds.shape[-1]
     time_index = [d - 1]
     tf1 = AffineInputTransform(  # adds one to time dimension before taking log
         d,
@@ -359,8 +368,11 @@ def get_strength_gp_input_transform(bounds: Tensor) -> ChainedInputTransform:
     tf2 = Log10(
         indices=time_index
     )  # taking log of time dimension for better extrapolation
-    transformed_bounds = tf2(tf1(bounds))
-    tf3 = Normalize(
-        d, bounds=transformed_bounds
-    )  # normalizing after log(t + 1) transform
+    if bounds is not None:
+        transformed_bounds = tf2(tf1(bounds))
+        tf3 = Normalize(
+            d, bounds=transformed_bounds
+        )  # normalizing after log(t + 1) transform
+    else:
+        tf3 = Normalize(d)  # normalizing after log(t + 1) transform
     return ChainedInputTransform(tf1=tf1, tf2=tf2, tf3=tf3)

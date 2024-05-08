@@ -34,6 +34,23 @@ _TOTAL_MASS_NAMES = _PASTE_CONTENT_NAMES + [
     "Coarse Aggregate",
     "Fine Aggregate",
 ]
+DEFAULT_USED_COLUMNS = [
+    "Mix ID",
+    "Name",
+    "Description",
+    "Cement",
+    "Fly Ash",
+    "Slag",
+    "Water",
+    "HRWR",
+    "Fine Aggregate",
+    "Curing Temp (°C)",  # adding this here because last dimension is assumed to be time
+    "Time",
+    "GWP",  # the last four are output dimensions
+    "Strength (Mean)",
+    "Strength (Std)",
+    "# of measurements",
+]
 _VERBOSE = False
 
 
@@ -46,6 +63,7 @@ class SustainableConcreteDataset(object):
         X_columns: List[str],
         Y_columns: List[str],
         Ystd_columns: List[str],
+        bounds: Optional[Tensor] = None,
         batch_name_to_indices: Optional[Dict[str, List[int]]] = None,
     ):
         """An object to store, process, and access a concrete strength dataset.
@@ -60,6 +78,7 @@ class SustainableConcreteDataset(object):
             X_columns: A list of column names of `X`.
             Y_columns: A list of column names of `Y`.
             Ystd_columns: A list of column names of `Ystd`.
+            bounds: A `2 x d`-dim Tensor of lower and upper bounds on the inputs `X`.
             batch_name_to_indices: A dictionary mapping experiment batch names to the
                 indices of the corresponding samples in `X` and `Y`.
 
@@ -78,21 +97,22 @@ class SustainableConcreteDataset(object):
         self._X = X
         self._Y = Y
         self._Ystd = Ystd
+        self.bounds = bounds
         self._batch_name_to_indices = batch_name_to_indices
 
     @property
     def X(self) -> Tensor:
         """The `n x d`-dim input data `X`, where
-            1) `X[i, :-1]` are the composition values of the ith sample.
-            2) `X[i, -1]` is the time value of the ith sample.
+        1) `X[i, :-1]` are the composition values of the ith sample.
+        2) `X[i, -1]` is the time value of the ith sample.
         """
         return self._X
 
     @property
     def Y(self) -> Tensor:
         """The `n x 2`-dim output data `Y`, where
-            1) `X[i, 0]` is the measured strength value for the ith sample.
-            2) `X[i, 1]` is the GWP value of the ith sample.
+        1) `X[i, 0]` is the measured strength value for the ith sample.
+        2) `X[i, 1]` is the GWP value of the ith sample.
         """
         return self._Y
 
@@ -114,7 +134,7 @@ class SustainableConcreteDataset(object):
         return self.Ystd.square()
 
     @property
-    def strength_data(self) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    def strength_data(self) -> Tuple[Tensor, Tensor, Tensor, Optional[Tensor]]:
         """Returns the data with which to fit a strength model.
 
         Returns:
@@ -122,8 +142,7 @@ class SustainableConcreteDataset(object):
             2) observed strengths `Y`, 3) empirical strength variances `Yvar`, and
             4) the `2 x d`-dim bounds on the inputs `X`.
         """
-        X_bounds = get_mortar_bounds(self.X_columns)
-        return self.X, self.Y[:, [1]], self.Yvar[:, [1]], X_bounds
+        return self.X, self.Y[:, [1]], self.Yvar[:, [1]], self.bounds
 
     def strength_data_by_time(self, time: float) -> Tuple[Tensor, Tensor, Tensor]:
         """Returns the strength data for a specific time.
@@ -138,7 +157,7 @@ class SustainableConcreteDataset(object):
         return X[row_ind], Y[row_ind], Yvar[row_ind]
 
     @property
-    def gwp_data(self) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    def gwp_data(self) -> Tuple[Tensor, Tensor, Tensor, Optional[Tensor]]:
         """Returns the data with which to fit a strength model.
 
         Returns:
@@ -152,16 +171,18 @@ class SustainableConcreteDataset(object):
         X = self.X[unique_indices, :-1]
         Y = self.Y[unique_indices, 0].unsqueeze(-1)
         Yvar = self.Yvar[unique_indices, 0].unsqueeze(-1)
-        X_bounds = get_mortar_bounds(self.X_columns[:-1])  # without time dimension
-        if (X.min(dim=0).values < X_bounds[0, :]).any() or (
-            X.max(dim=0).values > X_bounds[1, :]
-        ).any():
-            # raise Exception(
-            print(
-                "Bounds do not hold in training data: "
-                f"{X_bounds[0, :], X.amin(dim=0) = }"
-                f"{X_bounds[1, :], X.amax(dim=0) = }"
-            )
+        X_bounds = None
+        if self.bounds is not None:
+            X_bounds = self.bounds[:, :-1]  # without time dimension
+            if (X.amin(dim=0) < X_bounds[0, :]).any() or (
+                X.amax(dim=0) > X_bounds[1, :]
+            ).any():
+                # raise Exception(
+                print(
+                    "Bounds do not hold in training data: "
+                    f"{X_bounds[0, :], X.amin(dim=0) = }"
+                    f"{X_bounds[1, :], X.amax(dim=0) = }"
+                )
         return X, Y, Yvar, X_bounds
 
     @property
@@ -244,8 +265,25 @@ def load_concrete_strength(
     batch_names: Optional[List[str]] = None,
     dtype: Optional[torch.dtype] = None,
     device: Optional[torch.device] = None,
+    used_columns: Optional[List[str]] = None,
 ) -> SustainableConcreteDataset:
     """A function to load concrete strength data from a CSV file.
+
+    The assumptions of this function are as follows:
+        - The first three columns are reserved for identifiers (e.g. Mix ID, Name, Description).
+        - The fourth column to the last five columns are assumed to be composition data.
+        - Immediately following the composition data is the time column, i.e. 5th to last.
+        - Following the time column are four columns characterizing the output, i.e.:
+            - "GWP"
+            - "Strength (Mean)"
+            - "Strength (Std)"
+            - "# of measurements"
+
+    To summarize, the columns format should be:
+        ["Mix ID", "Name", "Description"]
+        + ["Composition 1", ..., "Composition n"]  (names can be arbitrary.)
+        + ["Time"]
+        + ["GWP", "Strength (Mean)", "Strength (Std)", "# of measurements"]
 
     Args:
         data_path: The path to the data to be loaded. Defaults to "data/concrete_strength.csv".
@@ -254,6 +292,8 @@ def load_concrete_strength(
             that are to be loaded. If None, then all available batches will be loaded.
         dtype: A torch.dtype object specifying the desired datatype of the Tensors.
         device: A torch.device object specifying the desired device of the Tensors.
+        used_columns: A list of strings specifying the names of the columns to be used.
+            This can be used to bring the data into the desired format, outlined above.
 
     Returns:
         A SustainableConcreteDataset containing the strength and GWP data.
@@ -261,27 +301,13 @@ def load_concrete_strength(
     # loading csv into dataframe
     df = pd.read_csv(data_path, delimiter=",")
 
-    used_columns = [
-        "Mix ID",
-        "Name",
-        "Description",
-        "Cement",
-        "Fly Ash",
-        "Slag",
-        "Water",
-        "HRWR",
-        "Fine Aggregate",
-        "Curing Temp (°C)",  # adding this here because last dimension is assumed to be time
-        "Time",
-        "GWP",  # the last four are output dimensions
-        "Strength (Mean)",
-        "Strength (Std)",
-        "# of measurements",
-    ]
-    df = df[used_columns]
+    if used_columns is not None:
+        df = df[used_columns]
 
     # dropping any mix id that is not in batch names
-    if batch_names is not None:  # TODO: make this safe! "contains" only works if the batch names are unique strings, not numbers
+    if (
+        batch_names is not None
+    ):  # TODO: make this safe! "contains" only works if the batch names are unique strings, not numbers
         not_in_names = df["Mix ID"].astype(bool)  # creating True series
         for batch_name in batch_names:
             not_in_names = not_in_names & (~df["Mix ID"].str.contains(batch_name))
@@ -387,15 +413,16 @@ def load_concrete_strength(
         Ystd[:, 0] = 1e-3  # allowing us to use the same model type (FixedNoiseGP)
 
     # dividing empirical standard deviations of strength by the number of measurements.
-    if verbose:
-        print(
-            "Computing strength standard error of by "
-            "dividing standard deviation by sqrt(# of measurements)."
-        )
-        print()
+    if "# of measurements" in df.columns:
+        if verbose:
+            print(
+                "Computing strength standard error of by "
+                "dividing standard deviation by sqrt(# of measurements)."
+            )
+            print()
+        n_measurements = torch.tensor(df["# of measurements"].to_numpy(), **tkwargs)
+        Ystd[:, 1] /= n_measurements.sqrt()
 
-    n_measurements = torch.tensor(df["# of measurements"].to_numpy(), **tkwargs)
-    Ystd[:, 1] /= n_measurements.sqrt()
     return SustainableConcreteDataset(
         X=X,
         Y=Y,
@@ -560,19 +587,25 @@ def get_concrete_constraints(X_columns, verbose: bool = _VERBOSE) -> List[T_CONS
     return constraints
 
 
-def get_mass_constraints(X_columns: List[str], lower: float, upper: float) -> List[T_CONSTRAINT]:
+def get_mass_constraints(
+    X_columns: List[str], lower: float, upper: float
+) -> List[T_CONSTRAINT]:
     return get_sum_constraints(
         X_columns=X_columns, subset_names=_TOTAL_MASS_NAMES, lower=lower, upper=upper
     )
 
 
-def get_binder_constraints(X_columns: List[str], lower: float, upper: float) -> List[T_CONSTRAINT]:
+def get_binder_constraints(
+    X_columns: List[str], lower: float, upper: float
+) -> List[T_CONSTRAINT]:
     return get_sum_constraints(
         X_columns=X_columns, subset_names=_TOTAL_BINDER_NAMES, lower=lower, upper=upper
     )
 
 
-def get_paste_constraints(X_columns: List[str], lower: float, upper: float) -> List[T_CONSTRAINT]:
+def get_paste_constraints(
+    X_columns: List[str], lower: float, upper: float
+) -> List[T_CONSTRAINT]:
     # Paste content = (Cement + Slag + Fly Ash + Water)
     # Constraint: lower < (Paste content) / (Total Mass) < upper
     # i.e. a proportional sum constraint
@@ -585,7 +618,9 @@ def get_paste_constraints(X_columns: List[str], lower: float, upper: float) -> L
     )
 
 
-def get_water_constraints(X_columns: List[str], lower: float, upper: float) -> List[T_CONSTRAINT]:
+def get_water_constraints(
+    X_columns: List[str], lower: float, upper: float
+) -> List[T_CONSTRAINT]:
     # Constraint: lower < (Water) / (Total Binder) < upper
     # i.e. a proportional sum constraint
     return get_proportional_sum_constraints(
@@ -597,7 +632,9 @@ def get_water_constraints(X_columns: List[str], lower: float, upper: float) -> L
     )
 
 
-def get_hrwr_constraints(X_columns: List[str], lower: float, upper: float) -> List[T_CONSTRAINT]:
+def get_hrwr_constraints(
+    X_columns: List[str], lower: float, upper: float
+) -> List[T_CONSTRAINT]:
     # Constraint: lower < (HRWR) / (Total Binder) < upper
     # i.e. a proportional sum constraint
     return get_proportional_sum_constraints(
@@ -706,10 +743,21 @@ def get_reference_point() -> Tensor:
     return torch.tensor([gwp, strength_day_1, strength_day_28], dtype=torch.double)
 
 
-def get_day_zero_data(bounds: Tensor, n: int = 128):
+def get_day_zero_data(X: Tensor, bounds: Optional[Tensor], n: int = 128):
     """Computes a tensor of n sobol points that satisfy the bounds, appended with a
     zeros tensor. Useful to condition the strength GP to be zero at day zero.
+
+    Args:
+        X: The input tensor.
+        bounds: The bounds of the input tensor. If None, will be inferred from X.
+
+    Returns:
+        A tensor of n sobol points that satisfy the bounds, appended with a zeros
+        tensor, corresponding to the strength at day zero.
     """
+    if bounds is None:
+        bounds = torch.stack((X.amin(dim=0), X.amax(dim=0)))
+
     d = bounds.shape[-1]
     sobol_engine = torch.quasirandom.SobolEngine(dimension=(d - 1))  # excluding time
     X_0 = sobol_engine.draw(n)
@@ -724,7 +772,12 @@ def get_day_zero_data(bounds: Tensor, n: int = 128):
 # NOTE: moved over from saas implementation.
 # TODO: move this to GPyTorch.
 class LogTransformedInterval(Interval):
-    def __init__(self, lower_bound: Tensor, upper_bound: Tensor, initial_value: Optional[Tensor]=None):
+    def __init__(
+        self,
+        lower_bound: Tensor,
+        upper_bound: Tensor,
+        initial_value: Optional[Tensor] = None,
+    ):
         """Modification of the GPyTorch interval class.
 
         The Interval class in GPyTorch will map the parameter to the range [0, 1] before
