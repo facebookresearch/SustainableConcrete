@@ -871,7 +871,7 @@ def predict_pareto(
         q=1,
         bounds=bounds,
         n_burnin=10000,
-        thinning=2,  # don't actually need to thin for this problem
+        n_thinning=2,  # don't actually need to thin for this problem
         seed=1234,
         equality_constraints=equality_constraints,
         inequality_constraints=inequality_constraints,

@@ -14,7 +14,7 @@ from typing import List, Optional, Union
 
 import torch
 from botorch import fit_gpytorch_mll
-from botorch.models import FixedNoiseGP, ModelList, ModelListGP, SingleTaskGP
+from botorch.models import ModelList, ModelListGP, SingleTaskGP
 from botorch.models.model import Model
 from botorch.models.transforms.input import (
     AffineInputTransform,
@@ -238,7 +238,6 @@ def fit_gwp_gp(
         raise ValueError("Output dimensions is not one in gwp fitting.")
     # GWP is a linear function of the inputs
     covar_module = LinearKernel()
-    model_class = FixedNoiseGP if use_fixed_noise else SingleTaskGP
     model_kwargs = {
         "train_X": X,
         "train_Y": Y,
@@ -252,7 +251,7 @@ def fit_gwp_gp(
         model_kwargs["likelihood"] = GaussianLikelihood(
             noise_constraint=LogTransformedInterval(1e-4, 1.0, initial_value=1e-2)
         )
-    model = model_class(**model_kwargs)
+    model = SingleTaskGP(**model_kwargs)
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
     fit_gpytorch_mll(mll)
     return model
@@ -324,7 +323,6 @@ def fit_strength_gp(
 
     # IDEA: + scaled_water_kernel and other additive components
     kernel = scaled_base_kernel + scaled_time_kernel
-    model_class = FixedNoiseGP if use_fixed_noise else SingleTaskGP
     model_kwargs = {
         "train_X": X,
         "train_Y": Y,
@@ -338,7 +336,7 @@ def fit_strength_gp(
         model_kwargs["likelihood"] = GaussianLikelihood(
             noise_constraint=LogTransformedInterval(1e-6, 1.0, initial_value=1e-1)
         )
-    model = model_class(**model_kwargs)
+    model = SingleTaskGP(**model_kwargs)
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
     fit_gpytorch_mll(mll)
     return model
