@@ -23,22 +23,24 @@ from botorch.models.transforms.input import (
     Normalize,
 )
 from botorch.models.transforms.outcome import Standardize
+
+from botorch.posteriors import Posterior
+from botorch.utils.constraints import LogTransformedInterval
 from gpytorch import ExactMarginalLogLikelihood
 from gpytorch.kernels import LinearKernel, MaternKernel, RBFKernel, ScaleKernel
 from gpytorch.likelihoods import GaussianLikelihood
 from gpytorch.models import ExactGP
 from torch import Tensor
-from utils import get_day_zero_data, LogTransformedInterval, SustainableConcreteDataset
-from botorch.posteriors import Posterior
+from utils import get_day_zero_data, SustainableConcreteDataset
 
 
 class SustainableConcreteModel(object):
     def __init__(
         self,
         strength_days: List[int],
-        strength_model: Optional[Model] = None,
-        gwp_model: Optional[Model] = None,
-        d: Optional[int] = None,
+        strength_model: Model | None = None,
+        gwp_model: Model | None = None,
+        d: int | None = None,
     ):
         """A multi-output model that jointly predicts GWP and compressive strength at
         pre-defined days `strength_days`.
@@ -106,6 +108,8 @@ class SustainableConcreteModel(object):
         Converts the strength and gwp models into a model list of independent models for gwp,
         and x-day strengths, by fixing the time input of the strength model at 1 and 28 days.
         """
+        if self.d is None:
+            raise ValueError("Model not fit yet.")
         models = [
             self.gwp_model,
             *(
@@ -155,12 +159,11 @@ class FixedFeatureModel(Model):
         self.base_model = base_model
         if len(indices) != len(values):
             raise ValueError("indices and values do not have the same length.")
-        indices = torch.as_tensor(indices)
         values = torch.as_tensor(values)
         self._dim = dim
-        self._indices = indices
+        self._indices: Tensor = torch.as_tensor(indices)
         self._fixed = torch.tensor(
-            [i in indices for i in torch.arange(dim, dtype=indices.dtype)]
+            [i in indices for i in torch.arange(dim, dtype=self._indices.dtype)]
         )
         self._values = values
 
@@ -261,7 +264,7 @@ def fit_strength_gp(
     X: Tensor,
     Y: Tensor,
     Yvar: Tensor,
-    X_bounds: Optional[Tensor] = None,
+    X_bounds: Tensor | None = None,
     use_fixed_noise: bool = False,
 ) -> ExactGP:
     """Fits a Gaussian process model to the given strength data.
