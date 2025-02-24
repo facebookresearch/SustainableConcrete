@@ -264,7 +264,7 @@ class SustainableConcreteDataset(object):
 
 
 def load_concrete_strength(
-    data_path: str = "data/concrete_strength.csv",
+    data_path: str | pd.DatatFrame = "data/concrete_strength.csv",
     verbose: bool = _VERBOSE,
     batch_names: list[str] | None = None,
     dtype: torch.dtype | None = None,
@@ -280,7 +280,7 @@ def load_concrete_strength(
     """A function to load concrete strength data from a CSV file.
 
     Args:
-        data_path: Path to the csv file containing the data.
+        data: Path to the csv file containing the data, or a pandas dataframe.
         verbose: Toggles informative messages about the applied data processing.
         batch_names: Which batch names to include.
         dtype: Which numerical dtype to cast the data to.
@@ -317,7 +317,10 @@ def load_concrete_strength(
         A SustainableConcreteDataset containing the strength and GWP data.
     """
     # loading csv into dataframe
-    df = pd.read_csv(data_path, delimiter=",")
+    if isinstance(data_path, str):
+        df = pd.read_csv(data_path, delimiter=",")
+    else:
+        df = data_path
 
     # dropping any mix id that is not in batch names
     if (
