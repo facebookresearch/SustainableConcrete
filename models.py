@@ -29,6 +29,7 @@ from botorch.utils.constraints import LogTransformedInterval
 from gpytorch import ExactMarginalLogLikelihood
 from gpytorch.kernels import LinearKernel, MaternKernel, RBFKernel, ScaleKernel
 from gpytorch.likelihoods import GaussianLikelihood
+from gpytorch.means import ZeroMean
 from gpytorch.models import ExactGP
 from torch import Tensor
 from utils import get_day_zero_data, SustainableConcreteDataset
@@ -222,7 +223,7 @@ def fit_gwp_gp(
     X: Tensor,
     Y: Tensor,
     Yvar: Tensor,
-    X_bounds: Optional[Tensor] = None,
+    X_bounds: Tensor | None = None,
     use_fixed_noise: bool = False,
 ) -> SingleTaskGP:
     """Fits a Gaussian process model to the given global warming potential (GWP) data.
@@ -235,26 +236,28 @@ def fit_gwp_gp(
     Returns:
         A SingleTaskGP model fit to the data.
     """
-    d_in = X.shape[-1]
     d_out = Y.shape[-1]
     if d_out != 1:
         raise ValueError("Output dimensions is not one in gwp fitting.")
     # GWP is a linear function of the inputs
     covar_module = LinearKernel()
+    # removing any input and outcome transforms, as well as the prior mean from
+    # the model to force it to be homogenuous, i.e. it has no offset.
     model_kwargs = {
         "train_X": X,
         "train_Y": Y,
+        "mean_module": ZeroMean(),
         "covar_module": covar_module,
-        "input_transform": Normalize(d_in, bounds=X_bounds),
-        "outcome_transform": Standardize(d_out),
+        "input_transform": None,
+        "outcome_transform": None,
     }
     if use_fixed_noise:
         model_kwargs["train_Yvar"] = Yvar
     else:
-        model_kwargs["likelihood"] = GaussianLikelihood(
+        model_kwargs["likelihood"] = GaussianLikelihood(  # pyre-ignore
             noise_constraint=LogTransformedInterval(1e-4, 1.0, initial_value=1e-2)
         )
-    model = SingleTaskGP(**model_kwargs)
+    model = SingleTaskGP(**model_kwargs)  # pyre-ignore
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
     fit_gpytorch_mll(mll)
     return model

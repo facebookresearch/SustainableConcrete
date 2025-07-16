@@ -37,7 +37,7 @@ DEFAULT_X_COLUMNS = [
     "Water",
     "HRWR",
     "Fine Aggregate",
-    "Curing Temp (°C)",
+    "Curing Temp (Cel.)",
     "Time", # last dimension is assumed to be time
 ]
 DEFAULT_Y_COLUMNS = ["GWP", "Strength (Mean)"]
@@ -49,7 +49,7 @@ DEFAULT_BOUNDS_DICT = {
     "Fly Ash": (0, 950),
     "Slag": (0, 950),
     "Fine Aggregate": (925, 1775),  # fixed based on binder + aggregate constraint
-    "Curing Temp (°C)": (0, 40),
+    "Curing Temp (Cel.)": (0, 40),
     "Time": (0, 28),  # up to 28 days
 }
 
@@ -274,18 +274,10 @@ def load_concrete_strength(
     X_columns: list[str] = DEFAULT_X_COLUMNS,
     Y_columns: list[str] = DEFAULT_Y_COLUMNS,
     Ystd_columns: list[str] = DEFAULT_YSTD_COLUMNS,
-    process_batch_names_from_mix_name: bool = True,
+    process_batch_names_from_mix_name: bool = False,
     bounds_dict: dict[str, tuple[float, float]] = DEFAULT_BOUNDS_DICT,
 ) -> SustainableConcreteDataset:
     """A function to load concrete strength data from a CSV file.
-
-    Args:
-        data: Path to the csv file containing the data, or a pandas dataframe.
-        verbose: Toggles informative messages about the applied data processing.
-        batch_names: Which batch names to include.
-        dtype: Which numerical dtype to cast the data to.
-        device: Which device (CPU or GPU) to move the data to.
-        mix_name_column
 
     The assumptions of this function are as follows:
         - The first three columns are reserved for identifiers (e.g. Mix ID, Name, Description).
@@ -310,8 +302,18 @@ def load_concrete_strength(
             that are to be loaded. If None, then all available batches will be loaded.
         dtype: A torch.dtype object specifying the desired datatype of the Tensors.
         device: A torch.device object specifying the desired device of the Tensors.
-        used_columns: A list of strings specifying the names of the columns to be used.
-            This can be used to bring the data into the desired format, outlined above.
+        mix_name_column: A string specifying the name of the column containing the mix.
+            This is used to identify the batch names.
+        X_columns: A list of strings specifying the names of the columns to be used as
+            inputs.
+        Y_columns: A list of strings specifying the names of the columns to be used as
+            outcomes.
+        Ystd_columns: A list of strings specifying the names of the columns to be used
+            as outcome standard deviations.
+        process_batch_names_from_mix_name: A boolean specifying whether to process the
+            batch names from the mix names.
+        bounds_dict: A dictionary mapping column names to tuples of lower and upper
+            bounds. This is used to set the bounds on the inputs.
 
     Returns:
         A SustainableConcreteDataset containing the strength and GWP data.
@@ -506,12 +508,21 @@ def get_mortar_bounds(
 
 
 def get_mortar_constraints(
-    X_columns, min_wb: float = 0.35, verbose: bool = _VERBOSE
+    X_columns: list[str], 
+    min_wb: float = 0.35, 
+    binder_names: list[str] = _TOTAL_BINDER_NAMES, 
+    aggregate_names: list[str] = ["Fine Aggregate"], 
+    water_name: str = "Water",
+    verbose: bool = _VERBOSE,
 ) -> tuple[list, list]:
     """Returns the linear equality and inequality constraints for mortar mixes.
 
     Args:
         X_columns: Names of columns in the input dataset.
+        binder_names: Names of binder columns in the input dataset, e.g. Cement, 
+            Fly Ash, and Slag.
+        aggregate_names: Names of aggregate columns in the input dataset, e.g. 
+            Fine Aggregate.
         min_wb: Minimum water-binder ratio. Defaults to 0.35.
         verbose: Whether to print details on the constraints.
 
@@ -525,8 +536,8 @@ def get_mortar_constraints(
         "Total Binder + Fine Aggregate": 1875.0,
     }
     inequality_dict = {
-        "Total Binder": (100.0, 950.0),
-        "Water": (min_wb, 0.5),  # NOTE: as a proportion of total binder
+        "Total Binder": {"lower": 100.0, "upper": 950.0},
+        "Water": {"lower": min_wb, "upper": 0.5},  # NOTE: as a proportion of total binder
     }
     if verbose:
         print("Adding linear equality constraints:")
@@ -541,19 +552,26 @@ def get_mortar_constraints(
     equality_constraints = [
         # get_sum_equality_constraint(
         #     X_columns=X_columns,
-        #     subset_names=_TOTAL_BINDER_NAMES,
+        #     subset_names=binder_names,
         #     value=equality_dict["Total Binder"],
         # ),
         get_sum_equality_constraint(
             X_columns=X_columns,
-            subset_names=_BINDER_PLUS_AGGREGATE,
+            subset_names=binder_names + aggregate_names,
             value=equality_dict["Total Binder + Fine Aggregate"],
         )
     ]
     inequality_constraints = [
-        *get_binder_constraints(X_columns, *inequality_dict["Total Binder"]),
+        *get_binder_constraints(
+            X_columns=X_columns, binder_names=binder_names, **inequality_dict["Total Binder"]
+        ),
         # as long as binder is constant, the water constraint is just a bound (earlier)
-        *get_water_constraints(X_columns, *inequality_dict["Water"]),
+        *get_water_constraints(
+            X_columns=X_columns, 
+            binder_names=binder_names,
+            water_name=water_name,
+            **inequality_dict["Water"]
+        ),
     ]
     return equality_constraints, inequality_constraints
 
@@ -593,11 +611,11 @@ def get_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
 def get_concrete_constraints(X_columns, verbose: bool = _VERBOSE) -> list[T_CONSTRAINT]:
     # inequality constraints for concrete (vs. mortar) mixtures
     inequality_dict = {
-        "Total Binder": (510, 1000),
-        "Total Mass": (3600, 4400),
-        "Paste Content": (0.16, 0.35),  # as a proportion of total mass
-        "Water": (0.2, 0.5),  # as a proportion of total binder
-        "HRWR": (0, 0.1),  # as a proportion of total binder
+        "Total Binder": {"lower": 510, "upper": 1000},
+        "Total Mass": {"lower": 3600, "upper": 4400},
+        "Paste Content": {"lower": 0.16, "upper": 0.35},  # as a proportion of total mass
+        "Water": {"lower": 0.2, "upper": 0.5},  # as a proportion of total binder
+        "HRWR": {"lower": 0, "upper": 0.1},  # as a proportion of total binder
     }
     if verbose:
         print("Adding linear constraints with lower and upper limits:")
@@ -610,11 +628,11 @@ def get_concrete_constraints(X_columns, verbose: bool = _VERBOSE) -> list[T_CONS
         print()
 
     constraints = [
-        *get_mass_constraints(X_columns, *inequality_dict["Total Mass"]),
-        *get_binder_constraints(X_columns, *inequality_dict["Total Binder"]),
-        *get_paste_constraints(X_columns, *inequality_dict["Paste Content"]),
-        *get_water_constraints(X_columns, *inequality_dict["Water"]),
-        *get_hrwr_constraints(X_columns, *inequality_dict["HRWR"]),
+        *get_mass_constraints(X_columns, **inequality_dict["Total Mass"]),
+        *get_binder_constraints(X_columns, **inequality_dict["Total Binder"]),
+        *get_paste_constraints(X_columns, **inequality_dict["Paste Content"]),
+        *get_water_constraints(X_columns, **inequality_dict["Water"]),
+        *get_hrwr_constraints(X_columns, **inequality_dict["HRWR"]),
     ]
     return constraints
 
@@ -628,21 +646,27 @@ def get_mass_constraints(
 
 
 def get_binder_constraints(
-    X_columns: list[str], lower: float, upper: float
+    X_columns: list[str], 
+    lower: float, 
+    upper: float, 
+    binder_names: list[str] = _TOTAL_BINDER_NAMES,
 ) -> list[T_CONSTRAINT]:
     return get_sum_constraints(
-        X_columns=X_columns, subset_names=_TOTAL_BINDER_NAMES, lower=lower, upper=upper
+        X_columns=X_columns, subset_names=binder_names, lower=lower, upper=upper
     )
 
 def get_cement_replacement_constraints(
-    X_columns: list[str], lower: float, upper: float
+    X_columns: list[str], 
+    lower: float, 
+    upper: float,
+    binder_names: list[str] = _TOTAL_BINDER_NAMES,
 ) -> list[T_CONSTRAINT]:
     # to constrain the cement replacement ratio by supplementary cementitious materials
-    scm_names = list(set(_TOTAL_BINDER_NAMES) - set(["Cement"]))
+    scm_names = list(set(binder_names) - set(["Cement"]))
     return get_proportional_sum_constraints(
         X_columns=X_columns,
         numerator_names=scm_names,
-        denominator_names=_TOTAL_BINDER_NAMES,
+        denominator_names=binder_names,
         lower=lower,
         upper=upper,
     )
@@ -664,28 +688,36 @@ def get_paste_constraints(
 
 
 def get_water_constraints(
-    X_columns: list[str], lower: float, upper: float
+    X_columns: list[str], 
+    lower: float, 
+    upper: float,
+    binder_names: list[str] = _TOTAL_BINDER_NAMES, 
+    water_name: str = "Water", 
 ) -> list[T_CONSTRAINT]:
     # Constraint: lower < (Water) / (Total Binder) < upper
     # i.e. a proportional sum constraint
     return get_proportional_sum_constraints(
         X_columns=X_columns,
-        numerator_names=["Water"],
-        denominator_names=_TOTAL_BINDER_NAMES,
+        numerator_names=[water_name],
+        denominator_names=binder_names,
         lower=lower,
         upper=upper,
     )
 
 
 def get_hrwr_constraints(
-    X_columns: list[str], lower: float, upper: float
+    X_columns: list[str], 
+    lower: float, 
+    upper: float,
+    binder_names: list[str] = _TOTAL_BINDER_NAMES, 
+    hrwr_name: str = "HRWR", 
 ) -> list[T_CONSTRAINT]:
     # Constraint: lower < (HRWR) / (Total Binder) < upper
     # i.e. a proportional sum constraint
     return get_proportional_sum_constraints(
         X_columns=X_columns,
-        numerator_names=["HRWR"],
-        denominator_names=_TOTAL_BINDER_NAMES,
+        numerator_names=[hrwr_name],
+        denominator_names=binder_names,
         lower=lower,
         upper=upper,
     )
@@ -809,8 +841,7 @@ def get_subset_sum_tensors(
 
 
 def get_reference_point() -> Tensor:
-    # gwp = -430.0  # based on existing minimum in the data (pure cement)
-    gwp = -150.0  # chosen to hone in on the greener and strong region
+    gwp = -400.0  # chosen to hone in on the greener and strong region
     strength_day_1 = 1000
     # strength_day_7 = 3000
     strength_day_28 = 5000
