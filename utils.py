@@ -85,7 +85,7 @@ class SustainableConcreteDataset(object):
         Raises:
             ValueError: If the last columne of `X` is not time.
         """
-        if X_columns[-1] != "Time":
+        if X_columns[-1].lower() != "time":
             raise ValueError(
                 f"Last dimension of X assumed to be time, but is {X_columns[-1]}."
             )
@@ -111,8 +111,8 @@ class SustainableConcreteDataset(object):
     @property
     def Y(self) -> Tensor:
         """The `n x 2`-dim output data `Y`, where
-        1) `X[i, 0]` is the measured strength value for the ith sample.
-        2) `X[i, 1]` is the GWP value of the ith sample.
+        1) `Y[i, 0]` is the GWP value of the ith sample.
+        2) `Y[i, 1]` is the measured strength value for the ith sample.
         """
         return self._Y
 
@@ -158,13 +158,13 @@ class SustainableConcreteDataset(object):
 
     @property
     def gwp_data(self) -> tuple[Tensor, Tensor, Tensor, Tensor | None]:
-        """Returns the data with which to fit a strength model.
+        """Returns the data with which to fit a GWP model.
 
         Returns:
             A 4-tuple of Tensors containing 1) the `n_unique x (d - 1)` unique
             compositions X *without* time since GWP does not depend on `time`, 2) the
             corresponding `n_unique x 1`-dim GWP values Y, 3) the `n_unique x 1`-dim
-            empirical strength variances Yvar, and the `2 x (d - 1)`-dim bounds on X.
+            GWP variances Yvar, and the `2 x (d - 1)`-dim bounds on X.
         """
         # removes duplicates due to multiple measurements in time, which is irrelevant for gwp
         unique_indices = self.unique_composition_indices
