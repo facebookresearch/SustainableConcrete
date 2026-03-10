@@ -10,11 +10,9 @@ Defines concrete strength and global warming potential (GWP) models.
 
 from __future__ import annotations
 
-from typing import List, Optional, Union
-
 import torch
 from botorch import fit_gpytorch_mll
-from botorch.models import ModelList, ModelListGP, SingleTaskGP
+from botorch.models import ModelList, SingleTaskGP
 from botorch.models.model import Model
 from botorch.models.transforms.input import (
     AffineInputTransform,
@@ -30,15 +28,14 @@ from gpytorch import ExactMarginalLogLikelihood
 from gpytorch.kernels import LinearKernel, MaternKernel, RBFKernel, ScaleKernel
 from gpytorch.likelihoods import GaussianLikelihood
 from gpytorch.means import ZeroMean
-from gpytorch.models import ExactGP
 from torch import Tensor
-from utils import get_day_zero_data, SustainableConcreteDataset
+from boxcrete.utils import get_day_zero_data, SustainableConcreteDataset
 
 
-class SustainableConcreteModel(object):
+class SustainableConcreteModel:
     def __init__(
         self,
-        strength_days: List[int],
+        strength_days: list[int],
         strength_model: Model | None = None,
         gwp_model: Model | None = None,
         d: int | None = None,
@@ -47,16 +44,16 @@ class SustainableConcreteModel(object):
         pre-defined days `strength_days`.
 
         Args:
-            strength_days (List[int]): A list days to predict stength for.
-            strength_model (Optional[Model], optional): The strength model. Defaults to None.
-            gwp_model (Optional[Model], optional): The GWP model. Defaults to None.
-            d (Optional[int], optional): The dimensionality of the input to the strength model.
+            strength_days: A list of days to predict strength for.
+            strength_model: The strength model. Defaults to None.
+            gwp_model: The GWP model. Defaults to None.
+            d: The dimensionality of the input to the strength model.
                 Is inferred automatically if the fit functions are called. NOTE: The model
                 assumes that the last element of the input corresponds to the time dimension.
         """
         self.strength_days = strength_days
-        self.strength_model = None
-        self.gwp_model = None
+        self.strength_model = strength_model
+        self.gwp_model = gwp_model
         self.d = d
 
     def fit_strength_model(
@@ -103,8 +100,8 @@ class SustainableConcreteModel(object):
         if self.d is None:
             self.d = d
 
-    def get_model_list(self) -> ModelListGP:
-        """Returns a ModelListGP modeling the GWP and compressive strength objectives as a function
+    def get_model_list(self) -> ModelList:
+        """Returns a ModelList modeling the GWP and compressive strength objectives as a function
         of composition only.
         Converts the strength and gwp models into a model list of independent models for gwp,
         and x-day strengths, by fixing the time input of the strength model at 1 and 28 days.
@@ -126,13 +123,10 @@ class SustainableConcreteModel(object):
         model = ModelList(*models)
         return model  # for use with multi-objective optimization
 
-    def plot_strength_curve(self, composition: Tensor, max_day: int = 28) -> None:
-        time = torch.arange(max_day + 1)
-        composition = composition.unsqueeze(0).expand(len(time))
-        # IDEA: use FixedFeatureModel?
+    # TODO: add plot_strength_curve utility for visualizing predicted strength
+    # curves as a function of time for a given composition.
 
 
-# BatchedMultiOutputGPyTorchModel, ExactGP
 class FixedFeatureModel(Model):
     # advantage: only need to implement posterior for it to work with qNEHI
     # disadvantage: makes the strength outputs independent (IDEA: could add joint model)
@@ -141,8 +135,8 @@ class FixedFeatureModel(Model):
         self,
         base_model: Model,
         dim: int,
-        indices: Union[List[int], Tensor],
-        values: Union[List[float], Tensor],
+        indices: list[int] | Tensor,
+        values: list[float] | Tensor,
     ):
         """A wrapper around a GP model that fixes some inputs to specific values.
 
@@ -178,7 +172,7 @@ class FixedFeatureModel(Model):
         """
         tkwargs = {"dtype": X.dtype, "device": X.device}
         Z = torch.zeros(*X.shape[:-1], X.shape[-1] + len(self._indices), **tkwargs)
-        Z[..., self._fixed] = self._values
+        Z[..., self._fixed] = self._values.to(X.dtype)
         Z[..., ~self._fixed] = X
         return Z
 
@@ -210,12 +204,12 @@ class FixedFeatureModel(Model):
     def num_outputs(self) -> int:
         return self.base_model.num_outputs  # need to adjust if we batch fixed features
 
-    def subset_output(self, idcs: List[int]) -> FixedFeatureModel:
-        raise FixedFeatureModel(
+    def subset_output(self, idcs: list[int]) -> FixedFeatureModel:
+        return FixedFeatureModel(
             base_model=self.base_model.subset_output(idcs),
             dim=self._dim,
             indices=self._indices,
-            values=self._value,
+            values=self._values,
         )
 
 
@@ -225,6 +219,7 @@ def fit_gwp_gp(
     Yvar: Tensor,
     X_bounds: Tensor | None = None,
     use_fixed_noise: bool = False,
+    optimizer_kwargs: dict | None = None,
 ) -> SingleTaskGP:
     """Fits a Gaussian process model to the given global warming potential (GWP) data.
 
@@ -232,6 +227,9 @@ def fit_gwp_gp(
         X: `n x d`-dim Tensor of composition inputs without time.
         Y: `n x 1`-dim Tensor of GWP values.
         Yvar: `n x 1`-dim Tensor of GWP variances.
+        X_bounds: Optional `2 x d`-dim bounds Tensor.
+        use_fixed_noise: Whether to use fixed observation noise.
+        optimizer_kwargs: Optional keyword arguments for the optimizer.
 
     Returns:
         A SingleTaskGP model fit to the data.
@@ -259,7 +257,7 @@ def fit_gwp_gp(
         )
     model = SingleTaskGP(**model_kwargs)  # pyre-ignore
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
-    fit_gpytorch_mll(mll)
+    fit_gpytorch_mll(mll, optimizer_kwargs=optimizer_kwargs)
     return model
 
 
@@ -269,7 +267,8 @@ def fit_strength_gp(
     Yvar: Tensor,
     X_bounds: Tensor | None = None,
     use_fixed_noise: bool = False,
-) -> ExactGP:
+    optimizer_kwargs: dict | None = None,
+) -> SingleTaskGP:
     """Fits a Gaussian process model to the given strength data.
 
     IDEAS:
@@ -284,6 +283,9 @@ def fit_strength_gp(
         X: Tensor of composition inputs including time (n x d).
         Y: Tensor of strength values (n x 1).
         Yvar: Tensor of strength variances (n x 1).
+        X_bounds: Optional `2 x d`-dim bounds Tensor.
+        use_fixed_noise: Whether to use fixed observation noise.
+        optimizer_kwargs: Optional keyword arguments for the optimizer.
 
     Returns:
         A SingleTaskGP model fit to the strength data.
@@ -324,7 +326,6 @@ def fit_strength_gp(
         base_kernel=time_kernel,
         outputscale_constraint=LogTransformedInterval(1e-2, 1e2, initial_value=1.0),
         outputscale_prior=None,
-        # batch_shape=batch_shape,
     )
 
     # IDEA: + scaled_water_kernel and other additive components
@@ -344,12 +345,12 @@ def fit_strength_gp(
         )
     model = SingleTaskGP(**model_kwargs)
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
-    fit_gpytorch_mll(mll)
+    fit_gpytorch_mll(mll, optimizer_kwargs=optimizer_kwargs)
     return model
 
 
 def get_strength_gp_input_transform(
-    d: int, bounds: Optional[Tensor]
+    d: int, bounds: Tensor | None
 ) -> ChainedInputTransform:
     """Chains a log(time + 1) and Normalize transform on d dimensional input data,
     with the provided bounds.
