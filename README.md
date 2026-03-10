@@ -1,6 +1,6 @@
 # Sustainable Concrete via Bayesian Optimization
 
-Concrete is responsbile for up to **8% of anthropogenic carbon dioxide emissions per year** - compared to less than 3% for all air travel - and urgently needs to be decarbonized in order to achieve a sustainable future.
+Concrete is responsible for up to **8% of anthropogenic carbon dioxide emissions per year** - compared to less than 3% for all air travel - and urgently needs to be decarbonized in order to achieve a sustainable future.
 We invite researchers and practitioners of both machine learning and civil engineering
 to collaborate on discovering more sustainable concrete formulations that are applicable
 to a wide array of construction projects, at scale.
@@ -13,7 +13,38 @@ This repository contains probabilistic models and data for the
 
 as a function of their composition, consisting of
 cement, slag, water, to name a few basic ingredients.
-See the `models.py` file for implementation details.
+See `boxcrete/models.py` for implementation details.
+
+## Installation
+
+Install directly from GitHub (no cloning required):
+```bash
+pip install git+https://github.com/facebookresearch/SustainableConcrete.git
+```
+
+Or install from source for development:
+```bash
+git clone https://github.com/facebookresearch/SustainableConcrete.git
+cd SustainableConcrete
+pip install -e .
+```
+
+For development (includes testing and linting tools):
+```bash
+pip install -e ".[dev]"
+```
+
+For running notebooks:
+```bash
+pip install -e ".[notebooks]"
+```
+
+## Usage
+
+```python
+from boxcrete.models import SustainableConcreteModel
+from boxcrete.utils import load_concrete_strength, get_mortar_bounds
+```
 
 The models can be used for a variety of tasks, including but not limited to
 1) continuous-time strength predictions with uncertainty bands for a user-specified concrete mix, and
