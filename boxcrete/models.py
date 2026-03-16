@@ -314,7 +314,7 @@ def fit_gwp_gp(
     # GWP is a linear function of the inputs
     covar_module = LinearKernel()
     # removing any input and outcome transforms, as well as the prior mean from
-    # the model to force it to be homogenuous, i.e. it has no offset.
+    # the model to force it to be homogeneous, i.e. it has no offset.
     model_kwargs = {
         "train_X": X,
         "train_Y": Y,
