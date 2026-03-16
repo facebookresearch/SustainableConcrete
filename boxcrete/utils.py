@@ -5,19 +5,28 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-Defines concrete strength data loaders, search space constraints, and other utilties.
+Defines concrete strength data loaders, search space constraints, and other utilities.
 """
 
 from __future__ import annotations
 
+import logging
+import os
+
+import numpy as np
 import pandas as pd
 import torch
-from botorch.models import ModelListGP
+from botorch.models import ModelList
 from botorch.optim.initializers import sample_q_batches_from_polytope
 from botorch.utils.multi_objective import is_non_dominated
 from torch import Tensor
-import numpy as np
 
+logger = logging.getLogger(__name__)
+
+# Path to the repository root, resolved from the package location.
+# This allows data loading to work regardless of the current working directory.
+REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_DATA_PATH = os.path.join(REPO_DIR, "data", "compressive_strength.csv")
 
 # linear constraint type (ind, coeffs, value)
 T_CONSTRAINT = tuple[Tensor, Tensor, float]
@@ -38,11 +47,10 @@ DEFAULT_X_COLUMNS = [
     "HRWR",
     "Fine Aggregate",
     "Curing Temp (Cel.)",
-    "Time", # last dimension is assumed to be time
+    "Time",  # last dimension is assumed to be time
 ]
 DEFAULT_Y_COLUMNS = ["GWP", "Strength (Mean)"]
 DEFAULT_YSTD_COLUMNS = ["Strength (Std)"]
-_VERBOSE = False
 
 DEFAULT_BOUNDS_DICT = {
     "Cement": (0, 950),  # in grams, as opposed to the original concrete bounds
@@ -85,7 +93,7 @@ class SustainableConcreteDataset(object):
         Raises:
             ValueError: If the last columne of `X` is not time.
         """
-        if X_columns[-1] != "Time":
+        if X_columns[-1].lower() != "time":
             raise ValueError(
                 f"Last dimension of X assumed to be time, but is {X_columns[-1]}."
             )
@@ -111,8 +119,8 @@ class SustainableConcreteDataset(object):
     @property
     def Y(self) -> Tensor:
         """The `n x 2`-dim output data `Y`, where
-        1) `X[i, 0]` is the measured strength value for the ith sample.
-        2) `X[i, 1]` is the GWP value of the ith sample.
+        1) `Y[i, 0]` is the GWP value of the ith sample.
+        2) `Y[i, 1]` is the measured strength value for the ith sample.
         """
         return self._Y
 
@@ -158,13 +166,13 @@ class SustainableConcreteDataset(object):
 
     @property
     def gwp_data(self) -> tuple[Tensor, Tensor, Tensor, Tensor | None]:
-        """Returns the data with which to fit a strength model.
+        """Returns the data with which to fit a GWP model.
 
         Returns:
             A 4-tuple of Tensors containing 1) the `n_unique x (d - 1)` unique
             compositions X *without* time since GWP does not depend on `time`, 2) the
             corresponding `n_unique x 1`-dim GWP values Y, 3) the `n_unique x 1`-dim
-            empirical strength variances Yvar, and the `2 x (d - 1)`-dim bounds on X.
+            GWP variances Yvar, and the `2 x (d - 1)`-dim bounds on X.
         """
         # removes duplicates due to multiple measurements in time, which is irrelevant for gwp
         unique_indices = self.unique_composition_indices
@@ -177,8 +185,7 @@ class SustainableConcreteDataset(object):
             if (X.amin(dim=0) < X_bounds[0, :]).any() or (
                 X.amax(dim=0) > X_bounds[1, :]
             ).any():
-                # raise Exception(
-                print(
+                logger.warning(
                     "Bounds do not hold in training data: "
                     f"{X_bounds[0, :], X.amin(dim=0) = }"
                     f"{X_bounds[1, :], X.amax(dim=0) = }"
@@ -264,8 +271,7 @@ class SustainableConcreteDataset(object):
 
 
 def load_concrete_strength(
-    data_path: str | pd.DatatFrame = "data/concrete_strength.csv",
-    verbose: bool = _VERBOSE,
+    data_path: str | pd.DataFrame = DEFAULT_DATA_PATH,
     batch_names: list[str] | None = None,
     dtype: torch.dtype | None = None,
     device: torch.device | None = None,
@@ -297,7 +303,6 @@ def load_concrete_strength(
 
     Args:
         data_path: The path to the data to be loaded. Defaults to "data/concrete_strength.csv".
-        verbose: Toggles verbose printing of the operations applied to the data.
         batch_names: A list of strings specifying the names of the experimental batches
             that are to be loaded. If None, then all available batches will be loaded.
         dtype: A torch.dtype object specifying the desired datatype of the Tensors.
@@ -330,44 +335,41 @@ def load_concrete_strength(
     ):  # TODO: make this safe! "contains" only works if the batch names are unique strings, not numbers
         not_in_names = df[mix_name_column].astype(bool)  # creating True series
         for batch_name in batch_names:
-            not_in_names = not_in_names & (~df[mix_name_column].str.contains(batch_name))
+            not_in_names = not_in_names & (
+                ~df[mix_name_column].str.contains(batch_name)
+            )
         df = df.drop(df[not_in_names].index)
 
-    if verbose:
-        print(f"The data has {len(df)} rows and {len(df.columns)} columns, which are:")
-        for column in df.columns.to_list():
-            print("\t-", column)
-        print()
+    logger.info(
+        f"The data has {len(df)} rows and {len(df.columns)} columns, which are:"
+    )
+    for column in df.columns.to_list():
+        logger.info("  - %s", column)
 
     # first, remove rows and columns with missing data
     # data_index = 3  #= df.columns[data_index:]
-    data_columns = X_columns + Y_columns + Ystd_columns 
+    data_columns = X_columns + Y_columns + Ystd_columns
     data_columns = np.array(data_columns)
     is_missing = torch.tensor(df[data_columns].to_numpy()).isnan()
     n_missing = is_missing.sum(dim=0)
     missing_col_ind = n_missing > 0
     if missing_col_ind.any():
-        if verbose:
-            print(f"There are {missing_col_ind.sum()} columns with missing entries:")
-            print(f"{missing_col_ind=}")
-            print(f"{data_columns=}")
-            print(f"{n_missing=}")
-            for name, missing in zip(
-                data_columns[missing_col_ind], n_missing[missing_col_ind]
-            ):
-                print("\t-", name, "has", missing.item(), "missing entries.")
-            print("")
-            print("Removing missing rows with missing entries from data.")
+        logger.info(f"There are {missing_col_ind.sum()} columns with missing entries:")
+        logger.info(f"{missing_col_ind=}")
+        logger.info(f"{data_columns=}")
+        logger.info(f"{n_missing=}")
+        for name, missing in zip(
+            data_columns[missing_col_ind], n_missing[missing_col_ind]
+        ):
+            logger.info("  - %s has %s missing entries.", name, missing.item())
+        logger.info("Removing missing rows with missing entries from data.")
         missing_row_ind = [i for i in range(len(df)) if is_missing[i].any()]
-        if verbose:
-            print(f"\t-Rows indices to be removed: {missing_row_ind = }")
+        logger.info(f"  -Rows indices to be removed: {missing_row_ind = }")
         df = df.drop(missing_row_ind)
-        if verbose:
-            print(
-                "\t-Number of missing values after deletion (Should be zero): "
-                f"{torch.tensor(df[data_columns].to_numpy()).isnan().sum()}"
-            )
-            print("")
+        logger.info(
+            "  -Number of missing values after deletion (Should be zero): "
+            f"{torch.tensor(df[data_columns].to_numpy()).isnan().sum()}"
+        )
 
     # assumes mix ids are the first column of the table
     if process_batch_names_from_mix_name:
@@ -387,56 +389,40 @@ def load_concrete_strength(
             for batch_name in batch_names
         }
     else:
-        if "Batch Name" in df.columns:
-            batch_names = list(df["Batch Name"].unique())
-            batch_name_to_indices = {
-                batch_name: [] for batch_name in batch_names
-            }
-            for i, row in df.iterrow():
-                batch_name_to_indices[row["Batch Name"]].append(i)
-        else:
-            batch_names = None
-            batch_name_to_indices = None 
+        batch_names = None
+        batch_name_to_indices = None
 
-    if verbose:
-        if batch_names is None:
-            print("Found no batch names.")
-        else:
-            print("Found the following batch names:")
-            for batch_name in batch_names:
-                print("\t-", batch_name)
-            print()
+    if batch_names is None:
+        logger.info("Found no batch names.")
+    else:
+        logger.info("Found the following batch names:")
+        for batch_name in batch_names:
+            logger.info("  - %s", batch_name)
 
     # separating columns as inputs, outputs, and output uncertainties
-    if verbose:
-        print("Separating model inputs and outputs:")
-        print(f"Input columns: ")
-        for col in X_columns:
-            print("\t-", col)
-        print(f"Output (Mean) columns")
-        for col in Y_columns:
-            print("\t-", col)
-        print(f"Output (Std) columns")
-        for col in Ystd_columns:
-            print("\t-", col)
-        print()
+    logger.info("Separating model inputs and outputs:")
+    logger.info("Input columns: ")
+    for col in X_columns:
+        logger.info("  - %s", col)
+    logger.info("Output (Mean) columns")
+    for col in Y_columns:
+        logger.info("  - %s", col)
+    logger.info("Output (Std) columns")
+    for col in Ystd_columns:
+        logger.info("  - %s", col)
 
     # casting dataframe to torch tensors
     tkwargs = {"dtype": dtype, "device": device}
     X = torch.tensor(df[X_columns].to_numpy(), **tkwargs)
     Y = torch.tensor(df[Y_columns].to_numpy(), **tkwargs)
 
-    if verbose:
-        print(f"Negating GWP to frame as joint maximization problem.")
-        print()
+    logger.info("Negating GWP to frame as joint maximization problem.")
     Y[:, 0] = -Y[:, 0]
 
-    if verbose:
-        print(
-            "Adding and setting standard deviation of GWP to uniformly small value "
-            "since our estimates are deterministic."
-        )
-        print()
+    logger.info(
+        "Adding and setting standard deviation of GWP to uniformly small value "
+        "since our estimates are deterministic."
+    )
     if len(Ystd_columns) == 1:
         Ystd = torch.cat(
             (  # to use FixedNoiseGP with noiseless observations
@@ -446,21 +432,21 @@ def load_concrete_strength(
             dim=-1,
         )
     else:
-        raise NotImplementedError("Multiple Ystd columns not supported yet.")
+        raise NotImplementedError(
+            "Multiple Ystd columns not supported yet."
+        )  # pragma: no cover
 
     # dividing empirical standard deviations of strength by the number of measurements.
     if "# of measurements" in df.columns:
-        if verbose:
-            print(
-                "Computing strength standard error of by "
-                "dividing standard deviation by sqrt(# of measurements)."
-            )
-            print()
+        logger.info(
+            "Computing strength standard error of by "
+            "dividing standard deviation by sqrt(# of measurements)."
+        )
         n_measurements = torch.tensor(df["# of measurements"].to_numpy(), **tkwargs)
-        Ystd[:, 1] /= n_measurements.sqrt()
+        Ystd[:, 1] = Ystd[:, 1] / n_measurements.sqrt()
 
     # NOTE: This is more general than mortar mixes, clean up naming in the future
-    bounds = get_mortar_bounds(X_columns=X_columns, verbose=verbose, bounds_dict=bounds_dict)
+    bounds = get_mortar_bounds(X_columns=X_columns, bounds_dict=bounds_dict)
     return SustainableConcreteDataset(
         X=X,
         Y=Y,
@@ -475,14 +461,12 @@ def load_concrete_strength(
 
 def get_mortar_bounds(
     X_columns: list[str],
-    verbose: bool = _VERBOSE,
-    bounds_dict: dict[str, tuple[float, float]] = DEFAULT_BOUNDS_DICT
+    bounds_dict: dict[str, tuple[float, float]] = DEFAULT_BOUNDS_DICT,
 ) -> Tensor:
     """Returns bounds of columns in X for mortar mixes.
 
     Args:
         X_columns: Names of the columns in the input dataset.
-        verbose: Whether to print what the lower and upper bounds are set to.
 
     Tensor:
         A `2 x d`-dim Tensor of lower and upper mortar bounds for each column of X.
@@ -499,32 +483,28 @@ def get_mortar_bounds(
         }
     )
     bounds = torch.tensor([bounds_dict[col] for col in X_columns]).T
-    if verbose:
-        print("The lower and upper bounds for the respective variables are set to:")
-        for col, bound in zip(X_columns, bounds.T):
-            print(f"\t- {col}: [{bound[0].item()}, {bound[1].item()}]")
-        print()
+    logger.info("The lower and upper bounds for the respective variables are set to:")
+    for col, bound in zip(X_columns, bounds.T):
+        logger.info(f"  - {col}: [{bound[0].item()}, {bound[1].item()}]")
     return bounds
 
 
 def get_mortar_constraints(
-    X_columns: list[str], 
-    min_wb: float = 0.35, 
-    binder_names: list[str] = _TOTAL_BINDER_NAMES, 
-    aggregate_names: list[str] = ["Fine Aggregate"], 
+    X_columns: list[str],
+    min_wb: float = 0.35,
+    binder_names: list[str] = _TOTAL_BINDER_NAMES,
+    aggregate_names: list[str] = ["Fine Aggregate"],
     water_name: str = "Water",
-    verbose: bool = _VERBOSE,
 ) -> tuple[list, list]:
     """Returns the linear equality and inequality constraints for mortar mixes.
 
     Args:
         X_columns: Names of columns in the input dataset.
-        binder_names: Names of binder columns in the input dataset, e.g. Cement, 
+        binder_names: Names of binder columns in the input dataset, e.g. Cement,
             Fly Ash, and Slag.
-        aggregate_names: Names of aggregate columns in the input dataset, e.g. 
+        aggregate_names: Names of aggregate columns in the input dataset, e.g.
             Fine Aggregate.
         min_wb: Minimum water-binder ratio. Defaults to 0.35.
-        verbose: Whether to print details on the constraints.
 
     Returns:
         A 2-tuple of equality and inequality constraints.
@@ -537,17 +517,18 @@ def get_mortar_constraints(
     }
     inequality_dict = {
         "Total Binder": {"lower": 100.0, "upper": 950.0},
-        "Water": {"lower": min_wb, "upper": 0.5},  # NOTE: as a proportion of total binder
+        "Water": {
+            "lower": min_wb,
+            "upper": 0.5,
+        },  # NOTE: as a proportion of total binder
     }
-    if verbose:
-        print("Adding linear equality constraints:")
-        for key in equality_dict:
-            print("\t-", key, ":", equality_dict[key])
-        print(
-            "NOTE: the paste content constraint is proportional to the total mass, "
-            "and the water and HRWR constraints are proportional to the total binder."
-        )
-        print()
+    logger.info("Adding linear equality constraints:")
+    for key in equality_dict:
+        logger.info("  - %s: %s", key, equality_dict[key])
+    logger.info(
+        "NOTE: the paste content constraint is proportional to the total mass, "
+        "and the water and HRWR constraints are proportional to the total binder."
+    )
 
     equality_constraints = [
         # get_sum_equality_constraint(
@@ -563,20 +544,22 @@ def get_mortar_constraints(
     ]
     inequality_constraints = [
         *get_binder_constraints(
-            X_columns=X_columns, binder_names=binder_names, **inequality_dict["Total Binder"]
+            X_columns=X_columns,
+            binder_names=binder_names,
+            **inequality_dict["Total Binder"],
         ),
         # as long as binder is constant, the water constraint is just a bound (earlier)
         *get_water_constraints(
-            X_columns=X_columns, 
+            X_columns=X_columns,
             binder_names=binder_names,
             water_name=water_name,
-            **inequality_dict["Water"]
+            **inequality_dict["Water"],
         ),
     ]
     return equality_constraints, inequality_constraints
 
 
-def get_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
+def get_bounds(X_columns) -> Tensor:
     """Returns bounds of columns in X for concrete mixes."""
     bounds_dict = {
         # NOTE: the pure cement baseline is outside of these bounds (~752), as is Dec_2022_2 (~211)
@@ -600,32 +583,31 @@ def get_bounds(X_columns, verbose: bool = _VERBOSE) -> Tensor:
         }
     )
     bounds = torch.tensor([bounds_dict[col] for col in X_columns]).T
-    if verbose:
-        print("The lower and upper bounds for the respective variables are set to:")
-        for col, bound in zip(X_columns, bounds.T):
-            print(f"\t- {col}: [{bound[0].item()}, {bound[1].item()}]")
-        print()
+    logger.info("The lower and upper bounds for the respective variables are set to:")
+    for col, bound in zip(X_columns, bounds.T):
+        logger.info(f"  - {col}: [{bound[0].item()}, {bound[1].item()}]")
     return bounds
 
 
-def get_concrete_constraints(X_columns, verbose: bool = _VERBOSE) -> list[T_CONSTRAINT]:
+def get_concrete_constraints(X_columns) -> list[T_CONSTRAINT]:
     # inequality constraints for concrete (vs. mortar) mixtures
     inequality_dict = {
         "Total Binder": {"lower": 510, "upper": 1000},
         "Total Mass": {"lower": 3600, "upper": 4400},
-        "Paste Content": {"lower": 0.16, "upper": 0.35},  # as a proportion of total mass
+        "Paste Content": {
+            "lower": 0.16,
+            "upper": 0.35,
+        },  # as a proportion of total mass
         "Water": {"lower": 0.2, "upper": 0.5},  # as a proportion of total binder
         "HRWR": {"lower": 0, "upper": 0.1},  # as a proportion of total binder
     }
-    if verbose:
-        print("Adding linear constraints with lower and upper limits:")
-        for key in inequality_dict:
-            print("\t-", key, ":", inequality_dict[key])
-        print(
-            "NOTE: the paste content constraint is proportional to the total mass, "
-            "and the water and HRWR constraints are proportional to the total binder."
-        )
-        print()
+    logger.info("Adding linear constraints with lower and upper limits:")
+    for key in inequality_dict:
+        logger.info("  - %s: %s", key, inequality_dict[key])
+    logger.info(
+        "NOTE: the paste content constraint is proportional to the total mass, "
+        "and the water and HRWR constraints are proportional to the total binder."
+    )
 
     constraints = [
         *get_mass_constraints(X_columns, **inequality_dict["Total Mass"]),
@@ -646,18 +628,19 @@ def get_mass_constraints(
 
 
 def get_binder_constraints(
-    X_columns: list[str], 
-    lower: float, 
-    upper: float, 
+    X_columns: list[str],
+    lower: float,
+    upper: float,
     binder_names: list[str] = _TOTAL_BINDER_NAMES,
 ) -> list[T_CONSTRAINT]:
     return get_sum_constraints(
         X_columns=X_columns, subset_names=binder_names, lower=lower, upper=upper
     )
 
+
 def get_cement_replacement_constraints(
-    X_columns: list[str], 
-    lower: float, 
+    X_columns: list[str],
+    lower: float,
     upper: float,
     binder_names: list[str] = _TOTAL_BINDER_NAMES,
 ) -> list[T_CONSTRAINT]:
@@ -688,11 +671,11 @@ def get_paste_constraints(
 
 
 def get_water_constraints(
-    X_columns: list[str], 
-    lower: float, 
+    X_columns: list[str],
+    lower: float,
     upper: float,
-    binder_names: list[str] = _TOTAL_BINDER_NAMES, 
-    water_name: str = "Water", 
+    binder_names: list[str] = _TOTAL_BINDER_NAMES,
+    water_name: str = "Water",
 ) -> list[T_CONSTRAINT]:
     # Constraint: lower < (Water) / (Total Binder) < upper
     # i.e. a proportional sum constraint
@@ -706,11 +689,11 @@ def get_water_constraints(
 
 
 def get_hrwr_constraints(
-    X_columns: list[str], 
-    lower: float, 
+    X_columns: list[str],
+    lower: float,
     upper: float,
-    binder_names: list[str] = _TOTAL_BINDER_NAMES, 
-    hrwr_name: str = "HRWR", 
+    binder_names: list[str] = _TOTAL_BINDER_NAMES,
+    hrwr_name: str = "HRWR",
 ) -> list[T_CONSTRAINT]:
     # Constraint: lower < (HRWR) / (Total Binder) < upper
     # i.e. a proportional sum constraint
@@ -721,6 +704,7 @@ def get_hrwr_constraints(
         lower=lower,
         upper=upper,
     )
+
 
 def get_total_water_reducer_constraints(
     X_columns: list[str], lower: float, upper: float
@@ -739,7 +723,9 @@ def get_total_water_reducer_constraints(
     )
 
 
-def get_aggregate_constraint(X_columns: list[str], lower: float, upper: float) -> list[T_CONSTRAINT]:
+def get_aggregate_constraint(
+    X_columns: list[str], lower: float, upper: float
+) -> list[T_CONSTRAINT]:
     # Constraint: lower < (Fine Aggregate) / (Coarse Aggregate) < upper
     # Incorporates the intuition that fine aggregates should be limited in order to
     # reduce the need for binder (since surface area grows).
@@ -771,7 +757,7 @@ def get_sum_equality_constraint(
     ind, coeffs = torch.arange(len(coeffs))[nz_ind], coeffs[nz_ind]
     return (ind, coeffs, value)
 
-    
+
 def get_proportional_sum_constraints(
     X_columns: list[str],
     numerator_names: list[str],
@@ -882,7 +868,7 @@ def unique_elements(x: list) -> list:
 
 
 def predict_pareto(
-    model_list: ModelListGP,
+    model_list: ModelList,
     pareto_dims: list[int],
     ref_point: Tensor,
     bounds: Tensor,

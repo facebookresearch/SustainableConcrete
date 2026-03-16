@@ -1,13 +1,52 @@
 # BOxCrete: A Bayesian Optimization open-source AI Model for Concrete Mix Design & Optimization
 
-Concrete, the second most widely used material in the world, accounts for **6–8% of global anthropogenic CO₂ emissions**, largely due to Portland cement production (~0.8 tons CO₂ per ton of cement). Partial replacement with Supplementary Cementitious Materials (SCMs) such as fly ash, slag, and natural pozzolan reduces embodied carbon and often improves durability, but high SCM usage makes compressive strength a highly nonlinear function of multiple interacting mix parameters, rendering traditional design empirical and trial-and-error driven. To systematically navigate this complex composition space, data-driven frameworks are needed. Here, we introduce BOxCrete, an open-source Bayesian optimization framework for probabilistic strength curve prediction and sustainable mix design. 
+Concrete, the second most widely used material in the world, accounts for **6–8% of global anthropogenic CO₂ emissions**, largely due to Portland cement production (~0.8 tons CO₂ per ton of cement). Partial replacement with Supplementary Cementitious Materials (SCMs) such as fly ash, slag, and natural pozzolan reduces embodied carbon and often improves durability, but high SCM usage makes compressive strength a highly nonlinear function of multiple interacting mix parameters, rendering traditional design empirical and trial-and-error driven. To systematically navigate this complex composition space, data-driven frameworks are needed. 
+Here, we introduce BOxCrete, an open-source Bayesian optimization framework for probabilistic strength curve prediction and sustainable mix design. 
+We invite researchers and practitioners of both machine learning and civil engineering
+to collaborate on discovering more sustainable concrete formulations that are applicable
+to a wide array of construction projects, at scale.
+For more information,
+please see ["Sustainable Concrete via Bayesian Optimization"](https://arxiv.org/abs/2310.18288).
 
 This repository contains probabilistic models and data for the
 
 1) Compressive strength of concrete and mortar mixes
 2) The associated global warming potential (GWP)
 
-as a function of their composition, consisting of cement, fly ash, slag, fine and coarse aggregate, admixtures, and water, to name a few basic ingredients. See the ['BOxCrete_models.py'](BOxCrete_models.py) file for implementation details.
+as a function of their composition, consisting of
+cement, slag, water, to name a few basic ingredients.
+See `boxcrete/models.py` for implementation details.
+
+## Installation
+
+Install directly from GitHub (no cloning required):
+```bash
+pip install git+https://github.com/facebookresearch/SustainableConcrete.git
+```
+
+Or install from source for development:
+```bash
+git clone https://github.com/facebookresearch/SustainableConcrete.git
+cd SustainableConcrete
+pip install -e .
+```
+
+For development (includes testing and linting tools):
+```bash
+pip install -e ".[dev]"
+```
+
+For running notebooks:
+```bash
+pip install -e ".[notebooks]"
+```
+
+## Usage
+
+```python
+from boxcrete.models import SustainableConcreteModel
+from boxcrete.utils import load_concrete_strength, get_mortar_bounds
+```
 
 The models can be used for a variety of tasks, including but not limited to
 1)	Continuous-time strength curve predictions with uncertainty bands for a user-specified concrete mix.

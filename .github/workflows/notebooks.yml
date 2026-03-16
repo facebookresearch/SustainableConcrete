@@ -1,0 +1,152 @@
+# GitHub Actions workflow for executing Jupyter notebooks
+# Runs on pull requests and nightly to ensure notebooks work correctly
+
+name: Notebooks
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'notebooks/**'
+      - 'boxcrete/**'
+      - 'pyproject.toml'
+      - '.github/workflows/notebooks.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'notebooks/**'
+      - 'boxcrete/**'
+      - 'pyproject.toml'
+      - '.github/workflows/notebooks.yml'
+  schedule:
+    # Run nightly at 3:00 AM UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  execute-notebooks:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[notebooks]"
+
+      - name: Install Jupyter kernel
+        run: |
+          python -m ipykernel install --user --name python3
+
+      - name: Execute notebooks
+        run: |
+          python - << 'PYEOF'
+          import subprocess, sys
+          from pathlib import Path
+
+          notebooks = sorted(Path("notebooks").glob("*.ipynb"))
+          failed = []
+
+          for nb in notebooks:
+              print(f"{'=' * 40}")
+              print(f"Executing: {nb}")
+              print(f"{'=' * 40}")
+
+              result = subprocess.run(
+                  [
+                      sys.executable, "-m", "jupyter", "nbconvert",
+                      "--to", "notebook",
+                      "--execute",
+                      "--inplace",
+                      "--ExecutePreprocessor.timeout=600",
+                      "--ExecutePreprocessor.kernel_name=python3",
+                      str(nb),
+                  ],
+                  capture_output=False,
+              )
+
+              if result.returncode != 0:
+                  failed.append(str(nb))
+                  print(f"❌ Failed: {nb}")
+              else:
+                  print(f"✅ Successfully executed: {nb}")
+              print()
+
+          if failed:
+              print(f"\n{len(failed)} notebook(s) failed:")
+              for f in failed:
+                  print(f"  - {f}")
+              sys.exit(1)
+          else:
+              print(f"\nAll {len(notebooks)} notebook(s) executed successfully.")
+          PYEOF
+
+      - name: Upload executed notebooks as artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: executed-notebooks
+          path: notebooks/*.ipynb
+          retention-days: 7
+
+  notebook-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install nbformat
+
+      - name: Validate notebook format
+        run: |
+          python - << 'EOF'
+          import nbformat
+          import sys
+          from pathlib import Path
+
+          notebooks = list(Path('notebooks').glob('*.ipynb'))
+          errors = []
+
+          for nb_path in notebooks:
+              try:
+                  with open(nb_path, 'r', encoding='utf-8') as f:
+                      nb = nbformat.read(f, as_version=4)
+                  print(f"✅ Valid notebook: {nb_path}")
+              except Exception as e:
+                  errors.append(f"❌ Invalid notebook {nb_path}: {e}")
+                  print(errors[-1])
+
+          if errors:
+              print(f"\n{len(errors)} notebook(s) failed validation.")
+              sys.exit(1)
+          else:
+              print(f"\nAll {len(notebooks)} notebook(s) are valid.")
+          EOF
