@@ -1,6 +1,7 @@
-# Sustainable Concrete via Bayesian Optimization
+# BOxCrete: A Bayesian Optimization open-source AI Model for Concrete Mix Design & Optimization
 
-Concrete is responsible for up to **8% of anthropogenic carbon dioxide emissions per year** - compared to less than 3% for all air travel - and urgently needs to be decarbonized in order to achieve a sustainable future.
+Concrete, the second most widely used material in the world, accounts for **6–8% of global anthropogenic CO₂ emissions**, largely due to Portland cement production (~0.8 tons CO₂ per ton of cement). Partial replacement with Supplementary Cementitious Materials (SCMs) such as fly ash, slag, and natural pozzolan reduces embodied carbon and often improves durability, but high SCM usage makes compressive strength a highly nonlinear function of multiple interacting mix parameters, rendering traditional design empirical and trial-and-error driven. To systematically navigate this complex composition space, data-driven frameworks are needed. 
+Here, we introduce BOxCrete, an open-source Bayesian optimization framework for probabilistic strength curve prediction and sustainable mix design. 
 We invite researchers and practitioners of both machine learning and civil engineering
 to collaborate on discovering more sustainable concrete formulations that are applicable
 to a wide array of construction projects, at scale.
@@ -8,8 +9,9 @@ For more information,
 please see ["Sustainable Concrete via Bayesian Optimization"](https://arxiv.org/abs/2310.18288).
 
 This repository contains probabilistic models and data for the
-1) compressive strength of concrete / mortar and
-2) the associated global warming potential (GWP) of the paste,
+
+1) Compressive strength of concrete and mortar mixes
+2) The associated global warming potential (GWP)
 
 as a function of their composition, consisting of
 cement, slag, water, to name a few basic ingredients.
@@ -47,92 +49,50 @@ from boxcrete.utils import load_concrete_strength, get_mortar_bounds
 ```
 
 The models can be used for a variety of tasks, including but not limited to
-1) continuous-time strength predictions with uncertainty bands for a user-specified concrete mix, and
-2) experimental design: suggesting promising concrete mixtures to be tested in a lab,
-3) the computation of optimal strength-GWP trade-offs based on user-specified (possibly location-specific) constraints.
+1)	Continuous-time strength curve predictions with uncertainty bands for a user-specified concrete mix.
+2)	Experimental design: suggesting promising concrete mixtures to be tested in a lab,
+3)	The computation of optimal strength-GWP trade-offs based on user-specified (possibly location-specific) constraints.
+
 
 # Examples
 
 ## Compressive Strength Model
 
-The `SustainableConcreteModel` in `models.py` contains a `strength_model`, which can be used to predict the evolution of concrete's compressive strength as a function of its composition, i.e. its ingredients, see also the `strength_model_tutorial.ipynb` in the `notebooks` folder.
-The model is a Gaussian process (GP) and includes several custom modeling steps that make it fit and extropolate concrete strength values well.
-The following figure shows the strength curve predictions of the proposed model (left),
-and for a naive application of a GP (right)
-both trained on the [UCI concrete strength dataset](https://archive.ics.uci.edu/dataset/165/concrete+compressive+strength).
+The `SustainableConcreteModel` in ['BOxCrete_models.py'](BOxCrete_models.py) includes a strength_model that predicts the evolution of compressive strength as a function of mixture composition. A tutorial is provided in [notebooks/BOxCrete Concrete Strength Prediction for GitHub.ipynb](<notebooks/BOxCrete Concrete Strength Prediction for GitHub.ipynb>), which demonstrates how the model can be used to predict the full strength development curve for any user-specified mix. The model is based on Gaussian Process (GP) regression and incorporates custom modeling steps to ensure physically consistent strength evolution and calibrated uncertainty. Example strength curve predictions generated using the notebook are shown in the figures below.
 
 <p align="center">
-  <img src="fig/strength_curve_predictions.jpg">
+  <img src="fig/Picture1.png">
 </p>
 
-The figure shows predicted strength curves for two compositions:
-portland cement (blue) and a mix with 30% fly ash substitution (green).
-Notably, the naive model (right) does not perform well, while our proposed model yields physically plausible predictions with well calibrated uncertainty bands.
+The figure shows predicted strength curves for two compositions: portland cement (blue) and a mix with high cement substitution (green). The model captures the distinct strength development trajectories associated with different binder chemistries while providing physically consistent uncertainty estimates.
 
-Further, when trained on the mortar-mix strength data contained in this repository,
-the training set predictions also look sensible and well calibrated,
-as the next figure shows.
+When the model is trained on the full training dataset and evaluated on an independent set of mixtures, it similarly demonstrates strong predictive performance. As shown in the figure below, the predicted compressive strengths closely match the experimentally measured values across the range of mixes and curing ages, indicating that the model successfully generalizes beyond the training data and provides reliable strength forecasts.
+
 <p align="center">
-  <img src="fig/1_day_strength_callibration_fourth_batch.jpg">
+  <img src="fig/Picture2.png">
+</p>
+
+Further, when trained on the mortar and concrete mix strength data contained in this repository, the training set predictions also look sensible and well calibrated, as the next figure shows.
+
+<p align="center">
+  <img src="fig/Picture3.png">
 </p>
 
 ## Experimental Design
 
-The probabilistic model for compressive strength can in addition be used to design new concrete mixtures that are likely to exhibit an optimal trade-off between strength and GWP.
-The following figure shows the evolution of the empirical Pareto frontier,
-i.e. the points with empirically optimal trade-offs,
-as a function of our experimental batches.
+The probabilistic compressive strength model can also be used to design new concrete mixtures that achieve optimal trade-offs between mechanical performance and environmental impact. In particular, the framework enables multi-objective optimization of early-age (1-day) and later-age (28-day) compressive strength alongside Global Warming Potential (GWP). By systematically exploring the composition space, BOxCrete can generate candidate mixes that balance structural performance requirements with carbon reduction targets. 
+
+As illustrated in the figure below, the model identifies a Pareto front capturing the trade-off between 1-day strength, 28-day strength, and GWP across candidate mixtures.
 
 <p align="center">
-  <img src="fig/empirical_pareto_frontiers.jpg">
+  <img src="fig/Picture4.png">
 </p>
 
-Importantly, the experimental design methodology has been able to propose mortar mixes
-that have experimentally proven to exhibit superior trade-offs between GWP and strength
-compared (orange-yellow) to human-designed mixes (blue-purple).
-
-## Inferring Optimal Trade-Offs under Constraints
-
-While the previous section focused on using the models to optimize the empirically observed trade-offs,
-by proposing new experiments,
-we can also use the trained model to predict what the optimal trade-offs between GWP and strength
-are likely to look like under constraints on the concrete composition
-that were not necessarily present during the training of the model.
-
-In particular, the figure below shows the predicted Pareto frontiers
-of GWP and strength subject to two constraints on the water-to-binder ratio,
-i.e.:
-
-1) water-to-binder ratio > 0.2 (solid lines), and
-2) water-to-binder ratio > 0.35 (dashed lines),
-
-as well as constraints on ingredients:
-
-1) no constraints (blue),
-2) no fly ash (orange), and
-3) no slag (green).
+Another figure shows the distribution of model-generated mixes plotted together with the training dataset, illustrating how the optimization explores the design space while remaining guided by experimentally validated compositions.
 
 <p align="center">
-  <img src="fig/predicted_pareto_frontiers.jpg">
+  <img src="fig/Picture5.png">
 </p>
-
-Notably, while the figure is purely based on model predictions,
-the trends in the figure conform to expert knowledge.
-In particular,
-- the increase in the minimum water-to-binder ratio has an outsize negative effect
-on the evolution of strength,
-- removing fly ash from the composition appears to have negligible effect during the time window we consider (< 28 days), and
-- removing slag from the composition has a signficiant negative effect on strength, similar to the increase in the water-to-binder ratio.
-
-These are just a few insights we can gain from querying the model,
-and we believe that many more questions about the behavior of concrete
-can be investigated in a similar way.
-
-From a practical perspective, the insight that the exclusion of slag - a by-product of steel production -
-is more signficiant than the exlusion of fly ash - a by-product of coal power plants -
-can inform site selection
-for large construction projects that seek to minimize carbon impact.
-
 
 # Citing
 
