@@ -1,4 +1,4 @@
-# BOxCrete: A Bayesian Optimization open-source AI Model for Concrete Mix Design & Optimization
+# BOxCrete: Bayesian Optimization for Sustainable Concrete Mix Design
 
 Concrete, the second most widely used material in the world, accounts for **6–8% of global anthropogenic CO₂ emissions**, largely due to Portland cement production (~0.8 tons CO₂ per ton of cement). Partial replacement with Supplementary Cementitious Materials (SCMs) such as fly ash, slag, and natural pozzolan reduces embodied carbon and often improves durability, but high SCM usage makes compressive strength a highly nonlinear function of multiple interacting mix parameters, rendering traditional design empirical and trial-and-error driven. To systematically navigate this complex composition space, data-driven frameworks are needed.
 Here, we introduce BOxCrete, an open-source Bayesian optimization framework for probabilistic strength curve prediction and sustainable mix design.
@@ -139,14 +139,14 @@ In particular,
 - the increase in the minimum water-to-binder ratio has an outsize negative effect
 on the evolution of strength,
 - removing fly ash from the composition appears to have negligible effect during the time window we consider (< 28 days), and
-- removing slag from the composition has a signficiant negative effect on strength, similar to the increase in the water-to-binder ratio.
+- removing slag from the composition has a significant negative effect on strength, similar to the increase in the water-to-binder ratio.
 
 These are just a few insights we can gain from querying the model,
 and we believe that many more questions about the behavior of concrete
 can be investigated in a similar way.
 
 From a practical perspective, the insight that the exclusion of slag - a by-product of steel production -
-is more signficiant than the exlusion of fly ash - a by-product of coal power plants -
+is more significant than the exclusion of fly ash - a by-product of coal power plants -
 can inform site selection
 for large construction projects that seek to minimize carbon impact.
 

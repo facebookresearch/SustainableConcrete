@@ -102,6 +102,19 @@ class TestFixedFeatureModel(BaseModelTest):
                 Z[:, idx], torch.full((5,), val, dtype=self.dtype)
             )
 
+    def test_fixed_features_unsorted_indices(self):
+        """Regression test: unsorted indices must place values at correct positions."""
+        base = self._mock_base_model()
+        # Deliberately pass unsorted indices: [4, 2]
+        model = FixedFeatureModel(
+            base_model=base, dim=6, indices=[4, 2], values=[99.0, 77.0]
+        )
+        X = torch.rand(3, 4, dtype=self.dtype)
+        Z = model._add_fixed_features(X)
+        # Position 2 should have 77.0 and position 4 should have 99.0
+        torch.testing.assert_close(Z[:, 2], torch.full((3,), 77.0, dtype=self.dtype))
+        torch.testing.assert_close(Z[:, 4], torch.full((3,), 99.0, dtype=self.dtype))
+
     @parameterized.expand([("forward",), ("posterior",)])
     def test_delegates_to_base_model(self, method):
         """Test that forward/posterior delegate to base model with augmented input."""

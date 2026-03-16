@@ -212,9 +212,15 @@ class FixedFeatureModel(Model):
         self.base_model = base_model
         if len(indices) != len(values):
             raise ValueError("indices and values do not have the same length.")
+        # Sort by index so that the boolean mask assignment in
+        # _add_fixed_features places values at the correct positions.
+        indices = torch.as_tensor(indices)
         values = torch.as_tensor(values)
+        sort_order = indices.argsort()
+        indices = indices[sort_order]
+        values = values[sort_order]
         self._dim = dim
-        self._indices: Tensor = torch.as_tensor(indices)
+        self._indices: Tensor = indices
         self._fixed = torch.tensor(
             [i in indices for i in torch.arange(dim, dtype=self._indices.dtype)]
         )
