@@ -9,12 +9,22 @@ description = "Probabilistic models for sustainable concrete design via Bayesian
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
 dependencies = [
     "torch>=2.0.0",
     "botorch>=0.9.0",
     "gpytorch>=1.10.0",
     "pandas>=1.5.0",
     "numpy>=1.20.0",
+    "matplotlib>=3.5.0",
 ]
 
 [project.optional-dependencies]
@@ -30,11 +40,27 @@ notebooks = [
     "nbformat>=5.0.0",
     "ipykernel>=6.0.0",
     "jupyter>=1.0.0",
-    "matplotlib>=3.5.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/facebookresearch/SustainableConcrete"
+Repository = "https://github.com/facebookresearch/SustainableConcrete"
+Documentation = "https://github.com/facebookresearch/SustainableConcrete"
 
 [tool.setuptools]
 packages = ["boxcrete"]
 
 [tool.black]
 line-length = 88
+
+[tool.coverage.run]
+source = ["boxcrete"]
+omit = ["test/*", "notebooks/*", "__pycache__/*", "*.pyc"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+]

@@ -29,24 +29,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10']
+        optimization-mode: ['mortar', 'concrete']
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: '3.10'
 
       - name: Cache pip dependencies
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
+          key: ${{ runner.os }}-pip-3.10-${{ hashFiles('pyproject.toml') }}
           restore-keys: |
-            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+            ${{ runner.os }}-pip-3.10-
             ${{ runner.os }}-pip-
 
       - name: Install dependencies
@@ -58,18 +58,21 @@ jobs:
         run: |
           python -m ipykernel install --user --name python3
 
-      - name: Execute notebooks
+      - name: Execute notebooks (${{ matrix.optimization-mode }} mode)
+        env:
+          BOXCRETE_OPTIMIZATION_MODE: ${{ matrix.optimization-mode }}
         run: |
           python - << 'PYEOF'
-          import subprocess, sys
+          import subprocess, sys, os
           from pathlib import Path
 
+          mode = os.environ.get("BOXCRETE_OPTIMIZATION_MODE", "concrete")
           notebooks = sorted(Path("notebooks").glob("*.ipynb"))
           failed = []
 
           for nb in notebooks:
               print(f"{'=' * 40}")
-              print(f"Executing: {nb}")
+              print(f"Executing ({mode}): {nb}")
               print(f"{'=' * 40}")
 
               result = subprocess.run(
@@ -87,25 +90,25 @@ jobs:
 
               if result.returncode != 0:
                   failed.append(str(nb))
-                  print(f"❌ Failed: {nb}")
+                  print(f"❌ Failed ({mode}): {nb}")
               else:
-                  print(f"✅ Successfully executed: {nb}")
+                  print(f"✅ Successfully executed ({mode}): {nb}")
               print()
 
           if failed:
-              print(f"\n{len(failed)} notebook(s) failed:")
+              print(f"\n{len(failed)} notebook(s) failed in {mode} mode:")
               for f in failed:
                   print(f"  - {f}")
               sys.exit(1)
           else:
-              print(f"\nAll {len(notebooks)} notebook(s) executed successfully.")
+              print(f"\nAll {len(notebooks)} notebook(s) executed successfully in {mode} mode.")
           PYEOF
 
       - name: Upload executed notebooks as artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: executed-notebooks
+          name: executed-notebooks-${{ matrix.optimization-mode }}
           path: notebooks/*.ipynb
           retention-days: 7
 

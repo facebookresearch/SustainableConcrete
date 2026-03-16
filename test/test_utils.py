@@ -15,43 +15,42 @@ import torch
 from parameterized import parameterized
 
 from boxcrete.utils import (
-    DEFAULT_DATA_PATH,
+    CONCRETE_BOUNDS_DICT,
+    CONCRETE_CONSTRAINTS,
+    DATA_PATH,
+    DEFAULT_BOUNDS_DICT,
     DEFAULT_X_COLUMNS,
     DEFAULT_Y_COLUMNS,
     DEFAULT_YSTD_COLUMNS,
+    MORTAR_BOUNDS_DICT,
+    MORTAR_CONSTRAINTS,
     SustainableConcreteDataset,
     get_aggregate_constraint,
-    get_binder_constraints,
     get_bounds,
     get_cement_replacement_constraints,
-    get_concrete_constraints,
+    get_constraints,
     get_day_zero_data,
-    get_hrwr_constraints,
-    get_mass_constraints,
-    get_mortar_bounds,
-    get_mortar_constraints,
-    get_paste_constraints,
     get_proportional_sum_constraints,
     get_reference_point,
     get_subset_sum_tensors,
     get_sum_constraints,
     get_sum_equality_constraint,
     get_total_water_reducer_constraints,
-    get_water_constraints,
     load_concrete_strength,
     predict_pareto,
+    reduce_to_optimization_space,
     unique_elements,
 )
 
-# Column lists for concrete mixes (include Coarse Aggregates, exclude Curing Temp)
+# Concrete columns (subset used in some tests)
 CONCRETE_COLUMNS = [
-    "Cement",
-    "Fly Ash",
-    "Slag",
-    "Water",
-    "HRWR",
-    "Coarse Aggregates",
-    "Fine Aggregate",
+    "Cement (kg/m3)",
+    "Fly Ash (kg/m3)",
+    "Slag (kg/m3)",
+    "Water (kg/m3)",
+    "HRWR (kg/m3)",
+    "Coarse Aggregates (kg/m3)",
+    "Fine Aggregate (kg/m3)",
     "Time",
 ]
 
@@ -59,16 +58,17 @@ CONCRETE_COLUMNS = [
 def _create_test_dataframe(n=10, inject_nan_at=None):
     """Shared helper to create a test DataFrame matching DEFAULT_X_COLUMNS."""
     data = {
-        "Mix ID": [f"Test_{i}" for i in range(n)],
-        "Name": [f"Name_{i}" for i in range(n)],
-        "Description": [f"Desc_{i}" for i in range(n)],
-        "Cement": [400 + i * 10 for i in range(n)],
-        "Fly Ash": [50 + i for i in range(n)],
-        "Slag": [30 + i for i in range(n)],
-        "Water": [200 + i * 5 for i in range(n)],
-        "HRWR": [5 + i * 0.1 for i in range(n)],
-        "Fine Aggregate": [1000 + i * 10 for i in range(n)],
-        "Curing Temp (Cel.)": [20 + i for i in range(n)],
+        "Mix Name": [f"Test_{i}" for i in range(n)],
+        "Cement (kg/m3)": [400 + i * 10 for i in range(n)],
+        "Fly Ash (kg/m3)": [50 + i for i in range(n)],
+        "Slag (kg/m3)": [30 + i for i in range(n)],
+        "Water (kg/m3)": [200 + i * 5 for i in range(n)],
+        "HRWR (kg/m3)": [5 + i * 0.1 for i in range(n)],
+        "MRWR (kg/m3)": [1 + i * 0.05 for i in range(n)],
+        "Fine Aggregate (kg/m3)": [1000 + i * 10 for i in range(n)],
+        "Coarse Aggregates (kg/m3)": [900 + i * 10 for i in range(n)],
+        "Material Source": [0] * n,
+        "Temp (C)": [20 + i for i in range(n)],
         "Time": [1, 7, 28] * 3 + [28],
         "GWP": [100 + i * 5 for i in range(n)],
         "Strength (Mean)": [3000 + i * 100 for i in range(n)],
@@ -183,9 +183,6 @@ class TestConstraintFunction(unittest.TestCase):
 
     @parameterized.expand(
         [
-            ("binder", get_binder_constraints, DEFAULT_X_COLUMNS, 100.0, 950.0),
-            ("water", get_water_constraints, DEFAULT_X_COLUMNS, 0.35, 0.5),
-            ("hrwr", get_hrwr_constraints, DEFAULT_X_COLUMNS, 0.0, 0.1),
             (
                 "cement_repl",
                 get_cement_replacement_constraints,
@@ -194,8 +191,6 @@ class TestConstraintFunction(unittest.TestCase):
                 0.5,
             ),
             ("aggregate", get_aggregate_constraint, CONCRETE_COLUMNS, 0.5, 2.0),
-            ("mass", get_mass_constraints, CONCRETE_COLUMNS, 3600.0, 4400.0),
-            ("paste", get_paste_constraints, CONCRETE_COLUMNS, 0.16, 0.35),
             (
                 "total_wr",
                 get_total_water_reducer_constraints,
@@ -204,9 +199,9 @@ class TestConstraintFunction(unittest.TestCase):
                 0.1,
             ),
             (
-                "total_wr_mrwr",
+                "total_wr_no_mrwr",
                 get_total_water_reducer_constraints,
-                list(DEFAULT_X_COLUMNS[:-1]) + ["MRWR", "Time"],
+                [c for c in DEFAULT_X_COLUMNS if c != "MRWR (kg/m3)"],
                 0.0,
                 0.1,
             ),
@@ -215,17 +210,43 @@ class TestConstraintFunction(unittest.TestCase):
     def test_constraint_functions(self, name, func, columns, lower, upper):
         self._verify(func(columns, lower, upper))
 
-    def test_get_mortar_constraints(self):
-        eq, ineq = get_mortar_constraints(DEFAULT_X_COLUMNS, min_wb=0.35)
+    def test_get_constraints_concrete_defaults(self):
+        eq, ineq = get_constraints(CONCRETE_COLUMNS)
+        self.assertIsInstance(eq, list)
+        self.assertEqual(len(eq), 0)
+        self._verify(ineq, expected_len=10)
+
+    def test_get_constraints_mortar_preset(self):
+        mortar_cols = [
+            "Cement (kg/m3)",
+            "Fly Ash (kg/m3)",
+            "Slag (kg/m3)",
+            "Water (kg/m3)",
+            "HRWR (kg/m3)",
+            "Fine Aggregate (kg/m3)",
+            "Time",
+        ]
+        eq, ineq = get_constraints(mortar_cols, **MORTAR_CONSTRAINTS)
         self.assertGreater(len(eq), 0)
         self.assertGreater(len(ineq), 0)
 
-    def test_get_concrete_constraints(self):
-        self._verify(get_concrete_constraints(CONCRETE_COLUMNS), expected_len=10)
+    def test_get_constraints_all_none(self):
+        eq, ineq = get_constraints(
+            CONCRETE_COLUMNS,
+            binder_bounds=None,
+            mass_bounds=None,
+            paste_bounds=None,
+            hrwr_binder_bounds=None,
+        )
+        self.assertEqual(len(eq), 0)
+        # only water/binder remains (2 constraints)
+        self._verify(ineq, expected_len=2)
 
     def test_get_sum_equality_constraint(self):
         indices, coeffs, value = get_sum_equality_constraint(
-            DEFAULT_X_COLUMNS, ["Cement", "Fly Ash", "Slag"], 500.0
+            DEFAULT_X_COLUMNS,
+            ["Cement (kg/m3)", "Fly Ash (kg/m3)", "Slag (kg/m3)"],
+            500.0,
         )
         self.assertEqual(value, 500.0)
         self.assertTrue(torch.all(coeffs != 0))
@@ -233,14 +254,27 @@ class TestConstraintFunction(unittest.TestCase):
     def test_get_sum_constraints(self):
         self._verify(
             get_sum_constraints(
-                DEFAULT_X_COLUMNS, ["Cement", "Fly Ash", "Slag"], 100.0, 900.0
+                DEFAULT_X_COLUMNS,
+                ["Cement (kg/m3)", "Fly Ash (kg/m3)", "Slag (kg/m3)"],
+                100.0,
+                900.0,
             )
         )
 
     @parameterized.expand(
         [
-            (["Cement"], ["Cement", "Fly Ash", "Slag"], 0.0, 1.0),
-            (["Water"], ["Cement", "Fly Ash", "Slag"], 0.35, 0.5),
+            (
+                ["Cement (kg/m3)"],
+                ["Cement (kg/m3)", "Fly Ash (kg/m3)", "Slag (kg/m3)"],
+                0.0,
+                1.0,
+            ),
+            (
+                ["Water (kg/m3)"],
+                ["Cement (kg/m3)", "Fly Ash (kg/m3)", "Slag (kg/m3)"],
+                0.35,
+                0.5,
+            ),
         ]
     )
     def test_get_proportional_sum_constraints(self, num, den, lo, hi):
@@ -249,7 +283,9 @@ class TestConstraintFunction(unittest.TestCase):
         )
 
     def test_get_subset_sum_tensors(self):
-        indices, coeffs = get_subset_sum_tensors(DEFAULT_X_COLUMNS, ["Cement", "Water"])
+        indices, coeffs = get_subset_sum_tensors(
+            DEFAULT_X_COLUMNS, ["Cement (kg/m3)", "Water (kg/m3)"]
+        )
         self.assertEqual(len(indices), 2)
         self.assertEqual(coeffs.sum().item(), 2)
 
@@ -257,16 +293,21 @@ class TestConstraintFunction(unittest.TestCase):
 class TestBoundsFunction(unittest.TestCase):
     """Tests for bounds-related functions."""
 
-    @parameterized.expand([(DEFAULT_X_COLUMNS,), (DEFAULT_X_COLUMNS[:-1],)])
-    def test_get_mortar_bounds(self, columns):
-        bounds = get_mortar_bounds(columns)
+    @parameterized.expand(
+        [
+            ("concrete_default", DEFAULT_X_COLUMNS, DEFAULT_BOUNDS_DICT),
+            ("concrete_no_time", DEFAULT_X_COLUMNS[:-1], DEFAULT_BOUNDS_DICT),
+            ("mortar", DEFAULT_X_COLUMNS, MORTAR_BOUNDS_DICT),
+        ]
+    )
+    def test_get_bounds(self, name, columns, bounds_dict):
+        bounds = get_bounds(columns, bounds_dict)
         self.assertEqual(bounds.shape, (2, len(columns)))
         self.assertTrue(torch.all(bounds[0] <= bounds[1]))
 
-    def test_get_bounds(self):
-        bounds = get_bounds(CONCRETE_COLUMNS)
-        self.assertEqual(bounds.shape, (2, len(CONCRETE_COLUMNS)))
-        self.assertTrue(torch.all(bounds[0] <= bounds[1]))
+    def test_bounds_dicts_are_distinct(self):
+        self.assertIsNot(MORTAR_BOUNDS_DICT, CONCRETE_BOUNDS_DICT)
+        self.assertIs(DEFAULT_BOUNDS_DICT, CONCRETE_BOUNDS_DICT)
 
 
 class TestUtilityFunction(unittest.TestCase):
@@ -314,24 +355,22 @@ class TestDataLoading(unittest.TestCase):
 
     def test_handles_missing_data(self):
         df = _create_test_dataframe(
-            inject_nan_at=[(0, "Cement"), (3, "Strength (Mean)")]
+            inject_nan_at=[(0, "Cement (kg/m3)"), (3, "Strength (Mean)")]
         )
         dataset = load_concrete_strength(data_path=df)
         self.assertEqual(dataset.X.shape[0], 8)  # 10 - 2 dropped
 
     def test_batch_filter(self):
         df = _create_test_dataframe()
-        df["Mix ID"] = [
+        df["Mix Name"] = [
             f"BatchA_{i}" if i < 5 else f"BatchB_{i}" for i in range(len(df))
         ]
         dataset = load_concrete_strength(data_path=df, batch_names=["BatchA"])
         self.assertLessEqual(dataset.X.shape[0], len(df))
 
-    @unittest.skipUnless(
-        os.path.exists(DEFAULT_DATA_PATH), "Real CSV data not available"
-    )
+    @unittest.skipUnless(os.path.exists(DATA_PATH), "Real CSV data not available")
     def test_load_from_csv_path(self):
-        dataset = load_concrete_strength(data_path=DEFAULT_DATA_PATH)
+        dataset = load_concrete_strength(data_path=DATA_PATH)
         self.assertIsInstance(dataset, SustainableConcreteDataset)
         self.assertGreater(dataset.X.shape[0], 0)
 
@@ -379,13 +418,13 @@ class TestPredictPareto(unittest.TestCase):
             self.assertTrue(torch.all(Y[1:, 0] >= Y[:-1, 0]))
 
 
-@unittest.skipUnless(os.path.exists(DEFAULT_DATA_PATH), "Real CSV data not available")
+@unittest.skipUnless(os.path.exists(DATA_PATH), "Real CSV data not available")
 class TestRealDataIntegration(unittest.TestCase):
     """Integration tests using the real dataset for regression testing."""
 
     def test_load_with_batch_names(self):
         dataset = load_concrete_strength(
-            data_path=DEFAULT_DATA_PATH,
+            data_path=DATA_PATH,
             process_batch_names_from_mix_name=True,
             mix_name_column="Mix Name",
         )
@@ -394,26 +433,77 @@ class TestRealDataIntegration(unittest.TestCase):
         self.assertGreater(len(dataset._batch_name_to_indices), 0)
 
     def test_gwp_data_property(self):
-        dataset = load_concrete_strength(data_path=DEFAULT_DATA_PATH)
-        dataset.bounds = get_mortar_bounds(dataset.X_columns)
+        dataset = load_concrete_strength(data_path=DATA_PATH)
+        dataset.bounds = get_bounds(dataset.X_columns)
         X, Y, Yvar, X_bounds = dataset.gwp_data
         self.assertGreater(X.shape[0], 0)
         self.assertEqual(Y.shape[-1], 1)
         self.assertEqual(X_bounds.shape[-1], X.shape[-1])
 
-    def test_full_workflow(self):
-        dataset = load_concrete_strength(data_path=DEFAULT_DATA_PATH)
+    def test_full_workflow_concrete(self):
+        dataset = load_concrete_strength(data_path=DATA_PATH)
         self.assertEqual(dataset.X.shape[-1], len(DEFAULT_X_COLUMNS))
         self.assertTrue(torch.all(dataset.Y[:, 0] <= 0))
 
-        bounds = get_mortar_bounds(dataset.X_columns[:-1])
-        eq, ineq = get_mortar_constraints(dataset.X_columns[:-1])
+        bounds = get_bounds(dataset.X_columns[:-1])
+        eq, ineq = get_constraints(dataset.X_columns[:-1])
         self.assertEqual(bounds.shape[0], 2)
-        self.assertGreater(len(eq), 0)
+        self.assertEqual(len(eq), 0)
+        self.assertGreater(len(ineq), 0)
 
         X_s, Y_s, Yvar_s, _ = dataset.strength_data
         X_g, Y_g, Yvar_g, _ = dataset.gwp_data
         self.assertGreater(X_s.shape[0], X_g.shape[0])
+
+    def test_full_workflow_mortar(self):
+        dataset = load_concrete_strength(
+            data_path=DATA_PATH,
+            bounds_dict=MORTAR_BOUNDS_DICT,
+        )
+        mortar_cols = dataset.X_columns[:-1]
+        bounds = get_bounds(mortar_cols, MORTAR_BOUNDS_DICT)
+        eq, ineq = get_constraints(mortar_cols, **MORTAR_CONSTRAINTS)
+        self.assertEqual(bounds.shape[0], 2)
+        self.assertGreater(len(eq), 0)
+        self.assertGreater(len(ineq), 0)
+
+
+class TestReduceToOptimizationSpace(unittest.TestCase):
+    """Tests for reduce_to_optimization_space function."""
+
+    def test_empty_fixed_features(self):
+        """No-op when fixed_features is empty."""
+        bounds = torch.tensor([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]])
+        eq = [(torch.tensor([0, 1]), torch.tensor([1.0, 1.0]), 0.5)]
+        ineq = [(torch.tensor([0, 2]), torch.tensor([1.0, -1.0]), 0.0)]
+        out_b, out_eq, out_ineq = reduce_to_optimization_space(bounds, eq, ineq, {})
+        torch.testing.assert_close(out_b, bounds)
+        self.assertIs(out_eq, eq)
+        self.assertIs(out_ineq, ineq)
+
+    def test_reduces_bounds_remaps_constraints_absorbs_values(self):
+        """Bounds are reduced, constraint indices remapped, and fixed values absorbed."""
+        bounds = torch.tensor([[0.0] * 4, [10.0] * 4])
+        # eq: 2*x[0] + 3*x[1] + 4*x[2] + 5*x[3] = 100
+        eq = [(torch.tensor([0, 1, 2, 3]), torch.tensor([2.0, 3.0, 4.0, 5.0]), 100.0)]
+        # ineq: x[0] - x[2] >= 0
+        ineq = [(torch.tensor([0, 2]), torch.tensor([1.0, -1.0]), 0.0)]
+        # Fix x[1]=10.0, x[3]=6.0
+        out_b, out_eq, out_ineq = reduce_to_optimization_space(
+            bounds, eq, ineq, {1: 10.0, 3: 6.0}
+        )
+        # Bounds: keep columns 0,2 only
+        torch.testing.assert_close(out_b, torch.tensor([[0.0, 0.0], [10.0, 10.0]]))
+        # Eq: 2*x[0] + 4*x[2] = 100 - 3*10 - 5*6 = 40; indices 0->0, 2->1
+        eq_idx, eq_coeff, eq_val = out_eq[0]
+        torch.testing.assert_close(eq_idx, torch.tensor([0, 1]))
+        torch.testing.assert_close(eq_coeff, torch.tensor([2.0, 4.0]))
+        self.assertAlmostEqual(eq_val, 40.0)
+        # Ineq: x[0] - x[2] >= 0; indices 0->0, 2->1; no fixed vars, value unchanged
+        ineq_idx, ineq_coeff, ineq_val = out_ineq[0]
+        torch.testing.assert_close(ineq_idx, torch.tensor([0, 1]))
+        torch.testing.assert_close(ineq_coeff, torch.tensor([1.0, -1.0]))
+        self.assertAlmostEqual(ineq_val, 0.0)
 
 
 if __name__ == "__main__":

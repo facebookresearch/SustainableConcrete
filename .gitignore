@@ -56,5 +56,17 @@ Thumbs.db
 *.tar.gz
 *.zip
 
+# Legacy root-level modules (superseded by boxcrete/ package)
+/models.py
+/utils.py
+/input_transform.py
+/doodles.py
+/posterior_mean_pareto.py
+
+# Notebook-generated output files
+ConcreteFormulae.csv
+ConcreteFormula_*.png
+GWPvsStrength.png
+
 # Planning files
 *.plan.md
