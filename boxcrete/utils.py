@@ -38,7 +38,7 @@ _TOTAL_MASS_NAMES = _PASTE_CONTENT_NAMES + [
     "HRWR (kg/m3)",
     "Coarse Aggregates (kg/m3)",
     "Fine Aggregate (kg/m3)",
-]
+]  # MRWR excluded: negligible contribution to total mass
 DEFAULT_X_COLUMNS = [
     "Cement (kg/m3)",
     "Fly Ash (kg/m3)",
@@ -65,13 +65,16 @@ MORTAR_BOUNDS_DICT = {
 }
 
 CONCRETE_BOUNDS_DICT = {
-    "Cement (kg/m3)": (300, 700),
-    "Fly Ash (kg/m3)": (0, 350),
-    "Slag (kg/m3)": (0, 450),
-    "Coarse Aggregates (kg/m3)": (800, 1950),
-    "Fine Aggregate (kg/m3)": (600, 1700),
+    "Cement (kg/m3)": (0, 1000),
+    "Fly Ash (kg/m3)": (0, 600),
+    "Slag (kg/m3)": (0, 1300),
+    "Coarse Aggregates (kg/m3)": (0, 1600),
+    "Fine Aggregate (kg/m3)": (400, 2600),
     "Material Source": (0, 1),
-    "MRWR (kg/m3)": (0, 50),
+    "MRWR (kg/m3)": (
+        0,
+        1,
+    ),  # effectively zero in training data; small range avoids NaN in normalization
     "Temp (C)": (0, 40),
     "Time": (0, 28),
 }
@@ -222,7 +225,7 @@ class SustainableConcreteDataset:
             if (X.amin(dim=0) < X_bounds[0, :]).any() or (
                 X.amax(dim=0) > X_bounds[1, :]
             ).any():
-                logger.warning(
+                logger.warning(  # pragma: no cover
                     "Bounds do not hold in training data: "
                     f"{X_bounds[0, :], X.amin(dim=0) = }"
                     f"{X_bounds[1, :], X.amax(dim=0) = }"
@@ -831,20 +834,26 @@ def get_subset_sum_tensors(
     return indices, coeffs
 
 
-def get_reference_point() -> Tensor:
-    """Returns a default reference point for Pareto frontier computation.
+MORTAR_REFERENCE_POINT = torch.tensor([-400.0, 1000.0, 5000.0], dtype=torch.double)
+CONCRETE_REFERENCE_POINT = torch.tensor([-200.0, 1000.0, 5000.0], dtype=torch.double)
+
+
+def get_reference_point(optimization_mode: str = "concrete") -> Tensor:
+    """Returns a reference point for Pareto frontier computation.
 
     The reference point specifies minimum acceptable values for each objective
     (GWP, 1-day strength, 28-day strength). Solutions that do not dominate
     this point are excluded from the Pareto frontier.
 
+    Args:
+        optimization_mode: ``"concrete"`` (default) or ``"mortar"``.
+
     Returns:
-        A 3-element Tensor ``[gwp, strength_day_1, strength_day_28]``.
+        A 3-element Tensor ``[-GWP_threshold, 1-day_threshold, 28-day_threshold]``.
     """
-    gwp = -400.0  # chosen to hone in on the greener and strong region
-    strength_day_1 = 1000
-    strength_day_28 = 5000
-    return torch.tensor([gwp, strength_day_1, strength_day_28], dtype=torch.double)
+    if optimization_mode == "mortar":
+        return MORTAR_REFERENCE_POINT.clone()
+    return CONCRETE_REFERENCE_POINT.clone()
 
 
 def get_day_zero_data(X: Tensor, bounds: Tensor | None, n: int = 128):

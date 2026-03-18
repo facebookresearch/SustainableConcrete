@@ -16,7 +16,7 @@ from parameterized import parameterized
 
 from boxcrete.utils import (
     CONCRETE_BOUNDS_DICT,
-    CONCRETE_CONSTRAINTS,
+    CONCRETE_REFERENCE_POINT,
     DATA_PATH,
     DEFAULT_BOUNDS_DICT,
     DEFAULT_X_COLUMNS,
@@ -24,6 +24,7 @@ from boxcrete.utils import (
     DEFAULT_YSTD_COLUMNS,
     MORTAR_BOUNDS_DICT,
     MORTAR_CONSTRAINTS,
+    MORTAR_REFERENCE_POINT,
     SustainableConcreteDataset,
     get_aggregate_constraint,
     get_bounds,
@@ -323,9 +324,28 @@ class TestUtilityFunction(unittest.TestCase):
     def test_unique_elements(self, input_list, expected):
         self.assertEqual(unique_elements(input_list), expected)
 
-    def test_get_reference_point(self):
+    def test_get_reference_point_default_is_concrete(self):
         ref = get_reference_point()
+        torch.testing.assert_close(ref, CONCRETE_REFERENCE_POINT)
         self.assertEqual(ref.shape, (3,))
+
+    def test_get_reference_point_concrete(self):
+        ref = get_reference_point("concrete")
+        torch.testing.assert_close(ref, CONCRETE_REFERENCE_POINT)
+        self.assertAlmostEqual(ref[0].item(), -200.0)
+
+    def test_get_reference_point_mortar(self):
+        ref = get_reference_point("mortar")
+        torch.testing.assert_close(ref, MORTAR_REFERENCE_POINT)
+        self.assertAlmostEqual(ref[0].item(), -400.0)
+
+    def test_reference_point_presets_differ(self):
+        self.assertFalse(torch.equal(MORTAR_REFERENCE_POINT, CONCRETE_REFERENCE_POINT))
+
+    def test_get_reference_point_returns_clone(self):
+        ref1 = get_reference_point("concrete")
+        ref2 = get_reference_point("concrete")
+        self.assertFalse(ref1.data_ptr() == ref2.data_ptr())
 
     @parameterized.expand(
         [(32, None), (64, torch.tensor([[0, 0, 0], [100, 100, 28]]).float())]
@@ -466,6 +486,28 @@ class TestRealDataIntegration(unittest.TestCase):
         self.assertEqual(bounds.shape[0], 2)
         self.assertGreater(len(eq), 0)
         self.assertGreater(len(ineq), 0)
+
+    def test_concrete_bounds_within_training_range(self):
+        """Regression test: bounds should not be wildly wider than training data."""
+        dataset = load_concrete_strength(data_path=DATA_PATH)
+        X = dataset.X
+        bounds = get_bounds(dataset.X_columns)
+        # Water and HRWR bounds are computed dynamically from the binder range,
+        # so they can legitimately be wider than the training data range.
+        dynamic_cols = {"Water (kg/m3)", "HRWR (kg/m3)"}
+        for j, col in enumerate(dataset.X_columns):
+            if col in dynamic_cols:
+                continue
+            data_range = X[:, j].max() - X[:, j].min()
+            if data_range > 0:
+                bound_range = bounds[1, j] - bounds[0, j]
+                ratio = bound_range / data_range
+                self.assertLess(
+                    ratio,
+                    3.0,
+                    f"Bound range for {col} is {ratio:.1f}x the training range"
+                    " — too wide",
+                )
 
 
 class TestReduceToOptimizationSpace(unittest.TestCase):
