@@ -173,6 +173,37 @@ class TestSustainableConcreteModel(BaseModelTest):
         model_list = model.get_model_list()
         self.assertEqual(len(model_list.models), expected_outputs)
 
+    def test_get_model_list_without_fixed_features(self):
+        """Default (no fixed_features) should fix only Time."""
+        model_list = self.model.get_model_list()
+        self.assertEqual(len(model_list.models), 3)
+        # GWP model should be the raw gwp model (not wrapped)
+        self.assertIs(model_list.models[0], self.model.gwp_model)
+        # Strength models should be FixedFeatureModel
+        for i in range(1, len(model_list.models)):
+            self.assertIsInstance(model_list.models[i], FixedFeatureModel)
+
+    def test_get_model_list_with_fixed_features(self):
+        """With fixed_features, GWP model gets wrapped too."""
+        fixed = {5: 0.0}  # fix feature index 5
+        model_list = self.model.get_model_list(fixed_features=fixed)
+        self.assertEqual(len(model_list.models), 3)
+        # GWP model should be wrapped in FixedFeatureModel
+        self.assertIsInstance(model_list.models[0], FixedFeatureModel)
+        # Strength models should also have extra fixed features
+        for i in range(1, len(model_list.models)):
+            self.assertIsInstance(model_list.models[i], FixedFeatureModel)
+            # Should fix Time + the extra feature
+            self.assertEqual(len(model_list.models[i]._indices), 2)
+
+    def test_get_model_list_fixed_features_time_only(self):
+        """If fixed_features only contains Time index, GWP is not wrapped."""
+        time_idx = self.model.d - 1
+        fixed = {time_idx: 14.0}
+        model_list = self.model.get_model_list(fixed_features=fixed)
+        # GWP should not be wrapped since only Time was in fixed_features
+        self.assertIs(model_list.models[0], self.model.gwp_model)
+
 
 class TestFitGP(BaseModelTest):
     """Tests for fit_gwp_gp and fit_strength_gp with fast optimizer."""

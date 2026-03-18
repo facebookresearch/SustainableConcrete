@@ -26,43 +26,77 @@ logger = logging.getLogger(__name__)
 # Path to the repository root, resolved from the package location.
 # This allows data loading to work regardless of the current working directory.
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_DATA_PATH = os.path.join(REPO_DIR, "data", "compressive_strength.csv")
+DATA_PATH = os.path.join(REPO_DIR, "data", "boxcrete_data.csv")
 
 # linear constraint type (ind, coeffs, value)
 T_CONSTRAINT = tuple[Tensor, Tensor, float]
 
-_TOTAL_BINDER_NAMES = ["Cement", "Fly Ash", "Slag"]
-_PASTE_CONTENT_NAMES = _TOTAL_BINDER_NAMES + ["Water"]
-_BINDER_PLUS_AGGREGATE = _TOTAL_BINDER_NAMES + ["Fine Aggregate"]
+_TOTAL_BINDER_NAMES = ["Cement (kg/m3)", "Fly Ash (kg/m3)", "Slag (kg/m3)"]
+_PASTE_CONTENT_NAMES = _TOTAL_BINDER_NAMES + ["Water (kg/m3)"]
+_MORTAR_BINDER_PLUS_AGGREGATE = _TOTAL_BINDER_NAMES + ["Fine Aggregate (kg/m3)"]
 _TOTAL_MASS_NAMES = _PASTE_CONTENT_NAMES + [
-    "HRWR",
-    "Coarse Aggregates",
-    "Fine Aggregate",
+    "HRWR (kg/m3)",
+    "Coarse Aggregates (kg/m3)",
+    "Fine Aggregate (kg/m3)",
 ]
 DEFAULT_X_COLUMNS = [
-    "Cement",
-    "Fly Ash",
-    "Slag",
-    "Water",
-    "HRWR",
-    "Fine Aggregate",
-    "Curing Temp (Cel.)",
+    "Cement (kg/m3)",
+    "Fly Ash (kg/m3)",
+    "Slag (kg/m3)",
+    "Water (kg/m3)",
+    "HRWR (kg/m3)",
+    "MRWR (kg/m3)",
+    "Fine Aggregate (kg/m3)",
+    "Coarse Aggregates (kg/m3)",
+    "Material Source",
+    "Temp (C)",
     "Time",  # last dimension is assumed to be time
 ]
 DEFAULT_Y_COLUMNS = ["GWP", "Strength (Mean)"]
 DEFAULT_YSTD_COLUMNS = ["Strength (Std)"]
 
-DEFAULT_BOUNDS_DICT = {
-    "Cement": (0, 950),  # in grams, as opposed to the original concrete bounds
-    "Fly Ash": (0, 950),
-    "Slag": (0, 950),
-    "Fine Aggregate": (925, 1775),  # fixed based on binder + aggregate constraint
-    "Curing Temp (Cel.)": (0, 40),
-    "Time": (0, 28),  # up to 28 days
+MORTAR_BOUNDS_DICT = {
+    "Cement (kg/m3)": (0, 950),
+    "Fly Ash (kg/m3)": (0, 950),
+    "Slag (kg/m3)": (0, 950),
+    "Fine Aggregate (kg/m3)": (925, 1775),
+    "Temp (C)": (0, 40),
+    "Time": (0, 28),
 }
 
+CONCRETE_BOUNDS_DICT = {
+    "Cement (kg/m3)": (300, 700),
+    "Fly Ash (kg/m3)": (0, 350),
+    "Slag (kg/m3)": (0, 450),
+    "Coarse Aggregates (kg/m3)": (800, 1950),
+    "Fine Aggregate (kg/m3)": (600, 1700),
+    "Material Source": (0, 1),
+    "MRWR (kg/m3)": (0, 50),
+    "Temp (C)": (0, 40),
+    "Time": (0, 28),
+}
 
-class SustainableConcreteDataset(object):
+DEFAULT_BOUNDS_DICT = CONCRETE_BOUNDS_DICT
+
+MORTAR_CONSTRAINTS = dict(
+    equality_sums=[(_MORTAR_BINDER_PLUS_AGGREGATE, 1875.0)],
+    binder_bounds=(100.0, 950.0),
+    mass_bounds=None,
+    paste_bounds=None,
+    water_binder_bounds=(0.35, 0.5),
+)
+
+CONCRETE_CONSTRAINTS = dict()
+
+
+class SustainableConcreteDataset:
+    """A container for concrete strength and GWP data with composition inputs.
+
+    Stores input features (composition + time), outputs (GWP and strength), and
+    their uncertainties. Provides convenience methods for splitting data by time
+    and by unique compositions.
+    """
+
     def __init__(
         self,
         X: Tensor,
@@ -91,7 +125,7 @@ class SustainableConcreteDataset(object):
                 indices of the corresponding samples in `X` and `Y`.
 
         Raises:
-            ValueError: If the last columne of `X` is not time.
+            ValueError: If the last column of `X` is not time.
         """
         if X_columns[-1].lower() != "time":
             raise ValueError(
@@ -155,6 +189,9 @@ class SustainableConcreteDataset(object):
     def strength_data_by_time(self, time: float) -> tuple[Tensor, Tensor, Tensor]:
         """Returns the strength data for a specific time.
 
+        Args:
+            time: The curing time (in days) to filter by.
+
         Returns:
             A 3-tuple of Tensors containing 1) the inputs X (*without* time since it is
             fixed), 2) strengths Y that are observed at `time`, and 3) empirical
@@ -207,16 +244,16 @@ class SustainableConcreteDataset(object):
 
     @property
     def unique_composition_indices(self) -> list[int]:
-        """Returns the indices of of the first occurance of each unique composition
+        """Returns the indices of the first occurrence of each unique composition
         in `X`.
 
         Returns:
-            A list of integer indices indicating the first occurance of each unique
+            A list of integer indices indicating the first occurrence of each unique
             composition.
         """
         c, rev = self.unique_compositions
         rev = [r.item() for r in rev]  # converting to a list of python ints
-        # indices of first occurances of unique compositions
+        # indices of first occurrences of unique compositions
         unique_indices = [rev.index(i) for i in range(len(c))]
         # sorting in ascending order, to be identical to collection order
         unique_indices.sort()
@@ -271,57 +308,43 @@ class SustainableConcreteDataset(object):
 
 
 def load_concrete_strength(
-    data_path: str | pd.DataFrame = DEFAULT_DATA_PATH,
+    data_path: str | pd.DataFrame = DATA_PATH,
     batch_names: list[str] | None = None,
     dtype: torch.dtype | None = None,
     device: torch.device | None = None,
-    # used_columns: list[str] | None = None,
-    mix_name_column: str = "Mix ID",
+    mix_name_column: str = "Mix Name",
     X_columns: list[str] = DEFAULT_X_COLUMNS,
     Y_columns: list[str] = DEFAULT_Y_COLUMNS,
     Ystd_columns: list[str] = DEFAULT_YSTD_COLUMNS,
     process_batch_names_from_mix_name: bool = False,
     bounds_dict: dict[str, tuple[float, float]] = DEFAULT_BOUNDS_DICT,
 ) -> SustainableConcreteDataset:
-    """A function to load concrete strength data from a CSV file.
+    """Loads concrete strength data from a CSV file or DataFrame.
 
-    The assumptions of this function are as follows:
-        - The first three columns are reserved for identifiers (e.g. Mix ID, Name, Description).
-        - The fourth column to the last five columns are assumed to be composition data.
-        - Immediately following the composition data is the time column, i.e. 5th to last.
-        - Following the time column are four columns characterizing the output, i.e.:
-            - "GWP"
-            - "Strength (Mean)"
-            - "Strength (Std)"
-            - "# of measurements"
-
-    To summarize, the columns format should be:
-        ["Mix ID", "Name", "Description"]
-        + ["Composition 1", ..., "Composition n"]  (names can be arbitrary.)
-        + ["Time"]
-        + ["GWP", "Strength (Mean)", "Strength (Std)", "# of measurements"]
+    The function expects the following column structure:
+        - An identifier column (e.g. Mix Name).
+        - Composition columns corresponding to `X_columns`.
+        - Output columns: "GWP", "Strength (Mean)", "Strength (Std)".
+        - Optionally "# of measurements" for computing standard errors.
 
     Args:
-        data_path: The path to the data to be loaded. Defaults to "data/concrete_strength.csv".
-        batch_names: A list of strings specifying the names of the experimental batches
-            that are to be loaded. If None, then all available batches will be loaded.
-        dtype: A torch.dtype object specifying the desired datatype of the Tensors.
-        device: A torch.device object specifying the desired device of the Tensors.
-        mix_name_column: A string specifying the name of the column containing the mix.
-            This is used to identify the batch names.
-        X_columns: A list of strings specifying the names of the columns to be used as
-            inputs.
-        Y_columns: A list of strings specifying the names of the columns to be used as
-            outcomes.
-        Ystd_columns: A list of strings specifying the names of the columns to be used
-            as outcome standard deviations.
-        process_batch_names_from_mix_name: A boolean specifying whether to process the
-            batch names from the mix names.
-        bounds_dict: A dictionary mapping column names to tuples of lower and upper
-            bounds. This is used to set the bounds on the inputs.
+        data_path: Path to a CSV file or a pandas DataFrame. Defaults to
+            `DATA_PATH` (``data/boxcrete_data.csv``).
+        batch_names: Optional list of batch name substrings. If provided, only
+            rows whose `mix_name_column` value contains one of these strings
+            are kept.
+        dtype: Desired torch dtype for the output tensors.
+        device: Desired torch device for the output tensors.
+        mix_name_column: Name of the column containing the mix identifier.
+        X_columns: Column names to use as model inputs.
+        Y_columns: Column names to use as model outputs.
+        Ystd_columns: Column names to use as output standard deviations.
+        process_batch_names_from_mix_name: Whether to parse batch names from
+            ``mix_name_column`` using the ``<batch>_<number>`` convention.
+        bounds_dict: Mapping from column name to ``(lower, upper)`` bounds.
 
     Returns:
-        A SustainableConcreteDataset containing the strength and GWP data.
+        A SustainableConcreteDataset containing the loaded data.
     """
     # loading csv into dataframe
     if isinstance(data_path, str):
@@ -330,9 +353,7 @@ def load_concrete_strength(
         df = data_path
 
     # dropping any mix id that is not in batch names
-    if (
-        batch_names is not None
-    ):  # TODO: make this safe! "contains" only works if the batch names are unique strings, not numbers
+    if batch_names is not None:
         not_in_names = df[mix_name_column].astype(bool)  # creating True series
         for batch_name in batch_names:
             not_in_names = not_in_names & (
@@ -347,7 +368,6 @@ def load_concrete_strength(
         logger.info("  - %s", column)
 
     # first, remove rows and columns with missing data
-    # data_index = 3  #= df.columns[data_index:]
     data_columns = X_columns + Y_columns + Ystd_columns
     data_columns = np.array(data_columns)
     is_missing = torch.tensor(df[data_columns].to_numpy()).isnan()
@@ -445,8 +465,7 @@ def load_concrete_strength(
         n_measurements = torch.tensor(df["# of measurements"].to_numpy(), **tkwargs)
         Ystd[:, 1] = Ystd[:, 1] / n_measurements.sqrt()
 
-    # NOTE: This is more general than mortar mixes, clean up naming in the future
-    bounds = get_mortar_bounds(X_columns=X_columns, bounds_dict=bounds_dict)
+    bounds = get_bounds(X_columns=X_columns, bounds_dict=bounds_dict)
     return SustainableConcreteDataset(
         X=X,
         Y=Y,
@@ -459,183 +478,161 @@ def load_concrete_strength(
     )
 
 
-def get_mortar_bounds(
+def get_bounds(
     X_columns: list[str],
     bounds_dict: dict[str, tuple[float, float]] = DEFAULT_BOUNDS_DICT,
 ) -> Tensor:
-    """Returns bounds of columns in X for mortar mixes.
+    """Returns a ``2 x d`` bounds tensor for the given columns.
+
+    Columns present in ``bounds_dict`` get their bounds directly.  For
+    ``"Water (kg/m3)"`` and ``"HRWR (kg/m3)"``, bounds are derived from
+    the binder range: Water ∈ [0.2 × min_binder, 0.5 × max_binder] and
+    HRWR ∈ [0, 0.1 × max_binder].
 
     Args:
-        X_columns: Names of the columns in the input dataset.
-
-    Tensor:
-        A `2 x d`-dim Tensor of lower and upper mortar bounds for each column of X.
-    """
-    min_binder = 100.0
-    max_binder = 950.0
-    bounds_dict.update(
-        {
-            "Water": (0.35 * min_binder, 0.5 * max_binder),
-            "HRWR": (
-                0,
-                0.1 * max_binder,
-            ),  # we are not optimizing this, but need this to fit the model
-        }
-    )
-    bounds = torch.tensor([bounds_dict[col] for col in X_columns]).T
-    logger.info("The lower and upper bounds for the respective variables are set to:")
-    for col, bound in zip(X_columns, bounds.T):
-        logger.info(f"  - {col}: [{bound[0].item()}, {bound[1].item()}]")
-    return bounds
-
-
-def get_mortar_constraints(
-    X_columns: list[str],
-    min_wb: float = 0.35,
-    binder_names: list[str] = _TOTAL_BINDER_NAMES,
-    aggregate_names: list[str] = ["Fine Aggregate"],
-    water_name: str = "Water",
-) -> tuple[list, list]:
-    """Returns the linear equality and inequality constraints for mortar mixes.
-
-    Args:
-        X_columns: Names of columns in the input dataset.
-        binder_names: Names of binder columns in the input dataset, e.g. Cement,
-            Fly Ash, and Slag.
-        aggregate_names: Names of aggregate columns in the input dataset, e.g.
-            Fine Aggregate.
-        min_wb: Minimum water-binder ratio. Defaults to 0.35.
+        X_columns: Column names of the input features.
+        bounds_dict: Mapping from column name to ``(lower, upper)`` bounds.
+            Defaults to ``DEFAULT_BOUNDS_DICT`` (concrete bounds).
 
     Returns:
-        A 2-tuple of equality and inequality constraints.
+        A ``2 x d``-dim Tensor of lower and upper bounds for each column.
     """
-    # inequality constraints
-    equality_dict = {
-        # "Total Binder": 500.0,
-        # "Fine Aggregate": 1375.0,
-        "Total Binder + Fine Aggregate": 1875.0,
-    }
-    inequality_dict = {
-        "Total Binder": {"lower": 100.0, "upper": 950.0},
-        "Water": {
-            "lower": min_wb,
-            "upper": 0.5,
-        },  # NOTE: as a proportion of total binder
-    }
-    logger.info("Adding linear equality constraints:")
-    for key in equality_dict:
-        logger.info("  - %s: %s", key, equality_dict[key])
-    logger.info(
-        "NOTE: the paste content constraint is proportional to the total mass, "
-        "and the water and HRWR constraints are proportional to the total binder."
-    )
-
-    equality_constraints = [
-        # get_sum_equality_constraint(
-        #     X_columns=X_columns,
-        #     subset_names=binder_names,
-        #     value=equality_dict["Total Binder"],
-        # ),
-        get_sum_equality_constraint(
-            X_columns=X_columns,
-            subset_names=binder_names + aggregate_names,
-            value=equality_dict["Total Binder + Fine Aggregate"],
-        )
-    ]
-    inequality_constraints = [
-        *get_binder_constraints(
-            X_columns=X_columns,
-            binder_names=binder_names,
-            **inequality_dict["Total Binder"],
-        ),
-        # as long as binder is constant, the water constraint is just a bound (earlier)
-        *get_water_constraints(
-            X_columns=X_columns,
-            binder_names=binder_names,
-            water_name=water_name,
-            **inequality_dict["Water"],
-        ),
-    ]
-    return equality_constraints, inequality_constraints
-
-
-def get_bounds(X_columns) -> Tensor:
-    """Returns bounds of columns in X for concrete mixes."""
-    bounds_dict = {
-        # NOTE: the pure cement baseline is outside of these bounds (~752), as is Dec_2022_2 (~211)
-        "Cement": (300, 700),
-        "Fly Ash": (0, 350),
-        "Slag": (0, 450),
-        "Coarse Aggregates": (800, 1950),
-        "Fine Aggregate": (600, 1700),
-        "Time": (0, 28),  # up to 28 days
-    }
-
-    min_binder, max_binder = 0, 0
+    min_binder = 0.0
+    max_binder = 0.0
     for name in _TOTAL_BINDER_NAMES:
-        min_binder += bounds_dict[name][0]
-        max_binder += bounds_dict[name][1]
+        if name in bounds_dict:
+            min_binder += bounds_dict[name][0]
+            max_binder += bounds_dict[name][1]
 
-    bounds_dict.update(
-        {
-            "Water": (0.2 * min_binder, 0.5 * max_binder),
-            "HRWR": (0, 0.1 * max_binder),  # linear constraint also applies, see below
-        }
-    )
-    bounds = torch.tensor([bounds_dict[col] for col in X_columns]).T
+    bounds_dict = dict(bounds_dict)  # copy to avoid mutating the original
+    bounds_dict.setdefault("Water (kg/m3)", (0.2 * min_binder, 0.5 * max_binder))
+    bounds_dict.setdefault("HRWR (kg/m3)", (0, 0.1 * max_binder))
+
+    # Columns not in bounds_dict get (0, 0) bounds (e.g. Coarse Aggregates in
+    # mortar mode, or MRWR when not relevant).
+    bounds = torch.tensor([bounds_dict.get(col, (0, 0)) for col in X_columns]).T
     logger.info("The lower and upper bounds for the respective variables are set to:")
     for col, bound in zip(X_columns, bounds.T):
         logger.info(f"  - {col}: [{bound[0].item()}, {bound[1].item()}]")
     return bounds
 
 
-def get_concrete_constraints(X_columns) -> list[T_CONSTRAINT]:
-    # inequality constraints for concrete (vs. mortar) mixtures
-    inequality_dict = {
-        "Total Binder": {"lower": 510, "upper": 1000},
-        "Total Mass": {"lower": 3600, "upper": 4400},
-        "Paste Content": {
-            "lower": 0.16,
-            "upper": 0.35,
-        },  # as a proportion of total mass
-        "Water": {"lower": 0.2, "upper": 0.5},  # as a proportion of total binder
-        "HRWR": {"lower": 0, "upper": 0.1},  # as a proportion of total binder
-    }
+def get_constraints(
+    X_columns: list[str],
+    equality_sums: list[tuple[list[str], float]] | None = None,
+    binder_bounds: tuple[float, float] | None = (510, 1000),
+    mass_bounds: tuple[float, float] | None = (3600, 4400),
+    paste_bounds: tuple[float, float] | None = (0.16, 0.35),
+    water_binder_bounds: tuple[float, float] = (0.2, 0.5),
+    hrwr_binder_bounds: tuple[float, float] | None = (0.0, 0.1),
+) -> tuple[list[T_CONSTRAINT], list[T_CONSTRAINT]]:
+    """Returns equality and inequality constraints for concrete/mortar optimisation.
+
+    This single function replaces the former ``get_concrete_constraints`` and
+    ``get_mortar_constraints``.  Each constraint group can be disabled by passing
+    ``None``.  Preset configurations are available as ``MORTAR_CONSTRAINTS`` and
+    ``CONCRETE_CONSTRAINTS`` dictionaries that can be unpacked into this function.
+
+    Example usage::
+
+        # Concrete (all defaults)
+        eq, ineq = get_constraints(X_columns)
+
+        # Mortar (preset)
+        eq, ineq = get_constraints(X_columns, **MORTAR_CONSTRAINTS)
+
+    Args:
+        X_columns: Column names of the input features.
+        equality_sums: Optional list of ``(subset_names, value)`` pairs that
+            create sum-equality constraints.  Each entry constrains the sum of
+            the named columns to equal ``value``.
+        binder_bounds: ``(lower, upper)`` on total binder, or ``None`` to skip.
+        mass_bounds: ``(lower, upper)`` on total mass, or ``None`` to skip.
+        paste_bounds: ``(lower, upper)`` on paste/mass ratio, or ``None`` to skip.
+        water_binder_bounds: ``(lower, upper)`` on water/binder ratio.
+        hrwr_binder_bounds: ``(lower, upper)`` on HRWR/binder ratio, or ``None``
+            to skip.
+
+    Returns:
+        A tuple of ``(equality_constraints, inequality_constraints)``.
+    """
     logger.info("Adding linear constraints with lower and upper limits:")
-    for key in inequality_dict:
-        logger.info("  - %s: %s", key, inequality_dict[key])
+    logger.info("  - Total Binder: %s", binder_bounds)
+    logger.info("  - Total Mass: %s", mass_bounds)
+    logger.info("  - Paste Content: %s", paste_bounds)
+    logger.info("  - Water/Binder: %s", water_binder_bounds)
+    logger.info("  - HRWR/Binder: %s", hrwr_binder_bounds)
     logger.info(
         "NOTE: the paste content constraint is proportional to the total mass, "
         "and the water and HRWR constraints are proportional to the total binder."
     )
 
-    constraints = [
-        *get_mass_constraints(X_columns, **inequality_dict["Total Mass"]),
-        *get_binder_constraints(X_columns, **inequality_dict["Total Binder"]),
-        *get_paste_constraints(X_columns, **inequality_dict["Paste Content"]),
-        *get_water_constraints(X_columns, **inequality_dict["Water"]),
-        *get_hrwr_constraints(X_columns, **inequality_dict["HRWR"]),
-    ]
-    return constraints
+    equality_constraints: list[T_CONSTRAINT] = []
+    if equality_sums is not None:
+        for subset_names, value in equality_sums:
+            equality_constraints.append(
+                get_sum_equality_constraint(
+                    X_columns=X_columns,
+                    subset_names=subset_names,
+                    value=value,
+                )
+            )
 
+    inequality_constraints: list[T_CONSTRAINT] = []
 
-def get_mass_constraints(
-    X_columns: list[str], lower: float, upper: float
-) -> list[T_CONSTRAINT]:
-    return get_sum_constraints(
-        X_columns=X_columns, subset_names=_TOTAL_MASS_NAMES, lower=lower, upper=upper
+    if mass_bounds is not None:
+        inequality_constraints.extend(
+            get_sum_constraints(
+                X_columns=X_columns,
+                subset_names=_TOTAL_MASS_NAMES,
+                lower=mass_bounds[0],
+                upper=mass_bounds[1],
+            )
+        )
+
+    if binder_bounds is not None:
+        inequality_constraints.extend(
+            get_sum_constraints(
+                X_columns=X_columns,
+                subset_names=_TOTAL_BINDER_NAMES,
+                lower=binder_bounds[0],
+                upper=binder_bounds[1],
+            )
+        )
+
+    if paste_bounds is not None:
+        inequality_constraints.extend(
+            get_proportional_sum_constraints(
+                X_columns=X_columns,
+                numerator_names=_PASTE_CONTENT_NAMES,
+                denominator_names=_TOTAL_MASS_NAMES,
+                lower=paste_bounds[0],
+                upper=paste_bounds[1],
+            )
+        )
+
+    inequality_constraints.extend(
+        get_proportional_sum_constraints(
+            X_columns=X_columns,
+            numerator_names=["Water (kg/m3)"],
+            denominator_names=_TOTAL_BINDER_NAMES,
+            lower=water_binder_bounds[0],
+            upper=water_binder_bounds[1],
+        )
     )
 
+    if hrwr_binder_bounds is not None:
+        inequality_constraints.extend(
+            get_proportional_sum_constraints(
+                X_columns=X_columns,
+                numerator_names=["HRWR (kg/m3)"],
+                denominator_names=_TOTAL_BINDER_NAMES,
+                lower=hrwr_binder_bounds[0],
+                upper=hrwr_binder_bounds[1],
+            )
+        )
 
-def get_binder_constraints(
-    X_columns: list[str],
-    lower: float,
-    upper: float,
-    binder_names: list[str] = _TOTAL_BINDER_NAMES,
-) -> list[T_CONSTRAINT]:
-    return get_sum_constraints(
-        X_columns=X_columns, subset_names=binder_names, lower=lower, upper=upper
-    )
+    return equality_constraints, inequality_constraints
 
 
 def get_cement_replacement_constraints(
@@ -644,8 +641,21 @@ def get_cement_replacement_constraints(
     upper: float,
     binder_names: list[str] = _TOTAL_BINDER_NAMES,
 ) -> list[T_CONSTRAINT]:
-    # to constrain the cement replacement ratio by supplementary cementitious materials
-    scm_names = list(set(binder_names) - set(["Cement"]))
+    """Constrains the supplementary cementitious material (SCM) replacement ratio.
+
+    The constraint enforces ``lower ≤ SCM / binder ≤ upper``, where SCM is the
+    sum of all binder components except cement.
+
+    Args:
+        X_columns: Column names of the input features.
+        lower: Lower bound on the SCM replacement ratio.
+        upper: Upper bound on the SCM replacement ratio.
+        binder_names: Names of the binder columns.
+
+    Returns:
+        A list of inequality constraint tuples.
+    """
+    scm_names = list(set(binder_names) - {"Cement (kg/m3)"})
     return get_proportional_sum_constraints(
         X_columns=X_columns,
         numerator_names=scm_names,
@@ -655,65 +665,25 @@ def get_cement_replacement_constraints(
     )
 
 
-def get_paste_constraints(
-    X_columns: list[str], lower: float, upper: float
-) -> list[T_CONSTRAINT]:
-    # Paste content = (Cement + Slag + Fly Ash + Water)
-    # Constraint: lower < (Paste content) / (Total Mass) < upper
-    # i.e. a proportional sum constraint
-    return get_proportional_sum_constraints(
-        X_columns=X_columns,
-        numerator_names=_PASTE_CONTENT_NAMES,
-        denominator_names=_TOTAL_MASS_NAMES,
-        lower=lower,
-        upper=upper,
-    )
-
-
-def get_water_constraints(
-    X_columns: list[str],
-    lower: float,
-    upper: float,
-    binder_names: list[str] = _TOTAL_BINDER_NAMES,
-    water_name: str = "Water",
-) -> list[T_CONSTRAINT]:
-    # Constraint: lower < (Water) / (Total Binder) < upper
-    # i.e. a proportional sum constraint
-    return get_proportional_sum_constraints(
-        X_columns=X_columns,
-        numerator_names=[water_name],
-        denominator_names=binder_names,
-        lower=lower,
-        upper=upper,
-    )
-
-
-def get_hrwr_constraints(
-    X_columns: list[str],
-    lower: float,
-    upper: float,
-    binder_names: list[str] = _TOTAL_BINDER_NAMES,
-    hrwr_name: str = "HRWR",
-) -> list[T_CONSTRAINT]:
-    # Constraint: lower < (HRWR) / (Total Binder) < upper
-    # i.e. a proportional sum constraint
-    return get_proportional_sum_constraints(
-        X_columns=X_columns,
-        numerator_names=[hrwr_name],
-        denominator_names=binder_names,
-        lower=lower,
-        upper=upper,
-    )
-
-
 def get_total_water_reducer_constraints(
     X_columns: list[str], lower: float, upper: float
 ) -> list[T_CONSTRAINT]:
-    # Constraint: lower < (HRWR) / (Total Binder) < upper
-    # i.e. a proportional sum constraint
-    numerator_names = ["HRWR"]
-    if "MRWR" in X_columns:
-        numerator_names.append("MRWR")
+    """Constrains the total water reducer (HRWR + optional MRWR) to binder ratio.
+
+    If ``"MRWR (kg/m3)"`` is present in ``X_columns`` it is included in the
+    numerator; otherwise only ``"HRWR (kg/m3)"`` is used.
+
+    Args:
+        X_columns: Column names of the input features.
+        lower: Lower bound on the water-reducer / binder ratio.
+        upper: Upper bound on the water-reducer / binder ratio.
+
+    Returns:
+        A list of inequality constraint tuples.
+    """
+    numerator_names = ["HRWR (kg/m3)"]
+    if "MRWR (kg/m3)" in X_columns:
+        numerator_names.append("MRWR (kg/m3)")
     return get_proportional_sum_constraints(
         X_columns=X_columns,
         numerator_names=numerator_names,
@@ -726,13 +696,22 @@ def get_total_water_reducer_constraints(
 def get_aggregate_constraint(
     X_columns: list[str], lower: float, upper: float
 ) -> list[T_CONSTRAINT]:
-    # Constraint: lower < (Fine Aggregate) / (Coarse Aggregate) < upper
-    # Incorporates the intuition that fine aggregates should be limited in order to
-    # reduce the need for binder (since surface area grows).
+    """Constrains the fine-to-coarse aggregate ratio.
+
+    Enforces ``lower ≤ Fine Aggregate / Coarse Aggregates ≤ upper``.
+
+    Args:
+        X_columns: Column names of the input features.
+        lower: Lower bound on the fine/coarse aggregate ratio.
+        upper: Upper bound on the fine/coarse aggregate ratio.
+
+    Returns:
+        A list of inequality constraint tuples.
+    """
     return get_proportional_sum_constraints(
         X_columns=X_columns,
-        numerator_names=["Fine Aggregate"],
-        denominator_names=["Coarse Aggregates"],
+        numerator_names=["Fine Aggregate (kg/m3)"],
+        denominator_names=["Coarse Aggregates (kg/m3)"],
         lower=lower,
         upper=upper,
     )
@@ -741,6 +720,19 @@ def get_aggregate_constraint(
 def get_sum_constraints(
     X_columns: list[str], subset_names: list[str], lower: float, upper: float
 ) -> list[T_CONSTRAINT]:
+    """Creates inequality constraints bounding the sum of a subset of columns.
+
+    Enforces ``lower ≤ sum(subset) ≤ upper``.
+
+    Args:
+        X_columns: Column names of the input features.
+        subset_names: Columns whose sum to constrain.
+        lower: Lower bound on the sum.
+        upper: Upper bound on the sum.
+
+    Returns:
+        A list of two inequality constraint tuples (lower and upper).
+    """
     lower_constraint = get_sum_equality_constraint(X_columns, subset_names, value=lower)
     upper_constraint = get_sum_equality_constraint(X_columns, subset_names, value=upper)
     # rephrasing the upper as a lower bound
@@ -751,6 +743,18 @@ def get_sum_constraints(
 def get_sum_equality_constraint(
     X_columns: list[str], subset_names: list[str], value: float
 ) -> T_CONSTRAINT:
+    """Creates an equality constraint on the sum of a subset of columns.
+
+    Enforces ``sum(subset) == value``.
+
+    Args:
+        X_columns: Column names of the input features.
+        subset_names: Columns whose sum to constrain.
+        value: The required sum value.
+
+    Returns:
+        A constraint tuple ``(indices, coefficients, value)``.
+    """
     _, coeffs = get_subset_sum_tensors(X_columns=X_columns, subset_names=subset_names)
     # can throw out indices for which coeffs is zero if we don't recombine coefficients
     nz_ind = coeffs != 0
@@ -809,7 +813,7 @@ def get_proportional_sum_constraints(
 
 def get_subset_sum_tensors(
     X_columns: list[str], subset_names: list[str]
-) -> tuple[Tensor, Tensor]:
+) -> tuple[list[int], Tensor]:
     """Returns indices and coefficients such that `X[indices].dot(coeffs) == X[indices].sum()`,
     where indices are the indices of subset_names in X_columns.
 
@@ -818,7 +822,8 @@ def get_subset_sum_tensors(
         subset_names: The subset of variable names whose sum to compute.
 
     Returns:
-        A tuple of Tensors `indices` and `coeffs` with which to compute the subset sum.
+        A tuple of `indices` (list of ints) and `coeffs` (Tensor) with which to
+        compute the subset sum.
     """
     indices = [X_columns.index(name) for name in subset_names]
     coeffs = torch.zeros(len(X_columns))
@@ -827,9 +832,17 @@ def get_subset_sum_tensors(
 
 
 def get_reference_point() -> Tensor:
+    """Returns a default reference point for Pareto frontier computation.
+
+    The reference point specifies minimum acceptable values for each objective
+    (GWP, 1-day strength, 28-day strength). Solutions that do not dominate
+    this point are excluded from the Pareto frontier.
+
+    Returns:
+        A 3-element Tensor ``[gwp, strength_day_1, strength_day_28]``.
+    """
     gwp = -400.0  # chosen to hone in on the greener and strong region
     strength_day_1 = 1000
-    # strength_day_7 = 3000
     strength_day_28 = 5000
     return torch.tensor([gwp, strength_day_1, strength_day_28], dtype=torch.double)
 
@@ -841,6 +854,7 @@ def get_day_zero_data(X: Tensor, bounds: Tensor | None, n: int = 128):
     Args:
         X: The input tensor.
         bounds: The bounds of the input tensor. If None, will be inferred from X.
+        n: The number of sobol points to generate.
 
     Returns:
         A tensor of n sobol points that satisfy the bounds, appended with a zeros
@@ -862,9 +876,81 @@ def get_day_zero_data(X: Tensor, bounds: Tensor | None, n: int = 128):
 
 def unique_elements(x: list) -> list:
     """Returns unique elements of x in the same order as their first
-    occurrance in the input list.
+    occurrence in the input list.
+
+    Args:
+        x: A list of elements (possibly with duplicates).
+
+    Returns:
+        A list containing the unique elements in first-occurrence order.
     """
     return list(dict.fromkeys(x))
+
+
+def reduce_to_optimization_space(
+    bounds: Tensor,
+    equality_constraints: list[T_CONSTRAINT],
+    inequality_constraints: list[T_CONSTRAINT],
+    fixed_features: dict[int, float],
+) -> tuple[Tensor, list[T_CONSTRAINT], list[T_CONSTRAINT]]:
+    """Removes fixed-feature dimensions from bounds and remaps constraint indices.
+
+    When certain input features are fixed (e.g. via ``FixedFeatureModel``),
+    the optimisation lives in a reduced-dimensional space.  This function
+    projects bounds and linear constraints into that reduced space by:
+
+    1. Dropping the fixed columns from ``bounds``.
+    2. For each constraint ``coeffs @ X[indices] (>= or ==) value``,
+       absorbing the fixed features' contributions into the constant
+       and re-indexing the remaining entries.
+
+    Args:
+        bounds: ``2 x d`` bounds tensor in the full space.
+        equality_constraints: List of ``(indices, coeffs, value)`` tuples
+            in the full space.
+        inequality_constraints: List of ``(indices, coeffs, value)`` tuples
+            in the full space.
+        fixed_features: Mapping from column index (in the full ``d``-dim
+            space) to its fixed value.
+
+    Returns:
+        A 3-tuple ``(reduced_bounds, reduced_eq, reduced_ineq)`` in the
+        ``(d - len(fixed_features))``-dimensional optimisation space.
+    """
+    if not fixed_features:
+        return bounds, equality_constraints, inequality_constraints
+
+    d = bounds.shape[-1]
+    fixed_set = set(fixed_features.keys())
+
+    keep = [i for i in range(d) if i not in fixed_set]
+    old_to_new = {old: new for new, old in enumerate(keep)}
+
+    reduced_bounds = bounds[:, keep]
+
+    def _remap(constraint: T_CONSTRAINT) -> T_CONSTRAINT:
+        indices, coeffs, value = constraint
+        new_indices: list[int] = []
+        new_coeffs: list[float] = []
+        new_value = float(value)
+        for idx_t, coeff_t in zip(indices, coeffs):
+            idx = int(idx_t.item())
+            coeff = float(coeff_t.item())
+            if idx in fixed_set:
+                new_value -= coeff * fixed_features[idx]
+            else:
+                new_indices.append(old_to_new[idx])
+                new_coeffs.append(coeff)
+        return (
+            torch.tensor(new_indices, dtype=indices.dtype),
+            torch.tensor(new_coeffs, dtype=coeffs.dtype),
+            new_value,
+        )
+
+    reduced_eq = [_remap(c) for c in equality_constraints]
+    reduced_ineq = [_remap(c) for c in inequality_constraints]
+
+    return reduced_bounds, reduced_eq, reduced_ineq
 
 
 def predict_pareto(
@@ -872,8 +958,8 @@ def predict_pareto(
     pareto_dims: list[int],
     ref_point: Tensor,
     bounds: Tensor,
-    equality_constraints,
-    inequality_constraints,
+    equality_constraints: list[T_CONSTRAINT],
+    inequality_constraints: list[T_CONSTRAINT],
     num_candidates: int = 4096,
 ) -> tuple[Tensor, Tensor, Tensor]:
     """Use the `model_list` to approximate the predictive Pareto frontier of the
@@ -929,7 +1015,7 @@ def predict_pareto(
     # remove any points that do not satisfy the reference point
     better_than_ref = (Y > ref_point).all(dim=-1)
     X, Y, Ystd = X[better_than_ref], Y[better_than_ref], Ystd[better_than_ref]
-    # sort by firt dimension to enable easier plotting
+    # sort by first dimension to enable easier plotting
     indices = Y[..., 0].argsort()
     X, Y, Ystd = X[indices], Y[indices], Ystd[indices]
     return X, Y, Ystd

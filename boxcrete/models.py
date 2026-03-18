@@ -33,6 +33,15 @@ from boxcrete.utils import get_day_zero_data, SustainableConcreteDataset
 
 
 class SustainableConcreteModel:
+    """Multi-output model that jointly predicts GWP and compressive strength.
+
+    The model consists of a GWP model (independent of curing time) and a strength
+    model (dependent on composition *and* time).  At optimisation time the strength
+    model is sliced at each of the ``strength_days`` via ``FixedFeatureModel`` to
+    produce a ``ModelList`` that maps composition only to ``[GWP, 1-day strength,
+    28-day strength, ...]``.
+    """
+
     def __init__(
         self,
         strength_days: list[int],
@@ -100,37 +109,86 @@ class SustainableConcreteModel:
         if self.d is None:
             self.d = d
 
-    def get_model_list(self) -> ModelList:
-        """Returns a ModelList modeling the GWP and compressive strength objectives as a function
-        of composition only.
-        Converts the strength and gwp models into a model list of independent models for gwp,
-        and x-day strengths, by fixing the time input of the strength model at 1 and 28 days.
+    def get_model_list(
+        self, fixed_features: dict[int, float] | None = None
+    ) -> ModelList:
+        """Returns a ``ModelList`` modelling GWP and compressive strength as a
+        function of composition only.
+
+        Converts the strength and GWP models into a model list of independent
+        models for GWP and *x*-day strengths by fixing the time input of the
+        strength model at each ``strength_day``.
+
+        Args:
+            fixed_features: Optional mapping from input column **index** to a
+                fixed value.  When provided these features are fixed *in
+                addition to* the Time dimension for the strength models, and
+                the non-Time entries are also applied to the GWP model via
+                ``FixedFeatureModel``.  Useful for fixing e.g.
+                ``Coarse Aggregates = 0`` in mortar mode.
+
+        Returns:
+            A ``ModelList`` with ``1 + len(strength_days)`` sub-models:
+
+            - Index 0: GWP model (composition → GWP)
+            - Index 1: strength at ``strength_days[0]`` (e.g. 1-day)
+            - Index 2: strength at ``strength_days[1]`` (e.g. 28-day)
+            - ...and so on for additional strength days.
+
+        Raises:
+            ValueError: If the model has not been fitted yet.
         """
-        if self.d is None:
-            raise ValueError("Model not fit yet.")
-        models = [
-            self.gwp_model,
-            *(
+        if self.d is None or self.strength_model is None or self.gwp_model is None:
+            raise ValueError(
+                "Model not fit yet. Call fit_gwp_model() and fit_strength_model() first."
+            )
+
+        time_idx = self.d - 1  # last column is Time
+
+        if fixed_features is None:
+            gwp_model = self.gwp_model
+        else:
+            non_time = {k: v for k, v in fixed_features.items() if k != time_idx}
+            if non_time:
+                gwp_indices = sorted(non_time.keys())
+                gwp_values = [non_time[i] for i in gwp_indices]
+                gwp_model = FixedFeatureModel(
+                    base_model=self.gwp_model,
+                    dim=self.d - 1,  # GWP input has no Time
+                    indices=gwp_indices,
+                    values=gwp_values,
+                )
+            else:
+                gwp_model = self.gwp_model
+
+        strength_models = []
+        for day in self.strength_days:
+            indices = [time_idx]
+            values: list[float] = [float(day)]
+            if fixed_features is not None:
+                for idx, val in sorted(fixed_features.items()):
+                    if idx != time_idx:
+                        indices.append(idx)
+                        values.append(val)
+            strength_models.append(
                 FixedFeatureModel(
                     base_model=self.strength_model,
                     dim=self.d,
-                    indices=[self.d - 1],
-                    values=[day],
+                    indices=indices,
+                    values=values,
                 )
-                for day in self.strength_days
-            ),
-        ]
-        model = ModelList(*models)
-        return model  # for use with multi-objective optimization
+            )
 
-    # TODO: add plot_strength_curve utility for visualizing predicted strength
-    # curves as a function of time for a given composition.
+        return ModelList(gwp_model, *strength_models)
 
 
 class FixedFeatureModel(Model):
-    # advantage: only need to implement posterior for it to work with qNEHI
-    # disadvantage: makes the strength outputs independent (IDEA: could add joint model)
-    # TODO: check that these are appended before the InputTransforms are applied, not after.
+    """Wraps a GP model to fix a subset of inputs to constant values.
+
+    At evaluation time the fixed features are spliced back into the input
+    tensor before delegating to the ``base_model``.
+    """
+
     def __init__(
         self,
         base_model: Model,
@@ -202,9 +260,19 @@ class FixedFeatureModel(Model):
 
     @property
     def num_outputs(self) -> int:
-        return self.base_model.num_outputs  # need to adjust if we batch fixed features
+        """The number of outputs of the base model."""
+        return self.base_model.num_outputs
 
     def subset_output(self, idcs: list[int]) -> FixedFeatureModel:
+        """Returns a new ``FixedFeatureModel`` whose base model is subset to
+        the given output indices.
+
+        Args:
+            idcs: Output indices to keep.
+
+        Returns:
+            A ``FixedFeatureModel`` wrapping the subset base model.
+        """
         return FixedFeatureModel(
             base_model=self.base_model.subset_output(idcs),
             dim=self._dim,
@@ -271,14 +339,6 @@ def fit_strength_gp(
 ) -> SingleTaskGP:
     """Fits a Gaussian process model to the given strength data.
 
-    IDEAS:
-        - Features:
-            - w / b ratio
-            - maturity i.e. sum_i(max(0, temperature_i) * delta_time_i)
-        - Kernels:
-            - Try orthogonal additive kernel again
-            - temperature modeling via additive kernel?
-
     Args:
         X: Tensor of composition inputs including time (n x d).
         Y: Tensor of strength values (n x 1).
@@ -315,8 +375,7 @@ def fit_strength_gp(
     )
 
     # additive kernel to model behavior w.r.t. time
-    # try matern?
-    time_kernel = RBFKernel(  # MaternKernel # smoother RBF seems to work better for additive components
+    time_kernel = RBFKernel(
         active_dims=torch.tensor([d_in - 1]),  # last dimension is time
         ard_num_dims=1,
         lengthscale_constraint=LogTransformedInterval(1e-2, 1e3, initial_value=1.0),
@@ -328,7 +387,6 @@ def fit_strength_gp(
         outputscale_prior=None,
     )
 
-    # IDEA: + scaled_water_kernel and other additive components
     kernel = scaled_base_kernel + scaled_time_kernel
     model_kwargs = {
         "train_X": X,
@@ -356,6 +414,7 @@ def get_strength_gp_input_transform(
     with the provided bounds.
 
     Args:
+        d: The input dimensionality.
         bounds: `2 x d` tensor of lower and upper bounds for each dimension.
 
     Returns:
