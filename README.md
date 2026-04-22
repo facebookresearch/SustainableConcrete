@@ -1,12 +1,12 @@
 # BOxCrete: Bayesian Optimization for Sustainable Concrete Mix Design
 
-Concrete, the second most widely used material in the world, accounts for **6–8% of global anthropogenic CO₂ emissions**, largely due to Portland cement production (~0.8 tons CO₂ per ton of cement). Partial replacement with Supplementary Cementitious Materials (SCMs) such as fly ash, slag, and natural pozzolan reduces embodied carbon and often improves durability, but high SCM usage makes compressive strength a highly nonlinear function of multiple interacting mix parameters, rendering traditional design empirical and trial-and-error driven. To systematically navigate this complex composition space, data-driven frameworks are needed.
-Here, we introduce BOxCrete, an open-source Bayesian optimization framework for probabilistic strength curve prediction and sustainable mix design.
-We invite researchers and practitioners of both machine learning and civil engineering
+Concrete, the second most widely used material in the world, accounts for **6–8% of global anthropogenic CO₂ emissions**, largely due to Portland cement production (~0.8 tons CO₂ per ton of cement). Partial replacement with Supplementary Cementitious Materials (SCMs) such as fly ash, slag, and natural pozzolan reduces embodied carbon and often improves durability, but high SCM usage makes compressive strength a highly nonlinear function of multiple interacting mix parameters, rendering traditional design empirical and trial-and-error driven. To systematically navigate this complex composition space, data-driven frameworks are needed. 
+Here, we introduce BOxCrete, an open-source Bayesian optimization framework for probabilistic strength curve prediction and sustainable mix design. 
+We invite researchers and practitioners from all disciplines including AI, machine learning, computer science, materials science, and civil engineering
 to collaborate on discovering more sustainable concrete formulations that are applicable
 to a wide array of construction projects, at scale.
 For more information,
-please see ["Sustainable Concrete via Bayesian Optimization"](https://arxiv.org/abs/2310.18288).
+please see ["BOxCrete: A Bayesian Optimization Open-Source AI Model for Concrete Strength Forecasting and Mix Optimization"](https://arxiv.org/abs/2603.21525).
 
 This repository contains probabilistic models and data for the
 
@@ -182,17 +182,18 @@ The following figure shows the distribution of model-generated mixes plotted tog
 # Citing
 
 If you use the data or models contained in this repository, please cite
-["Sustainable Concrete via Bayesian Optimization"](https://arxiv.org/abs/2310.18288):
+["BOxCrete: A Bayesian Optimization Open-Source AI Model for Concrete Strength Forecasting and Mix Optimization"](https://arxiv.org/abs/2603.21525):
 ```
-@misc{ament2023sustainable,
-      title={Sustainable Concrete via Bayesian Optimization},
-      author={Sebastian Ament and Andrew Witte and Nishant Garg and Julius Kusuma},
-      year={2023},
-      eprint={2310.18288},
+@misc{baten2026boxcretebayesianoptimizationopensource,
+      title={BOxCrete: A Bayesian Optimization Open-Source AI Model for Concrete Strength Forecasting and Mix Optimization}, 
+      author={Bayezid Baten and M. Ayyan Iqbal and Sebastian Ament and Julius Kusuma and Nishant Garg},
+      year={2026},
+      eprint={2603.21525},
       archivePrefix={arXiv},
-      primaryClass={cs.LG}
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2603.21525}, 
 }
 ```
 
 ## License
-`SustainableConcrete` is MIT licensed, as found in the LICENSE file.
+`SustainableConcrete` is released under the MIT license, as found in the LICENSE file.
