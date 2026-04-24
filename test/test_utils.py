@@ -12,8 +12,6 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import torch
-from parameterized import parameterized
-
 from boxcrete.utils import (
     CONCRETE_BOUNDS_DICT,
     CONCRETE_REFERENCE_POINT,
@@ -22,10 +20,6 @@ from boxcrete.utils import (
     DEFAULT_X_COLUMNS,
     DEFAULT_Y_COLUMNS,
     DEFAULT_YSTD_COLUMNS,
-    MORTAR_BOUNDS_DICT,
-    MORTAR_CONSTRAINTS,
-    MORTAR_REFERENCE_POINT,
-    SustainableConcreteDataset,
     get_aggregate_constraint,
     get_bounds,
     get_cement_replacement_constraints,
@@ -38,10 +32,16 @@ from boxcrete.utils import (
     get_sum_equality_constraint,
     get_total_water_reducer_constraints,
     load_concrete_strength,
+    MORTAR_BOUNDS_DICT,
+    MORTAR_CONSTRAINTS,
+    MORTAR_REFERENCE_POINT,
     predict_pareto,
     reduce_to_optimization_space,
+    SLUMP_Y_COLUMNS,
+    SustainableConcreteDataset,
     unique_elements,
 )
+from parameterized import parameterized
 
 # Concrete columns (subset used in some tests)
 CONCRETE_COLUMNS = [
@@ -56,7 +56,7 @@ CONCRETE_COLUMNS = [
 ]
 
 
-def _create_test_dataframe(n=10, inject_nan_at=None):
+def _create_test_dataframe(n=10, inject_nan_at=None, include_slump=True):
     """Shared helper to create a test DataFrame matching DEFAULT_X_COLUMNS."""
     data = {
         "Mix Name": [f"Test_{i}" for i in range(n)],
@@ -76,6 +76,8 @@ def _create_test_dataframe(n=10, inject_nan_at=None):
         "Strength (Std)": [100 + i * 10 for i in range(n)],
         "# of measurements": [3.0] * n,
     }
+    if include_slump:
+        data["Slump (in)"] = [5.0 + i * 0.3 for i in range(n)]
     df = pd.DataFrame(data)
     if inject_nan_at:
         for row, col in inject_nan_at:
@@ -83,12 +85,15 @@ def _create_test_dataframe(n=10, inject_nan_at=None):
     return df
 
 
-def _create_test_dataset(n_samples=10, with_bounds=True, with_batch_names=True):
+def _create_test_dataset(
+    n_samples=10, with_bounds=True, with_batch_names=True, with_slump=False
+):
     """Shared helper to create a SustainableConcreteDataset."""
+    y_columns = list(SLUMP_Y_COLUMNS) if with_slump else list(DEFAULT_Y_COLUMNS)
     X = torch.rand(n_samples, len(DEFAULT_X_COLUMNS))
     X[:, -1] = torch.tensor([1, 7, 28] * (n_samples // 3) + [1] * (n_samples % 3))
-    Y = torch.rand(n_samples, len(DEFAULT_Y_COLUMNS))
-    Ystd = torch.rand(n_samples, len(DEFAULT_Y_COLUMNS)) * 0.1
+    Y = torch.rand(n_samples, len(y_columns))
+    Ystd = torch.rand(n_samples, len(y_columns)) * 0.1
     bounds = (
         torch.stack([X.min(dim=0).values, X.max(dim=0).values]) if with_bounds else None
     )
@@ -105,7 +110,7 @@ def _create_test_dataset(n_samples=10, with_bounds=True, with_batch_names=True):
         Y=Y,
         Ystd=Ystd,
         X_columns=list(DEFAULT_X_COLUMNS),
-        Y_columns=list(DEFAULT_Y_COLUMNS),
+        Y_columns=y_columns,
         Ystd_columns=list(DEFAULT_YSTD_COLUMNS),
         bounds=bounds,
         batch_name_to_indices=batch_names,
@@ -171,6 +176,97 @@ class TestSustainableConcreteDataset(unittest.TestCase):
         dataset = _create_test_dataset(with_batch_names=False)
         with self.assertRaises(ValueError):
             dataset.subselect_batch_names(["batch_1"])
+
+    def test_slump_data_property(self):
+        """Test slump_data returns correct shape for dataset with Slump."""
+        dataset = _create_test_dataset(with_slump=True)
+        result = dataset.slump_data
+        self.assertIsNotNone(result)
+        X, Y, Yvar, bounds = result
+        self.assertEqual(Y.shape[-1], 1)
+        self.assertEqual(Yvar.shape[-1], 1)
+        self.assertEqual(X.shape[-1], len(DEFAULT_X_COLUMNS) - 1)
+
+    def test_slump_data_none_without_slump(self):
+        """Test slump_data returns None for default dataset (no Slump)."""
+        dataset = _create_test_dataset(with_slump=False)
+        self.assertIsNone(dataset.slump_data)
+
+    def test_slump_data_no_slump_column(self):
+        """Test slump_data returns None when Slump is not in Y_columns."""
+        X = torch.rand(10, len(DEFAULT_X_COLUMNS))
+        X[:, -1] = torch.tensor([1, 7, 28] * 3 + [1])
+        Y = torch.rand(10, 2)  # only GWP and Strength
+        Ystd = torch.rand(10, 2) * 0.1
+        dataset = SustainableConcreteDataset(
+            X=X,
+            Y=Y,
+            Ystd=Ystd,
+            X_columns=list(DEFAULT_X_COLUMNS),
+            Y_columns=["GWP", "Strength (Mean)"],
+            Ystd_columns=["Strength (Std)"],
+        )
+        self.assertIsNone(dataset.slump_data)
+
+    def test_slump_data_fallback_variance(self):
+        """Test slump_data uses constant variance when Ystd has fewer columns."""
+        X = torch.rand(12, len(DEFAULT_X_COLUMNS))
+        X[:, -1] = torch.tensor([1, 7, 28] * 4)
+        Y = torch.rand(12, 3)  # GWP, Strength, Slump
+        # Ystd has only 2 columns (GWP, Strength) — no slump std
+        Ystd = torch.rand(12, 2) * 0.1
+        dataset = SustainableConcreteDataset(
+            X=X,
+            Y=Y,
+            Ystd=Ystd,
+            X_columns=list(DEFAULT_X_COLUMNS),
+            Y_columns=["GWP", "Strength (Mean)", "Slump (in)"],
+            Ystd_columns=["Strength (Std)"],
+        )
+        result = dataset.slump_data
+        self.assertIsNotNone(result)
+        X_out, Y_out, Yvar_out, _ = result
+        # Should use default constant variance (1e-2)
+        self.assertTrue(torch.allclose(Yvar_out, torch.full_like(Yvar_out, 1e-2)))
+
+    def test_slump_data_nan_filtering(self):
+        """Test slump_data filters out rows with NaN slump values."""
+        X = torch.rand(12, len(DEFAULT_X_COLUMNS))
+        X[:, -1] = torch.tensor([1, 7, 28] * 4)
+        Y = torch.rand(12, 3)  # GWP, Strength, Slump
+        # Set half the slump values to NaN
+        Y[:6, 2] = float("nan")
+        Ystd = torch.rand(12, 3) * 0.1
+        dataset = SustainableConcreteDataset(
+            X=X,
+            Y=Y,
+            Ystd=Ystd,
+            X_columns=list(DEFAULT_X_COLUMNS),
+            Y_columns=["GWP", "Strength (Mean)", "Slump (in)"],
+            Ystd_columns=["Strength (Std)"],
+        )
+        result = dataset.slump_data
+        self.assertIsNotNone(result)
+        _, Y_out, _, _ = result
+        # No NaN values should remain in the output
+        self.assertFalse(torch.any(Y_out.isnan()))
+
+    def test_slump_data_all_nan_returns_none(self):
+        """Test slump_data returns None when all slump values are NaN."""
+        X = torch.rand(12, len(DEFAULT_X_COLUMNS))
+        X[:, -1] = torch.tensor([1, 7, 28] * 4)
+        Y = torch.rand(12, 3)
+        Y[:, 2] = float("nan")  # all slump values NaN
+        Ystd = torch.rand(12, 3) * 0.1
+        dataset = SustainableConcreteDataset(
+            X=X,
+            Y=Y,
+            Ystd=Ystd,
+            X_columns=list(DEFAULT_X_COLUMNS),
+            Y_columns=["GWP", "Strength (Mean)", "Slump (in)"],
+            Ystd_columns=["Strength (Std)"],
+        )
+        self.assertIsNone(dataset.slump_data)
 
 
 class TestConstraintFunction(unittest.TestCase):
@@ -388,6 +484,23 @@ class TestDataLoading(unittest.TestCase):
         dataset = load_concrete_strength(data_path=df, batch_names=["BatchA"])
         self.assertLessEqual(dataset.X.shape[0], len(df))
 
+    def test_load_with_slump_column(self):
+        """Test loading data that includes a Slump column."""
+        df = _create_test_dataframe(include_slump=True)
+        dataset = load_concrete_strength(data_path=df, Y_columns=SLUMP_Y_COLUMNS)
+        self.assertIn("Slump (in)", dataset.Y_columns)
+        self.assertEqual(dataset.Y.shape[-1], 3)  # GWP, Strength, Slump
+        self.assertEqual(dataset.Ystd.shape[-1], 3)  # GWP std, Strength std, Slump std
+
+    def test_load_without_slump_column(self):
+        """Test loading data without a Slump column works fine."""
+        df = _create_test_dataframe(include_slump=False)
+        dataset = load_concrete_strength(
+            data_path=df,
+            Y_columns=["GWP", "Strength (Mean)"],
+        )
+        self.assertEqual(dataset.Y.shape[-1], 2)
+
     @unittest.skipUnless(os.path.exists(DATA_PATH), "Real CSV data not available")
     def test_load_from_csv_path(self):
         dataset = load_concrete_strength(data_path=DATA_PATH)
@@ -458,6 +571,17 @@ class TestRealDataIntegration(unittest.TestCase):
         X, Y, Yvar, X_bounds = dataset.gwp_data
         self.assertGreater(X.shape[0], 0)
         self.assertEqual(Y.shape[-1], 1)
+        self.assertEqual(X_bounds.shape[-1], X.shape[-1])
+
+    def test_slump_data_property(self):
+        dataset = load_concrete_strength(data_path=DATA_PATH, Y_columns=SLUMP_Y_COLUMNS)
+        dataset.bounds = get_bounds(dataset.X_columns)
+        result = dataset.slump_data
+        self.assertIsNotNone(result)
+        X, Y, Yvar, X_bounds = result
+        self.assertGreater(X.shape[0], 0)
+        self.assertEqual(Y.shape[-1], 1)
+        self.assertEqual(Yvar.shape[-1], 1)
         self.assertEqual(X_bounds.shape[-1], X.shape[-1])
 
     def test_full_workflow_concrete(self):
@@ -546,6 +670,37 @@ class TestReduceToOptimizationSpace(unittest.TestCase):
         torch.testing.assert_close(ineq_idx, torch.tensor([0, 1]))
         torch.testing.assert_close(ineq_coeff, torch.tensor([1.0, -1.0]))
         self.assertAlmostEqual(ineq_val, 0.0)
+
+
+class TestDataRegressions(unittest.TestCase):
+    """Regression tests: verify expected data sizes for boxcrete_data.csv.
+
+    These catch accidental changes to data processing logic that could
+    silently drop valid data points. Update these numbers when the
+    dataset itself is intentionally changed.
+    """
+
+    def test_default_data_size(self):
+        dataset = load_concrete_strength(data_path=DATA_PATH)
+        self.assertEqual(dataset.X.shape[0], 709)
+        self.assertEqual(dataset.X.shape[1], len(DEFAULT_X_COLUMNS))
+
+    def test_gwp_data_count(self):
+        dataset = load_concrete_strength(data_path=DATA_PATH)
+        X_gwp, _, _, _ = dataset.gwp_data
+        self.assertEqual(X_gwp.shape[0], 155)
+
+    def test_slump_data_count(self):
+        dataset = load_concrete_strength(data_path=DATA_PATH, Y_columns=SLUMP_Y_COLUMNS)
+        # Slump data unchanged even with SLUMP_Y_COLUMNS
+        self.assertEqual(dataset.X.shape[0], 709)
+        X_sl, _, _, _ = dataset.slump_data
+        self.assertEqual(X_sl.shape[0], 74)
+
+    def test_strength_28d_count(self):
+        dataset = load_concrete_strength(data_path=DATA_PATH)
+        X_str, _, _ = dataset.strength_data_by_time(28.0)
+        self.assertEqual(X_str.shape[0], 150)
 
 
 if __name__ == "__main__":

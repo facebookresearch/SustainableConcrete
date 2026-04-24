@@ -16,7 +16,11 @@ from parameterized import parameterized
 
 matplotlib.use("Agg")
 
-from boxcrete.plotting import plot_strength_curve  # noqa: E402
+from boxcrete.plotting import (  # noqa: E402
+    plot_feature_importance,
+    plot_slump_calibration,
+    plot_strength_curve,
+)
 
 # Shared defaults to keep tests fast
 _FAST = {"num_t": 16, "dpi": 50}
@@ -86,6 +90,61 @@ class TestPlotStrengthCurve(unittest.TestCase):
             self.model, torch.rand(3, 7), colors=["r", "g", "b"], **_FAST
         )
         self.assertEqual(self.model.strength_model.posterior.call_count, 3)
+
+
+class TestPlotSlumpCalibration(unittest.TestCase):
+    """Tests for the plot_slump_calibration function."""
+
+    def setUp(self):
+        plt.close("all")
+
+    def tearDown(self):
+        plt.close("all")
+
+    def test_basic_call(self):
+        observed = torch.tensor([1.0, 3.0, 5.0, 7.0, 9.0])
+        predicted = torch.tensor([1.2, 2.8, 5.1, 6.9, 8.8])
+        fig = plot_slump_calibration(observed, predicted, dpi=50)
+        self.assertIsInstance(fig, plt.Figure)
+
+    def test_with_error_bars(self):
+        observed = torch.tensor([1.0, 3.0, 5.0])
+        predicted = torch.tensor([1.2, 2.8, 5.1])
+        std = torch.tensor([0.1, 0.2, 0.15])
+        fig = plot_slump_calibration(observed, predicted, predicted_std=std, dpi=50)
+        self.assertIsInstance(fig, plt.Figure)
+
+    def test_without_error_bars(self):
+        observed = torch.tensor([1.0, 3.0, 5.0])
+        predicted = torch.tensor([1.2, 2.8, 5.1])
+        fig = plot_slump_calibration(observed, predicted, dpi=50)
+        self.assertIsInstance(fig, plt.Figure)
+
+
+class TestPlotFeatureImportance(unittest.TestCase):
+    """Tests for the plot_feature_importance function."""
+
+    def setUp(self):
+        plt.close("all")
+
+    def tearDown(self):
+        plt.close("all")
+
+    def test_basic_call(self):
+        lengthscales = torch.tensor([1.0, 0.5, 2.0, 0.1])
+        names = ["Cement", "Fly Ash", "Slag", "Water"]
+        fig = plot_feature_importance(lengthscales, names, dpi=50)
+        self.assertIsInstance(fig, plt.Figure)
+
+    def test_ordering(self):
+        """Bars should be sorted by importance (1/lengthscale)."""
+        lengthscales = torch.tensor([10.0, 1.0, 5.0])
+        names = ["A", "B", "C"]
+        fig = plot_feature_importance(lengthscales, names, dpi=50)
+        ax = fig.axes[0]
+        # B (smallest lengthscale = most important) should be first
+        labels = [t.get_text() for t in ax.get_yticklabels()]
+        self.assertEqual(labels[0], "B")
 
 
 if __name__ == "__main__":

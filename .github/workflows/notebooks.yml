@@ -24,7 +24,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  execute-notebooks:
+  # Notebooks that use BOXCRETE_OPTIMIZATION_MODE run in both mortar and concrete modes
+  mode-dependent-notebooks:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -58,7 +59,7 @@ jobs:
         run: |
           python -m ipykernel install --user --name python3
 
-      - name: Execute notebooks (${{ matrix.optimization-mode }} mode)
+      - name: Execute mode-dependent notebooks (${{ matrix.optimization-mode }})
         env:
           BOXCRETE_OPTIMIZATION_MODE: ${{ matrix.optimization-mode }}
         run: |
@@ -66,11 +67,20 @@ jobs:
           import subprocess, sys, os
           from pathlib import Path
 
+          # Only notebooks that use BOXCRETE_OPTIMIZATION_MODE
+          MODE_DEPENDENT = [
+              "notebooks/prediction_and_optimization_tutorial.ipynb",
+          ]
+
           mode = os.environ.get("BOXCRETE_OPTIMIZATION_MODE", "concrete")
-          notebooks = sorted(Path("notebooks").glob("*.ipynb"))
           failed = []
 
-          for nb in notebooks:
+          for nb in MODE_DEPENDENT:
+              nb_path = Path(nb)
+              if not nb_path.exists():
+                  print(f"⚠️  Skipping (not found): {nb}")
+                  continue
+
               print(f"{'=' * 40}")
               print(f"Executing ({mode}): {nb}")
               print(f"{'=' * 40}")
@@ -100,15 +110,103 @@ jobs:
               for f in failed:
                   print(f"  - {f}")
               sys.exit(1)
-          else:
-              print(f"\nAll {len(notebooks)} notebook(s) executed successfully in {mode} mode.")
           PYEOF
 
       - name: Upload executed notebooks as artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: executed-notebooks-${{ matrix.optimization-mode }}
+          name: notebooks-mode-${{ matrix.optimization-mode }}
+          path: notebooks/prediction_and_optimization_tutorial.ipynb
+          retention-days: 7
+
+  # Notebooks that don't depend on optimization mode run once
+  mode-independent-notebooks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-3.10-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-3.10-
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[notebooks]"
+
+      - name: Install Jupyter kernel
+        run: |
+          python -m ipykernel install --user --name python3
+
+      - name: Execute mode-independent notebooks
+        run: |
+          python - << 'PYEOF'
+          import subprocess, sys
+          from pathlib import Path
+
+          # Notebooks that don't use BOXCRETE_OPTIMIZATION_MODE
+          MODE_DEPENDENT = {
+              "prediction_and_optimization_tutorial.ipynb",
+          }
+
+          notebooks = sorted(
+              nb for nb in Path("notebooks").glob("*.ipynb")
+              if nb.name not in MODE_DEPENDENT
+          )
+          failed = []
+
+          for nb in notebooks:
+              print(f"{'=' * 40}")
+              print(f"Executing: {nb}")
+              print(f"{'=' * 40}")
+
+              result = subprocess.run(
+                  [
+                      sys.executable, "-m", "jupyter", "nbconvert",
+                      "--to", "notebook",
+                      "--execute",
+                      "--inplace",
+                      "--ExecutePreprocessor.timeout=600",
+                      "--ExecutePreprocessor.kernel_name=python3",
+                      str(nb),
+                  ],
+                  capture_output=False,
+              )
+
+              if result.returncode != 0:
+                  failed.append(str(nb))
+                  print(f"❌ Failed: {nb}")
+              else:
+                  print(f"✅ Successfully executed: {nb}")
+              print()
+
+          if failed:
+              print(f"\n{len(failed)} notebook(s) failed:")
+              for f in failed:
+                  print(f"  - {f}")
+              sys.exit(1)
+          else:
+              print(f"\nAll {len(notebooks)} notebook(s) executed successfully.")
+          PYEOF
+
+      - name: Upload executed notebooks as artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: notebooks-independent
           path: notebooks/*.ipynb
           retention-days: 7
 
