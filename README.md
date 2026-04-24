@@ -1,7 +1,7 @@
 # BOxCrete: Bayesian Optimization for Sustainable Concrete Mix Design
 
-Concrete, the second most widely used material in the world, accounts for **6–8% of global anthropogenic CO₂ emissions**, largely due to Portland cement production (~0.8 tons CO₂ per ton of cement). Partial replacement with Supplementary Cementitious Materials (SCMs) such as fly ash, slag, and natural pozzolan reduces embodied carbon and often improves durability, but high SCM usage makes compressive strength a highly nonlinear function of multiple interacting mix parameters, rendering traditional design empirical and trial-and-error driven. To systematically navigate this complex composition space, data-driven frameworks are needed. 
-Here, we introduce BOxCrete, an open-source Bayesian optimization framework for probabilistic strength curve prediction and sustainable mix design. 
+Concrete, the second most widely used material in the world, accounts for **6–8% of global anthropogenic CO₂ emissions**, largely due to Portland cement production (~0.8 tons CO₂ per ton of cement). Partial replacement with Supplementary Cementitious Materials (SCMs) such as fly ash, slag, and natural pozzolan reduces embodied carbon and often improves durability, but high SCM usage makes compressive strength a highly nonlinear function of multiple interacting mix parameters, rendering traditional design empirical and trial-and-error driven. To systematically navigate this complex composition space, data-driven frameworks are needed.
+Here, we introduce BOxCrete, an open-source Bayesian optimization framework for probabilistic strength curve prediction and sustainable mix design.
 We invite researchers and practitioners from all disciplines including AI, machine learning, computer science, materials science, and civil engineering
 to collaborate on discovering more sustainable concrete formulations that are applicable
 to a wide array of construction projects, at scale.
@@ -12,6 +12,7 @@ This repository contains probabilistic models and data for the
 
 1) Compressive strength of concrete and mortar mixes
 2) The associated global warming potential (GWP)
+3) Slump prediction using Gaussian Process regression with derived features
 
 as a function of their composition, consisting of cement, fly ash, slag, fine and coarse aggregate, admixtures, and water, to name a few basic ingredients. See `boxcrete/models.py` for implementation details.
 
@@ -58,7 +59,7 @@ model = SustainableConcreteModel(strength_days=[1, 28])
 model.fit_gwp_model(data)
 model.fit_strength_model(data)
 
-# model_list[0] = GWP, model_list[1] = 1-day strength, model_list[2] = 28-day strength
+# model.model_names shows the ordering: ["GWP", "1-day Strength", "28-day Strength"]
 model_list = model.get_model_list()
 
 # Plot strength curves: 100% cement vs 60% fly ash + 40% cement
@@ -69,6 +70,29 @@ compositions[1, cols.index("Cement (kg/m3)")] = 200.0  # 40% cement
 compositions[1, cols.index("Fly Ash (kg/m3)")] = 300.0  # 60% fly ash
 plot_strength_curve(model, compositions)
 ```
+
+### Slump Prediction
+
+The slump model uses a `SingleTaskGP` with an `AppendDerivedFeatures` input transform
+that automatically computes the HRWR-to-binder ratio — a key determinant of concrete
+workability. Slump prediction is opt-in — use `SLUMP_Y_COLUMNS` to include slump
+when loading data:
+
+```python
+from boxcrete.utils import load_concrete_strength, SLUMP_Y_COLUMNS
+
+# Load data with slump (opt-in)
+data = load_concrete_strength(Y_columns=SLUMP_Y_COLUMNS)
+
+# Fit the slump model (in addition to GWP and strength)
+model.fit_slump_model(data)
+
+# Get slump predictions for a composition
+slump_post = model.slump_model.posterior(compositions)
+print(f"Predicted slump: {slump_post.mean}")
+```
+
+See [`notebooks/slump_prediction_demo.ipynb`](notebooks/slump_prediction_demo.ipynb) for a complete walkthrough including calibration plots, LOO cross-validation, and feature importance.
 
 The models can be used for a variety of tasks, including but not limited to
 1) Continuous-time strength curve predictions with uncertainty bands for a user-specified concrete mix.
@@ -184,14 +208,28 @@ The following figure shows the distribution of model-generated mixes plotted tog
 If you use the data or models contained in this repository, please cite
 ["BOxCrete: A Bayesian Optimization Open-Source AI Model for Concrete Strength Forecasting and Mix Optimization"](https://arxiv.org/abs/2603.21525):
 ```
-@misc{baten2026boxcretebayesianoptimizationopensource,
-      title={BOxCrete: A Bayesian Optimization Open-Source AI Model for Concrete Strength Forecasting and Mix Optimization}, 
+@misc{baten2026boxcrete,
+      title={BOxCrete: A Bayesian Optimization Open-Source AI Model for Concrete Strength Forecasting and Mix Optimization},
       author={Bayezid Baten and M. Ayyan Iqbal and Sebastian Ament and Julius Kusuma and Nishant Garg},
       year={2026},
       eprint={2603.21525},
       archivePrefix={arXiv},
       primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2603.21525}, 
+      url={https://arxiv.org/abs/2603.21525},
+}
+```
+
+For the earlier workshop paper that introduced the model with mortar data, please cite
+["Sustainable Concrete via Bayesian Optimization"](https://arxiv.org/abs/2310.18288):
+```
+@misc{ament2023sustainable,
+      title={Sustainable Concrete via Bayesian Optimization},
+      author={Sebastian Ament and Andrew Witte and Nishant Garg and Julius Kusuma},
+      year={2023},
+      eprint={2310.18288},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2310.18288},
 }
 ```
 

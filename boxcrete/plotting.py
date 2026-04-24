@@ -134,3 +134,114 @@ def plot_strength_curve(
     ax.tick_params(axis="x", which="minor", bottom=False, top=False)
 
     return fig
+
+
+def plot_slump_calibration(
+    observed: Tensor,
+    predicted_mean: Tensor,
+    predicted_std: Tensor | None = None,
+    nsigma: int = 2,
+    title: str = "Slump Calibration",
+    xlabel: str = "Observed Slump (in)",
+    ylabel: str = "Predicted Slump (in)",
+    figsize: tuple[float, float] = (5, 5),
+    dpi: int = 150,
+) -> plt.Figure:
+    """Plots a calibration scatter plot of predicted vs. observed slump.
+
+    Args:
+        observed: ``(n,)``-dim Tensor of observed slump values.
+        predicted_mean: ``(n,)``-dim Tensor of predicted slump means.
+        predicted_std: Optional ``(n,)``-dim Tensor of predicted standard deviations
+            for error bars.
+        nsigma: Number of standard deviations for error bars.
+        title: Plot title.
+        xlabel: X-axis label.
+        ylabel: Y-axis label.
+        figsize: Figure size in inches.
+        dpi: Figure resolution.
+
+    Returns:
+        The matplotlib Figure object.
+    """
+    obs = observed.detach().cpu()
+    pred = predicted_mean.detach().cpu()
+
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+
+    if predicted_std is not None:
+        err = nsigma * predicted_std.detach().cpu()
+        ax.errorbar(obs, pred, yerr=err, fmt="o", alpha=0.6, markersize=4, capsize=2)
+    else:
+        ax.scatter(obs, pred, alpha=0.6, s=20)
+
+    # 1:1 diagonal
+    lo = min(obs.min().item(), pred.min().item())
+    hi = max(obs.max().item(), pred.max().item())
+    margin = 0.05 * (hi - lo)
+    ax.plot([lo - margin, hi + margin], [lo - margin, hi + margin], "k--", alpha=0.5)
+
+    # Metrics
+    residuals = pred - obs
+    ss_res = (residuals**2).sum().item()
+    ss_tot = ((obs - obs.mean()) ** 2).sum().item()
+    r2 = 1 - ss_res / ss_tot if ss_tot > 0 else float("nan")
+    rmse = (ss_res / len(obs)) ** 0.5
+
+    ax.annotate(
+        f"R\u00b2 = {r2:.3f}\nRMSE = {rmse:.2f}",
+        xy=(0.05, 0.92),
+        xycoords="axes fraction",
+        fontsize=9,
+        verticalalignment="top",
+    )
+
+    ax.set_xlabel(xlabel, fontsize=9)
+    ax.set_ylabel(ylabel, fontsize=9)
+    ax.set_title(title, fontsize=10)
+    ax.set_aspect("equal", adjustable="datalim")
+    ax.grid(True, alpha=0.3)
+    return fig
+
+
+def plot_feature_importance(
+    lengthscales: Tensor,
+    feature_names: list[str],
+    title: str = "Feature Importance (ARD Lengthscales)",
+    figsize: tuple[float, float] = (6, 4),
+    dpi: int = 150,
+) -> plt.Figure:
+    """Plots a horizontal bar chart of ARD lengthscale-derived feature importance.
+
+    Importance is computed as ``1 / lengthscale`` (normalized to sum to 1).
+
+    Args:
+        lengthscales: ``(d,)``-dim Tensor of ARD lengthscales.
+        feature_names: List of feature names corresponding to each lengthscale.
+        title: Plot title.
+        figsize: Figure size in inches.
+        dpi: Figure resolution.
+
+    Returns:
+        The matplotlib Figure object.
+    """
+    ls = lengthscales.detach().cpu().float()
+    importance = 1.0 / ls
+    importance = importance / importance.sum()
+
+    # Sort by importance
+    order = importance.argsort(descending=True)
+    importance = importance[order]
+    names = [feature_names[i] for i in order]
+
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    y_pos = range(len(names))
+    ax.barh(y_pos, importance.numpy(), align="center")
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(names, fontsize=8)
+    ax.invert_yaxis()
+    ax.set_xlabel("Relative Importance", fontsize=9)
+    ax.set_title(title, fontsize=10)
+    ax.grid(True, axis="x", alpha=0.3)
+    fig.tight_layout()
+    return fig

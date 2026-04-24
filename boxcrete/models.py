@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-Defines concrete strength and global warming potential (GWP) models.
+Defines concrete strength, slump, and global warming potential (GWP) models.
 """
 
 from __future__ import annotations
@@ -17,29 +17,76 @@ from botorch.models.model import Model
 from botorch.models.transforms.input import (
     AffineInputTransform,
     ChainedInputTransform,
+    InputTransform,
     Log10,
     Normalize,
 )
 from botorch.models.transforms.outcome import Standardize
-
 from botorch.posteriors import Posterior
 from botorch.utils.constraints import LogTransformedInterval
-from gpytorch import ExactMarginalLogLikelihood
+from boxcrete.utils import get_day_zero_data, SustainableConcreteDataset
 from gpytorch.kernels import LinearKernel, MaternKernel, RBFKernel, ScaleKernel
 from gpytorch.likelihoods import GaussianLikelihood
 from gpytorch.means import ZeroMean
+from gpytorch.mlls import ExactMarginalLogLikelihood
 from torch import Tensor
-from boxcrete.utils import get_day_zero_data, SustainableConcreteDataset
+
+# Indices into DEFAULT_X_COLUMNS (without Time) for derived feature computation
+_CEMENT_IDX = 0
+_FLY_ASH_IDX = 1
+_SLAG_IDX = 2
+_HRWR_IDX = 4
+
+
+class AppendDerivedFeatures(InputTransform, torch.nn.Module):
+    """Input transform that appends the HRWR-to-binder ratio.
+
+    The HRWR/binder ratio encodes the admixture dosage relative to total
+    binder content — a key determinant of concrete workability (slump)
+    that stationary GP kernels cannot learn from raw composition values.
+    """
+
+    is_one_to_many = False
+
+    def __init__(
+        self,
+        cement_idx: int = _CEMENT_IDX,
+        fly_ash_idx: int = _FLY_ASH_IDX,
+        slag_idx: int = _SLAG_IDX,
+        hrwr_idx: int = _HRWR_IDX,
+    ):
+        super().__init__()
+        self.cement_idx = cement_idx
+        self.fly_ash_idx = fly_ash_idx
+        self.slag_idx = slag_idx
+        self.hrwr_idx = hrwr_idx
+        self.transform_on_train = True
+        self.transform_on_eval = True
+        self.transform_on_fantasize = True
+
+    def transform(self, X: Tensor) -> Tensor:
+        binder = (
+            X[..., self.cement_idx : self.cement_idx + 1]
+            + X[..., self.fly_ash_idx : self.fly_ash_idx + 1]
+            + X[..., self.slag_idx : self.slag_idx + 1]
+        ).clamp(min=1.0)
+        hrwr_b = X[..., self.hrwr_idx : self.hrwr_idx + 1] / binder
+        return torch.cat([X, hrwr_b], dim=-1)
+
+    @property
+    def num_appended(self) -> int:
+        """Number of features appended by this transform."""
+        return 1
 
 
 class SustainableConcreteModel:
-    """Multi-output model that jointly predicts GWP and compressive strength.
+    """Multi-output model that jointly predicts GWP, slump, and compressive strength.
 
-    The model consists of a GWP model (independent of curing time) and a strength
-    model (dependent on composition *and* time).  At optimisation time the strength
-    model is sliced at each of the ``strength_days`` via ``FixedFeatureModel`` to
-    produce a ``ModelList`` that maps composition only to ``[GWP, 1-day strength,
-    28-day strength, ...]``.
+    The model consists of a GWP model and an optional slump model (both independent
+    of curing time) and a strength model (dependent on composition *and* time).
+    At optimisation time the strength model is sliced at each of the
+    ``strength_days`` via ``FixedFeatureModel`` to produce a ``ModelList`` that
+    maps composition only to ``[GWP, (Slump), 1-day strength, 28-day strength, ...]``.
     """
 
     def __init__(
@@ -47,15 +94,17 @@ class SustainableConcreteModel:
         strength_days: list[int],
         strength_model: Model | None = None,
         gwp_model: Model | None = None,
+        slump_model: Model | None = None,
         d: int | None = None,
     ):
-        """A multi-output model that jointly predicts GWP and compressive strength at
-        pre-defined days `strength_days`.
+        """A multi-output model that jointly predicts GWP, slump, and compressive
+        strength at pre-defined days `strength_days`.
 
         Args:
             strength_days: A list of days to predict strength for.
             strength_model: The strength model. Defaults to None.
             gwp_model: The GWP model. Defaults to None.
+            slump_model: The slump model. Defaults to None.
             d: The dimensionality of the input to the strength model.
                 Is inferred automatically if the fit functions are called. NOTE: The model
                 assumes that the last element of the input corresponds to the time dimension.
@@ -63,6 +112,7 @@ class SustainableConcreteModel:
         self.strength_days = strength_days
         self.strength_model = strength_model
         self.gwp_model = gwp_model
+        self.slump_model = slump_model
         self.d = d
 
     def fit_strength_model(
@@ -105,6 +155,34 @@ class SustainableConcreteModel:
         )
         return self.gwp_model
 
+    def fit_slump_model(
+        self, data: SustainableConcreteDataset, use_fixed_noise: bool = False
+    ) -> SingleTaskGP:
+        """Fits the slump model to the given `data`.
+        Upon completion, the model can be accessed with the `slump_model` attribute.
+
+        Args:
+            data: A SustainableConcreteDataset containing slump data.
+            use_fixed_noise: Toggles the use of known observation variances.
+
+        Returns:
+            The fitted slump model.
+
+        Raises:
+            ValueError: If slump data is not available in the dataset.
+        """
+        slump_data = data.slump_data
+        if slump_data is None:
+            raise ValueError(
+                "Slump data not available. Ensure 'Slump (in)' is in Y_columns."
+            )
+        X, Y, Yvar, _ = slump_data
+        self._set_d(X.shape[-1] + 1)
+        self.slump_model = fit_slump_gp(
+            X=X, Y=Y, Yvar=Yvar, use_fixed_noise=use_fixed_noise
+        )
+        return self.slump_model
+
     def _set_d(self, d: int) -> None:
         if self.d is None:
             self.d = d
@@ -112,28 +190,28 @@ class SustainableConcreteModel:
     def get_model_list(
         self, fixed_features: dict[int, float] | None = None
     ) -> ModelList:
-        """Returns a ``ModelList`` modelling GWP and compressive strength as a
-        function of composition only.
+        """Returns a ``ModelList`` modelling GWP, optional slump, and compressive
+        strength as a function of composition only.
 
-        Converts the strength and GWP models into a model list of independent
-        models for GWP and *x*-day strengths by fixing the time input of the
-        strength model at each ``strength_day``.
+        Converts the strength, GWP, and optional slump models into a model list
+        of independent models by fixing the time input of the strength model at
+        each ``strength_day``.
 
         Args:
             fixed_features: Optional mapping from input column **index** to a
                 fixed value.  When provided these features are fixed *in
                 addition to* the Time dimension for the strength models, and
-                the non-Time entries are also applied to the GWP model via
-                ``FixedFeatureModel``.  Useful for fixing e.g.
+                the non-Time entries are also applied to the GWP and slump
+                models via ``FixedFeatureModel``.  Useful for fixing e.g.
                 ``Coarse Aggregates = 0`` in mortar mode.
 
         Returns:
-            A ``ModelList`` with ``1 + len(strength_days)`` sub-models:
+            A ``ModelList`` with ``1 + len(strength_days) + (1 if slump)``
+            sub-models:
 
             - Index 0: GWP model (composition → GWP)
-            - Index 1: strength at ``strength_days[0]`` (e.g. 1-day)
-            - Index 2: strength at ``strength_days[1]`` (e.g. 28-day)
-            - ...and so on for additional strength days.
+            - Indices 1..n: strength at each ``strength_day``
+            - Last (if fitted): slump model (composition → Slump)
 
         Raises:
             ValueError: If the model has not been fitted yet.
@@ -145,23 +223,24 @@ class SustainableConcreteModel:
 
         time_idx = self.d - 1  # last column is Time
 
-        if fixed_features is None:
-            gwp_model = self.gwp_model
-        else:
+        # Helper to optionally wrap a time-independent model with FixedFeatureModel
+        def _maybe_wrap(base_model: Model) -> Model:
+            if fixed_features is None:
+                return base_model
             non_time = {k: v for k, v in fixed_features.items() if k != time_idx}
-            if non_time:
-                gwp_indices = sorted(non_time.keys())
-                gwp_values = [non_time[i] for i in gwp_indices]
-                gwp_model = FixedFeatureModel(
-                    base_model=self.gwp_model,
-                    dim=self.d - 1,  # GWP input has no Time
-                    indices=gwp_indices,
-                    values=gwp_values,
-                )
-            else:
-                gwp_model = self.gwp_model
+            if not non_time:
+                return base_model
+            ff_indices = sorted(non_time.keys())
+            ff_values = [non_time[i] for i in ff_indices]
+            return FixedFeatureModel(
+                base_model=base_model,
+                dim=self.d - 1,  # time-independent models have no Time
+                indices=ff_indices,
+                values=ff_values,
+            )
 
-        strength_models = []
+        models: list[Model] = [_maybe_wrap(self.gwp_model)]
+
         for day in self.strength_days:
             indices = [time_idx]
             values: list[float] = [float(day)]
@@ -170,7 +249,7 @@ class SustainableConcreteModel:
                     if idx != time_idx:
                         indices.append(idx)
                         values.append(val)
-            strength_models.append(
+            models.append(
                 FixedFeatureModel(
                     base_model=self.strength_model,
                     dim=self.d,
@@ -179,7 +258,40 @@ class SustainableConcreteModel:
                 )
             )
 
-        return ModelList(gwp_model, *strength_models)
+        if self.slump_model is not None:
+            models.append(_maybe_wrap(self.slump_model))
+
+        return ModelList(*models)
+
+    @property
+    def model_names(self) -> list[str]:
+        """Ordered names of outputs in the ``ModelList`` from ``get_model_list``.
+
+        Returns:
+            A list like ``["GWP", "Slump (in)", "1-day Strength", "28-day Strength"]``.
+        """
+        names = ["GWP"]
+        for day in self.strength_days:
+            names.append(f"{day}-day Strength")
+        if self.slump_model is not None:
+            names.append("Slump (in)")
+        return names
+
+    def get_model_dict(
+        self, fixed_features: dict[int, float] | None = None
+    ) -> dict[str, Model]:
+        """Returns a name-to-model dictionary for the multi-output model.
+
+        Equivalent to ``dict(zip(model.model_names, model.get_model_list(...).models))``.
+
+        Args:
+            fixed_features: Same as ``get_model_list``.
+
+        Returns:
+            A dictionary mapping output names to sub-models.
+        """
+        model_list = self.get_model_list(fixed_features=fixed_features)
+        return dict(zip(self.model_names, model_list.models))
 
 
 class FixedFeatureModel(Model):
@@ -446,3 +558,67 @@ def get_strength_gp_input_transform(
     else:
         tf3 = Normalize(d)  # normalizing after log(t + 1) transform
     return ChainedInputTransform(tf1=tf1, tf2=tf2, tf3=tf3)
+
+
+def fit_slump_gp(
+    X: Tensor,
+    Y: Tensor,
+    Yvar: Tensor,
+    use_fixed_noise: bool = False,
+    optimizer_kwargs: dict | None = None,
+) -> SingleTaskGP:
+    """Fits a GP model to slump data with derived composition features.
+
+    Automatically appends the HRWR/binder ratio via ``AppendDerivedFeatures``
+    before fitting a ``SingleTaskGP``.
+
+    Args:
+        X: ``n x d``-dim Tensor of composition inputs (without time).
+        Y: ``n x 1``-dim Tensor of slump values.
+        Yvar: ``n x 1``-dim Tensor of slump variances.
+        use_fixed_noise: Whether to use fixed observation noise.
+        optimizer_kwargs: Optional keyword arguments for the optimizer.
+
+    Returns:
+        A fitted ``SingleTaskGP`` model.
+    """
+    d_in = X.shape[-1]
+    derive = AppendDerivedFeatures()
+    d_aug = d_in + derive.num_appended
+
+    if optimizer_kwargs is None:
+        optimizer_kwargs = {"options": {"maxiter": 1024}}
+
+    # Chain: append derived features → normalize to unit cube
+    X_aug = derive.transform(X)
+    aug_min = X_aug.amin(dim=0)
+    aug_max = X_aug.amax(dim=0)
+    # Avoid zero-width bounds (causes NaN in normalization)
+    zero_width = aug_max - aug_min < 1e-8
+    aug_max[zero_width] = aug_min[zero_width] + 1.0
+    aug_bounds = torch.stack([aug_min, aug_max])
+    input_tf = ChainedInputTransform(
+        derive=derive,
+        normalize=Normalize(d=d_aug, bounds=aug_bounds),
+    )
+
+    model_kwargs: dict = {
+        "train_X": X,
+        "train_Y": Y,
+        "input_transform": input_tf,
+        "outcome_transform": Standardize(1),
+    }
+    if use_fixed_noise:
+        model_kwargs["train_Yvar"] = Yvar
+    else:
+        # Constrain noise variance to [1e-4, 1e1]. The lower bound of 1e-4
+        # (noise std ~1% of standardized data) prevents numerical issues
+        # while allowing the optimizer to find the right noise level.
+        model_kwargs["likelihood"] = GaussianLikelihood(
+            noise_constraint=LogTransformedInterval(1e-4, 1.0, initial_value=1e-2)
+        )
+
+    model = SingleTaskGP(**model_kwargs)
+    mll = ExactMarginalLogLikelihood(model.likelihood, model)
+    fit_gpytorch_mll(mll, optimizer_kwargs=optimizer_kwargs)
+    return model

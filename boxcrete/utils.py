@@ -53,6 +53,7 @@ DEFAULT_X_COLUMNS = [
     "Time",  # last dimension is assumed to be time
 ]
 DEFAULT_Y_COLUMNS = ["GWP", "Strength (Mean)"]
+SLUMP_Y_COLUMNS = ["GWP", "Strength (Mean)", "Slump (in)"]
 DEFAULT_YSTD_COLUMNS = ["Strength (Std)"]
 
 MORTAR_BOUNDS_DICT = {
@@ -116,10 +117,10 @@ class SustainableConcreteDataset:
         Args:
             X: `n x d`-dim Tensor of inputs, including composition dimensions and a time
                 as the last dimension time = `X[:, -1]`.
-            Y: `n x 2`-dim Tensor of outputs, where `Y[i, 0]` corresponds to the
-                global warming potential (GWP) and `Y[i, 1]` corresponds to the
-                empirical mean strength value corresponding to `X[i, :]`.
-            Ystd: `n x 2`-dim Tensor of empirical standard deviations of `Y`.
+            Y: ``n x m``-dim Tensor of outputs (``m = len(Y_columns)``),
+                where ``Y[:, 0]`` is GWP, ``Y[:, 1]`` is mean strength, and
+                optionally ``Y[:, 2]`` is slump when using ``SLUMP_Y_COLUMNS``.
+            Ystd: ``n x m``-dim Tensor of empirical standard deviations of ``Y``.
             X_columns: A list of column names of `X`.
             Y_columns: A list of column names of `Y`.
             Ystd_columns: A list of column names of `Ystd`.
@@ -155,15 +156,15 @@ class SustainableConcreteDataset:
 
     @property
     def Y(self) -> Tensor:
-        """The `n x 2`-dim output data `Y`, where
-        1) `Y[i, 0]` is the GWP value of the ith sample.
-        2) `Y[i, 1]` is the measured strength value for the ith sample.
+        """The ``n x m``-dim output data ``Y`` (``m = len(Y_columns)``).
+        ``Y[:, 0]`` is GWP, ``Y[:, 1]`` is strength, and optionally
+        ``Y[:, 2]`` is slump.
         """
         return self._Y
 
     @property
     def Ystd(self) -> Tensor:
-        """Getter for the `n x 2`-dim empirical standard deviation of the outputs.
+        """The ``n x m``-dim empirical standard deviation of the outputs.
         1) `Ystd[i, 0]` is the empirical standard deviation of the GWP values of the
             ith sample, and
         2) `Ystd[i, 1]` is the empirical standard deviation strength values for the
@@ -204,6 +205,61 @@ class SustainableConcreteDataset:
         row_ind = torch.where(X[:, -1] == time)[0]
         return X[row_ind], Y[row_ind], Yvar[row_ind]
 
+    def _time_independent_data(
+        self, y_col_idx: int, default_variance: float = 1e-2
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor | None]:
+        """Returns unique-composition data for a time-independent output.
+
+        Removes duplicate rows due to multiple time measurements and strips
+        the time dimension from X and bounds.
+
+        Args:
+            y_col_idx: Column index into ``Y`` / ``Yvar`` to extract.
+            default_variance: Fallback variance when ``Ystd`` doesn't have
+                enough columns to cover ``y_col_idx``.
+
+        Returns:
+            A 4-tuple ``(X, Y, Yvar, X_bounds)`` for unique compositions.
+        """
+        unique_indices = self.unique_composition_indices
+        X = self.X[unique_indices, :-1]
+        Y = self.Y[unique_indices, y_col_idx].unsqueeze(-1)
+        if self._Ystd.shape[-1] > y_col_idx:
+            Yvar = self.Yvar[unique_indices, y_col_idx].unsqueeze(-1)
+        else:
+            Yvar = torch.full_like(Y, fill_value=default_variance)
+        X_bounds = None
+        if self.bounds is not None:
+            X_bounds = self.bounds[:, :-1]
+        return X, Y, Yvar, X_bounds
+
+    @property
+    def slump_data(self) -> tuple[Tensor, Tensor, Tensor, Tensor | None] | None:
+        """Returns the data with which to fit a slump model.
+
+        Slump is time-independent (like GWP), so duplicates from multiple
+        time measurements are removed. Rows where Slump is NaN (e.g. mortar
+        mixes without slump measurements) are excluded.
+
+        Returns:
+            A 4-tuple of Tensors containing 1) the ``n_valid x (d - 1)``
+            unique compositions X *without* time, 2) the corresponding
+            ``n_valid x 1``-dim Slump values Y, 3) the ``n_valid x 1``-dim
+            Slump variances Yvar, and 4) the ``2 x (d - 1)``-dim bounds on X.
+            Returns ``None`` if Slump is not present in Y_columns.
+        """
+        if "Slump (in)" not in self._Y_columns:
+            return None
+        slump_idx = self._Y_columns.index("Slump (in)")
+        X, Y, Yvar, X_bounds = self._time_independent_data(
+            slump_idx, default_variance=1e-2
+        )
+        # Filter out NaN slump values (mortar mixes without slump measurements)
+        valid = ~Y.squeeze(-1).isnan()
+        if not valid.any():
+            return None
+        return X[valid], Y[valid], Yvar[valid], X_bounds
+
     @property
     def gwp_data(self) -> tuple[Tensor, Tensor, Tensor, Tensor | None]:
         """Returns the data with which to fit a GWP model.
@@ -214,14 +270,8 @@ class SustainableConcreteDataset:
             corresponding `n_unique x 1`-dim GWP values Y, 3) the `n_unique x 1`-dim
             GWP variances Yvar, and the `2 x (d - 1)`-dim bounds on X.
         """
-        # removes duplicates due to multiple measurements in time, which is irrelevant for gwp
-        unique_indices = self.unique_composition_indices
-        X = self.X[unique_indices, :-1]
-        Y = self.Y[unique_indices, 0].unsqueeze(-1)
-        Yvar = self.Yvar[unique_indices, 0].unsqueeze(-1)
-        X_bounds = None
-        if self.bounds is not None:
-            X_bounds = self.bounds[:, :-1]  # without time dimension
+        X, Y, Yvar, X_bounds = self._time_independent_data(0, default_variance=1e-3)
+        if X_bounds is not None:
             if (X.amin(dim=0) < X_bounds[0, :]).any() or (
                 X.amax(dim=0) > X_bounds[1, :]
             ).any():
@@ -371,18 +421,23 @@ def load_concrete_strength(
         logger.info("  - %s", column)
 
     # first, remove rows and columns with missing data
-    data_columns = X_columns + Y_columns + Ystd_columns
-    data_columns = np.array(data_columns)
-    is_missing = torch.tensor(df[data_columns].to_numpy()).isnan()
+    # Slump is optional — don't drop rows just because Slump is missing,
+    # since those rows still have valid strength/GWP data.
+    optional_columns = {"Slump (in)"}
+    required_columns = [
+        c for c in X_columns + Y_columns + Ystd_columns if c not in optional_columns
+    ]
+    required_columns = np.array(required_columns)
+    is_missing = torch.tensor(df[required_columns].to_numpy()).isnan()
     n_missing = is_missing.sum(dim=0)
     missing_col_ind = n_missing > 0
     if missing_col_ind.any():
         logger.info(f"There are {missing_col_ind.sum()} columns with missing entries:")
         logger.info(f"{missing_col_ind=}")
-        logger.info(f"{data_columns=}")
+        logger.info(f"{required_columns=}")
         logger.info(f"{n_missing=}")
         for name, missing in zip(
-            data_columns[missing_col_ind], n_missing[missing_col_ind]
+            required_columns[missing_col_ind], n_missing[missing_col_ind]
         ):
             logger.info("  - %s has %s missing entries.", name, missing.item())
         logger.info("Removing missing rows with missing entries from data.")
@@ -391,7 +446,7 @@ def load_concrete_strength(
         df = df.drop(missing_row_ind)
         logger.info(
             "  -Number of missing values after deletion (Should be zero): "
-            f"{torch.tensor(df[data_columns].to_numpy()).isnan().sum()}"
+            f"{torch.tensor(df[required_columns].to_numpy()).isnan().sum()}"
         )
 
     # assumes mix ids are the first column of the table
@@ -454,6 +509,12 @@ def load_concrete_strength(
             ),
             dim=-1,
         )
+        # Add small constant std for Slump if present
+        if "Slump (in)" in Y_columns:
+            Ystd = torch.cat(
+                (Ystd, torch.full_like(Y[:, 0], 1e-1).unsqueeze(-1)),
+                dim=-1,
+            )
     else:
         raise NotImplementedError(
             "Multiple Ystd columns not supported yet."

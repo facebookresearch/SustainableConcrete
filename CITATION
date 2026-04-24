@@ -1,8 +1,19 @@
+@misc{baten2026boxcrete,
+      title={BOxCrete: A Bayesian Optimization Open-Source AI Model for Concrete Strength Forecasting and Mix Optimization},
+      author={Bayezid Baten and M. Ayyan Iqbal and Sebastian Ament and Julius Kusuma and Nishant Garg},
+      year={2026},
+      eprint={2603.21525},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2603.21525},
+}
+
 @misc{ament2023sustainable,
       title={Sustainable Concrete via Bayesian Optimization},
       author={Sebastian Ament and Andrew Witte and Nishant Garg and Julius Kusuma},
       year={2023},
       eprint={2310.18288},
       archivePrefix={arXiv},
-      primaryClass={cs.LG}
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2310.18288},
 }
