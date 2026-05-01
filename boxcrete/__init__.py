@@ -4,18 +4,18 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from boxcrete.model_utils import FixedFeatureModel, LinearModel
 from boxcrete.models import (
     AppendDerivedFeatures,
-    fit_gwp_gp,
     fit_slump_gp,
     fit_strength_gp,
-    FixedFeatureModel,
     get_strength_gp_input_transform,
     SustainableConcreteModel,
 )
 from boxcrete.plotting import (
+    compute_loo_cv,
+    plot_calibration,
     plot_feature_importance,
-    plot_slump_calibration,
     plot_strength_curve,
 )
 from boxcrete.utils import (
@@ -24,6 +24,8 @@ from boxcrete.utils import (
     CONCRETE_REFERENCE_POINT,
     DATA_PATH,
     DEFAULT_BOUNDS_DICT,
+    DEFAULT_COST_COEFFICIENTS,
+    DEFAULT_GWP_COEFFICIENTS,
     DEFAULT_X_COLUMNS,
     DEFAULT_Y_COLUMNS,
     DEFAULT_YSTD_COLUMNS,
@@ -32,6 +34,7 @@ from boxcrete.utils import (
     get_day_zero_data,
     get_reference_point,
     load_concrete_strength,
+    make_linear_coefficients,
     MORTAR_BOUNDS_DICT,
     MORTAR_CONSTRAINTS,
     MORTAR_REFERENCE_POINT,
@@ -48,17 +51,20 @@ __all__ = [
     "CONCRETE_REFERENCE_POINT",
     "DATA_PATH",
     "DEFAULT_BOUNDS_DICT",
+    "DEFAULT_COST_COEFFICIENTS",
+    "DEFAULT_GWP_COEFFICIENTS",
     "DEFAULT_X_COLUMNS",
     "DEFAULT_Y_COLUMNS",
     "DEFAULT_YSTD_COLUMNS",
     "FixedFeatureModel",
+    "LinearModel",
     "MORTAR_BOUNDS_DICT",
     "MORTAR_CONSTRAINTS",
     "MORTAR_REFERENCE_POINT",
     "SLUMP_Y_COLUMNS",
-    "SustainableConcreteModel",
     "SustainableConcreteDataset",
-    "fit_gwp_gp",
+    "SustainableConcreteModel",
+    "compute_loo_cv",
     "fit_slump_gp",
     "fit_strength_gp",
     "get_bounds",
@@ -67,8 +73,9 @@ __all__ = [
     "get_reference_point",
     "get_strength_gp_input_transform",
     "load_concrete_strength",
+    "make_linear_coefficients",
+    "plot_calibration",
     "plot_feature_importance",
-    "plot_slump_calibration",
     "plot_strength_curve",
     "predict_pareto",
     "reduce_to_optimization_space",

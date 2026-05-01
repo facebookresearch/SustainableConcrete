@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import torch
+from botorch.models import SingleTaskGP
+from linear_operator.utils.cholesky import psd_safe_cholesky
 from matplotlib.ticker import MultipleLocator
 from torch import Tensor
 
@@ -101,7 +103,7 @@ def plot_strength_curve(
                 curve_mean - nsigma * curve_std,
                 curve_mean + nsigma * curve_std,
                 alpha=0.2,
-                label="Predicted",
+                label="Predicted" if i == 0 else None,
                 color=color,
             )
 
@@ -136,22 +138,85 @@ def plot_strength_curve(
     return fig
 
 
-def plot_slump_calibration(
+def compute_loo_cv(
+    model: SingleTaskGP,
+    n_real: int | None = None,
+) -> tuple[Tensor, Tensor, Tensor]:
+    """Computes efficient leave-one-out cross-validation predictions for a fitted GP.
+
+    Uses the closed-form GP LOO identity to compute LOO predictions in O(n³)
+    without refitting the model. If the model has an outcome transform (e.g.
+    Standardize), predictions are returned in the original (untransformed) space.
+
+    Args:
+        model: A fitted SingleTaskGP model.
+        n_real: Number of real (non-synthetic) training points. If provided,
+            only the first ``n_real`` LOO predictions are returned. Useful
+            when the model was augmented with synthetic data (e.g. day-zero
+            conditioning points for strength models).
+
+    Returns:
+        A 3-tuple of ``(loo_observed, loo_predicted_mean, loo_predicted_std)``
+        tensors in the original (untransformed) output space.
+    """
+    train_X = model.train_inputs[0]
+    train_Y = model.train_targets
+    n = train_X.shape[-2]
+
+    with torch.no_grad():
+        prior_dist = model.forward(train_X)
+        noisy_mvn = model.likelihood(prior_dist)
+        K = noisy_mvn.lazy_covariance_matrix.to_dense()
+
+    L = psd_safe_cholesky(K)
+    residuals = (train_Y - prior_dist.mean).unsqueeze(-1)
+    K_inv_res = torch.cholesky_solve(residuals, L)
+    I = torch.eye(n, dtype=L.dtype, device=L.device)
+    L_inv = torch.linalg.solve_triangular(L, I, upper=False)
+    K_inv_diag = (L_inv**2).sum(dim=-2)
+    loo_var = (1.0 / K_inv_diag).unsqueeze(-1)
+    loo_mean = train_Y.unsqueeze(-1) - K_inv_res * loo_var
+
+    # Untransform from standardized to original space if applicable
+    loo_pred = loo_mean.reshape(-1)
+    loo_obs = train_Y
+    loo_std = loo_var.reshape(-1).sqrt()
+
+    if hasattr(model, "outcome_transform"):
+        otf = model.outcome_transform
+        if hasattr(otf, "stdvs") and hasattr(otf, "means"):
+            loo_pred = loo_pred * otf.stdvs.squeeze() + otf.means.squeeze()
+            loo_obs = loo_obs * otf.stdvs.squeeze() + otf.means.squeeze()
+            loo_std = loo_std * otf.stdvs.squeeze()
+
+    # Restrict to real data points if specified
+    if n_real is not None:
+        loo_pred = loo_pred[:n_real]
+        loo_obs = loo_obs[:n_real]
+        loo_std = loo_std[:n_real]
+
+    return loo_obs.detach(), loo_pred.detach(), loo_std.detach()
+
+
+def plot_calibration(
     observed: Tensor,
     predicted_mean: Tensor,
     predicted_std: Tensor | None = None,
     nsigma: int = 2,
-    title: str = "Slump Calibration",
-    xlabel: str = "Observed Slump (in)",
-    ylabel: str = "Predicted Slump (in)",
+    title: str = "Calibration",
+    xlabel: str = "Observed",
+    ylabel: str = "Predicted",
     figsize: tuple[float, float] = (5, 5),
     dpi: int = 150,
 ) -> plt.Figure:
-    """Plots a calibration scatter plot of predicted vs. observed slump.
+    """Plots a calibration scatter plot of predicted vs. observed values.
+
+    A general-purpose calibration plot showing predicted vs. observed values
+    with optional error bars and R²/RMSE metrics.
 
     Args:
-        observed: ``(n,)``-dim Tensor of observed slump values.
-        predicted_mean: ``(n,)``-dim Tensor of predicted slump means.
+        observed: ``(n,)``-dim Tensor of observed values.
+        predicted_mean: ``(n,)``-dim Tensor of predicted means.
         predicted_std: Optional ``(n,)``-dim Tensor of predicted standard deviations
             for error bars.
         nsigma: Number of standard deviations for error bars.

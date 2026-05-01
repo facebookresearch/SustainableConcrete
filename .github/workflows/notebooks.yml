@@ -23,6 +23,9 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # Notebooks that use BOXCRETE_OPTIMIZATION_MODE run in both mortar and concrete modes
   mode-dependent-notebooks:
@@ -31,6 +34,7 @@ jobs:
       fail-fast: false
       matrix:
         optimization-mode: ['mortar', 'concrete']
+        include-cost: ['false', 'true']
 
     steps:
       - name: Checkout repository
@@ -59,9 +63,10 @@ jobs:
         run: |
           python -m ipykernel install --user --name python3
 
-      - name: Execute mode-dependent notebooks (${{ matrix.optimization-mode }})
+      - name: Execute mode-dependent notebooks (${{ matrix.optimization-mode }}, cost=${{ matrix.include-cost }})
         env:
           BOXCRETE_OPTIMIZATION_MODE: ${{ matrix.optimization-mode }}
+          BOXCRETE_INCLUDE_COST: ${{ matrix.include-cost }}
         run: |
           python - << 'PYEOF'
           import subprocess, sys, os

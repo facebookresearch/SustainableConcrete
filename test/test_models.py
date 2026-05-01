@@ -11,11 +11,10 @@ from unittest.mock import MagicMock
 
 import torch
 from botorch.models import SingleTaskGP
+from boxcrete.model_utils import FixedFeatureModel
 from boxcrete.models import (
-    fit_gwp_gp,
     fit_slump_gp,
     fit_strength_gp,
-    FixedFeatureModel,
     get_strength_gp_input_transform,
     SustainableConcreteModel,
 )
@@ -50,90 +49,10 @@ class BaseModelTest(unittest.TestCase):
         )
         cls.bounds[1, -1] = 28
 
-    def _mock_dataset(self):
-        mock = MagicMock()
-        mock.strength_data = (self.X, self.Y_strength, self.Yvar, self.bounds)
-        mock.gwp_data = (
-            self.X[:, :-1],
-            self.Y_gwp,
-            self.Yvar,
-            self.bounds[:, :-1],
-        )
-        return mock
-
     def _mock_base_model(self, num_outputs=1):
         m = MagicMock()
         m.num_outputs = num_outputs
         return m
-
-
-class TestFixedFeatureModel(BaseModelTest):
-    """Tests for the FixedFeatureModel class."""
-
-    def test_initialization_and_properties(self):
-        model = FixedFeatureModel(
-            base_model=self._mock_base_model(3), dim=5, indices=[4], values=[1.0]
-        )
-        self.assertEqual(model._dim, 5)
-        self.assertEqual(model.num_outputs, 3)
-
-    def test_initialization_mismatched_indices_values(self):
-        with self.assertRaises(ValueError):
-            FixedFeatureModel(
-                base_model=self._mock_base_model(),
-                dim=5,
-                indices=[4],
-                values=[1.0, 2.0],
-            )
-
-    @parameterized.expand([([4], [7.0]), ([3, 4], [7.0, 14.0]), ([0], [1.0])])
-    def test_add_fixed_features(self, indices, values):
-        """Test shape and value insertion for _add_fixed_features."""
-        original_dim = 4
-        model = FixedFeatureModel(
-            base_model=self._mock_base_model(),
-            dim=original_dim + len(indices),
-            indices=indices,
-            values=values,
-        )
-        X = torch.rand(5, original_dim, dtype=self.dtype)
-        Z = model._add_fixed_features(X)
-        self.assertEqual(Z.shape, (5, original_dim + len(indices)))
-        for idx, val in zip(indices, values):
-            torch.testing.assert_close(
-                Z[:, idx], torch.full((5,), val, dtype=self.dtype)
-            )
-
-    def test_fixed_features_unsorted_indices(self):
-        """Regression test: unsorted indices must place values at correct positions."""
-        base = self._mock_base_model()
-        # Deliberately pass unsorted indices: [4, 2]
-        model = FixedFeatureModel(
-            base_model=base, dim=6, indices=[4, 2], values=[99.0, 77.0]
-        )
-        X = torch.rand(3, 4, dtype=self.dtype)
-        Z = model._add_fixed_features(X)
-        # Position 2 should have 77.0 and position 4 should have 99.0
-        torch.testing.assert_close(Z[:, 2], torch.full((3,), 77.0, dtype=self.dtype))
-        torch.testing.assert_close(Z[:, 4], torch.full((3,), 99.0, dtype=self.dtype))
-
-    @parameterized.expand([("forward",), ("posterior",)])
-    def test_delegates_to_base_model(self, method):
-        """Test that forward/posterior delegate to base model with augmented input."""
-        base = self._mock_base_model()
-        setattr(base, method, MagicMock(return_value=MagicMock()))
-        model = FixedFeatureModel(base_model=base, dim=5, indices=[4], values=[1.0])
-        getattr(model, method)(torch.rand(5, 4, dtype=self.dtype))
-        getattr(base, method).assert_called_once()
-        self.assertEqual(getattr(base, method).call_args[0][0].shape[-1], 5)
-
-    def test_subset_output(self):
-        base = self._mock_base_model()
-        base.subset_output = MagicMock(return_value=MagicMock())
-        model = FixedFeatureModel(base_model=base, dim=5, indices=[4], values=[1.0])
-        result = model.subset_output([0])
-        self.assertIsInstance(result, FixedFeatureModel)
-        base.subset_output.assert_called_once_with([0])
 
 
 class TestSustainableConcreteModel(BaseModelTest):
@@ -312,38 +231,15 @@ class TestSustainableConcreteModel(BaseModelTest):
         )
         fixed = {5: 0.0}
         model_list = model.get_model_list(fixed_features=fixed)
-        # GWP (wrapped) + Slump (wrapped) + 2 strength = 4
+        # GWP (wrapped) + 2 strength (wrapped) + Slump (wrapped) = 4
         self.assertEqual(len(model_list.models), 4)
-        # Both GWP (index 0) and Slump (index 1) should be wrapped
+        # GWP (index 0) and Slump (last) should be wrapped
         self.assertIsInstance(model_list.models[0], FixedFeatureModel)
-        self.assertIsInstance(model_list.models[1], FixedFeatureModel)
+        self.assertIsInstance(model_list.models[-1], FixedFeatureModel)
 
 
 class TestFitGP(BaseModelTest):
-    """Tests for fit_gwp_gp, fit_strength_gp, and fit_slump_gp with fast optimizer."""
-
-    @parameterized.expand([(False,), (True,)])
-    def test_fit_gwp_gp(self, use_fixed_noise):
-        X, Y, Yvar = self.X[:, :-1], self.Y_gwp, self.Yvar
-        model = fit_gwp_gp(
-            X=X,
-            Y=Y,
-            Yvar=Yvar,
-            X_bounds=self.bounds[:, :-1],
-            use_fixed_noise=use_fixed_noise,
-            optimizer_kwargs=FAST_FIT_KWARGS,
-        )
-        self.assertEqual(model.num_outputs, 1)
-        post = model.posterior(torch.rand(3, X.shape[-1], dtype=self.dtype) * 500 + 100)
-        self.assertTrue(torch.all(post.variance > 0))
-
-    def test_fit_gwp_gp_invalid_output_dim(self):
-        with self.assertRaises(ValueError):
-            fit_gwp_gp(
-                X=self.X[:, :-1],
-                Y=torch.rand(self.n, 2, dtype=self.dtype),
-                Yvar=torch.rand(self.n, 2, dtype=self.dtype),
-            )
+    """Tests for fit_strength_gp and fit_slump_gp with fast optimizer."""
 
     @parameterized.expand([(False, True), (True, True), (False, False)])
     def test_fit_strength_gp(self, use_fixed_noise, with_bounds):
@@ -470,13 +366,22 @@ class TestPredictiveQualityRegression(unittest.TestCase):
         p, o = loo_mean.squeeze().detach(), train_Y
         return 1 - ((p - o) ** 2).sum().item() / ((o - o.mean()) ** 2).sum().item()
 
-    def test_gwp_loo_r2(self):
+    def test_gwp_calibration_r2(self):
+        """GWP LinearModel should achieve near-perfect R² on training data."""
         torch.manual_seed(42)
         data = load_concrete_strength(data_path=DATA_PATH)
         model = SustainableConcreteModel(strength_days=[1, 28])
         model.fit_gwp_model(data)
-        r2 = self._loo_r2(model.gwp_model)
-        self.assertGreater(r2, 0.99, f"GWP LOO R² = {r2:.3f}, expected > 0.99")
+        X, Y, _, _ = data.gwp_data
+        Y_pred = model.gwp_model.posterior(X).mean.squeeze().detach()
+        residuals = Y.squeeze() - Y_pred
+        ss_res = (residuals**2).sum().item()
+        ss_tot = ((Y.squeeze() - Y.squeeze().mean()) ** 2).sum().item()
+        r2 = 1 - ss_res / ss_tot
+        # GWP is a linear function of composition — R² should be near 1.
+        # Threshold set to 0.999 to catch data integrity issues (e.g. mixes
+        # with unmodeled ingredients whose GWP doesn't match composition).
+        self.assertGreater(r2, 0.999, f"GWP R² = {r2:.6f}, expected > 0.999")
 
     def test_strength_loo_r2(self):
         torch.manual_seed(42)
@@ -493,6 +398,188 @@ class TestPredictiveQualityRegression(unittest.TestCase):
         gp = fit_slump_gp(X=X, Y=Y, Yvar=Yvar)
         r2 = self._loo_r2(gp)
         self.assertGreater(r2, 0.40, f"Slump LOO R² = {r2:.3f}, expected > 0.40")
+
+
+class TestFitCostModel(unittest.TestCase):
+    """Tests for SustainableConcreteModel.fit_cost_model."""
+
+    def setUp(self):
+        torch.manual_seed(42)
+        self.data = load_concrete_strength(data_path=DATA_PATH)
+        self.model = SustainableConcreteModel(strength_days=[1, 28])
+
+    def test_fit_cost_model(self):
+        """fit_cost_model should construct a LinearModel."""
+        from boxcrete.models import LinearModel
+
+        result = self.model.fit_cost_model(self.data)
+        self.assertIsInstance(result, LinearModel)
+        self.assertIsNotNone(self.model.cost_model)
+
+    def test_custom_coefficients(self):
+        """Should accept custom coefficient dict."""
+        custom = {"Cement (kg/m3)": (0.15, 0.02), "Water (kg/m3)": (0.003, 0.001)}
+        self.model.fit_cost_model(self.data, cost_coefficients=custom)
+        # Verify cement coefficient is negated internally for maximization
+        X_columns = self.data.X_columns[:-1]
+        cement_idx = X_columns.index("Cement (kg/m3)")
+        self.assertAlmostEqual(
+            self.model.cost_model._coefficients[cement_idx].item(), -0.15
+        )
+
+    def test_uncertainty_varies_by_composition(self):
+        """HRWR-heavy compositions should have higher cost variance."""
+        self.model.fit_cost_model(self.data)
+        X_columns = self.data.X_columns[:-1]
+        hrwr_idx = X_columns.index("HRWR (kg/m3)")
+        # Create two compositions: one with high HRWR, one with low
+        X_high_hrwr = torch.zeros(1, len(X_columns), dtype=torch.double)
+        X_high_hrwr[0, hrwr_idx] = 10.0
+        X_low_hrwr = torch.zeros(1, len(X_columns), dtype=torch.double)
+        X_low_hrwr[0, hrwr_idx] = 1.0
+        var_high = self.model.cost_model.posterior(X_high_hrwr).variance.item()
+        var_low = self.model.cost_model.posterior(X_low_hrwr).variance.item()
+        self.assertGreater(var_high, var_low)
+
+    def test_cost_predictions_are_negative(self):
+        """Cost predictions should be negative (maximization convention)."""
+        self.model.fit_cost_model(self.data)
+        X, _, _, _ = self.data.gwp_data
+        pred = self.model.cost_model.posterior(X[:5]).mean
+        self.assertTrue((pred < 0).all(), "Cost predictions should be negative")
+
+
+class TestOutputIndex(unittest.TestCase):
+    """Tests for SustainableConcreteModel.output_index."""
+
+    def setUp(self):
+        self.model = SustainableConcreteModel(strength_days=[1, 28])
+
+    def test_basic_indices(self):
+        """Should return correct indices for default outputs."""
+        # Without fitting, model_names = ["GWP", "1-day Strength", "28-day Strength"]
+        self.assertEqual(self.model.output_index("GWP"), 0)
+        self.assertEqual(self.model.output_index("1-day Strength"), 1)
+        self.assertEqual(self.model.output_index("28-day Strength"), 2)
+
+    def test_with_cost(self):
+        """Cost should be at end when cost_model is set."""
+        from boxcrete.models import LinearModel
+
+        self.model.cost_model = LinearModel(torch.zeros(5), torch.zeros(5))
+        self.assertEqual(self.model.output_index("Cost"), 3)
+
+    def test_invalid_name_raises(self):
+        """Should raise ValueError for unknown name."""
+        with self.assertRaises(ValueError):
+            self.model.output_index("Unknown")
+
+
+class TestGetModelListWithCost(unittest.TestCase):
+    """Tests for get_model_list with cost model."""
+
+    def setUp(self):
+        torch.manual_seed(42)
+        self.data = load_concrete_strength(data_path=DATA_PATH)
+        self.model = SustainableConcreteModel(strength_days=[1, 28])
+        self.model.fit_gwp_model(self.data)
+        self.model.fit_strength_model(self.data, use_fixed_noise=True)
+
+    def test_without_cost(self):
+        """Default model_list has 3 outputs (GWP + 2 strength days)."""
+        ml = self.model.get_model_list()
+        X = self.data.gwp_data[0][:5]
+        post = ml.posterior(X)
+        self.assertEqual(post.mean.shape[-1], 3)
+
+    def test_with_cost(self):
+        """With cost model, model_list has 4 outputs."""
+        self.model.fit_cost_model(self.data)
+        ml = self.model.get_model_list()
+        X = self.data.gwp_data[0][:5]
+        post = ml.posterior(X)
+        self.assertEqual(post.mean.shape[-1], 4)
+
+    def test_model_names_with_cost(self):
+        """model_names should include Cost after strength."""
+        self.model.fit_cost_model(self.data)
+        names = self.model.model_names
+        self.assertEqual(names, ["GWP", "1-day Strength", "28-day Strength", "Cost"])
+
+    def test_model_list_num_outputs_matches_names(self):
+        """ModelList length must always match model_names length."""
+        self.model.fit_cost_model(self.data)
+        ml = self.model.get_model_list()
+        self.assertEqual(len(ml.models), len(self.model.model_names))
+
+    def test_output_index_consistent_with_model_list(self):
+        """output_index values should produce correct predictions from ModelList."""
+        self.model.fit_cost_model(self.data)
+        ml = self.model.get_model_list()
+        X = self.data.gwp_data[0][:3]
+        post = ml.posterior(X)
+
+        # GWP predictions from model_list should match direct gwp_model call
+        gwp_idx = self.model.output_index("GWP")
+        gwp_from_list = post.mean[:, gwp_idx]
+        gwp_direct = self.model.gwp_model.posterior(X).mean.squeeze(-1)
+        torch.testing.assert_close(gwp_from_list, gwp_direct)
+
+    def test_model_list_gwp_numerical_correctness_with_fixed_features(self):
+        """End-to-end test: model_list with fixed features produces correct GWP.
+
+        Verifies the full pipeline: FixedFeatureModel reconstructs input →
+        LinearModel indexes class_dim → correct per-class coefficients used.
+        """
+        ms_idx = self.data.X_columns.index("Material Source")
+        temp_idx = self.data.X_columns.index("Temp (C)")
+        fixed = {ms_idx: 0.0, temp_idx: 22.0}
+        ml = self.model.get_model_list(fixed_features=fixed)
+
+        # Create a test input in the reduced (free) space
+        X_gwp, Y_gwp, _, _ = self.data.gwp_data
+        # Select Source 0 mixes, remove fixed columns for optimization space
+        mask = X_gwp[:, ms_idx] == 0
+        keep = [i for i in range(X_gwp.shape[1]) if i not in (ms_idx, temp_idx)]
+        X_free = X_gwp[mask][:5, keep]
+
+        # Get predictions via ModelList
+        post = ml.posterior(X_free)
+        gwp_pred = post.mean[:, self.model.output_index("GWP")]
+
+        # Compare with direct GWP model call (reconstruct full input manually)
+        X_full = torch.zeros(5, X_gwp.shape[1], dtype=X_gwp.dtype)
+        free_idx = 0
+        for j in range(X_gwp.shape[1]):
+            if j == ms_idx:
+                X_full[:, j] = 0.0
+            elif j == temp_idx:
+                X_full[:, j] = 22.0
+            else:
+                X_full[:, j] = X_free[:, free_idx]
+                free_idx += 1
+        gwp_direct = self.model.gwp_model.posterior(X_full).mean.squeeze(-1)
+        torch.testing.assert_close(gwp_pred, gwp_direct)
+
+    def test_model_list_cost_numerical_correctness(self):
+        """End-to-end: cost predictions via ModelList match manual computation."""
+        self.model.fit_cost_model(self.data)
+        ml = self.model.get_model_list()
+        X_gwp, _, _, _ = self.data.gwp_data
+        X_test = X_gwp[:5]
+
+        # Get cost via ModelList
+        post = ml.posterior(X_test)
+        cost_idx = self.model.output_index("Cost")
+        cost_from_list = post.mean[:, cost_idx]
+
+        # Compute cost manually: -sum(coeff_i * x_i) (negated for maximization)
+        from boxcrete.utils import DEFAULT_COST_COEFFICIENTS, make_linear_coefficients
+
+        X_columns = self.data.X_columns[:-1]
+        means, _ = make_linear_coefficients(X_columns, DEFAULT_COST_COEFFICIENTS)
+        cost_manual = -(X_test * means).sum(-1)  # negated like the model
+        torch.testing.assert_close(cost_from_list, cost_manual, atol=1e-4, rtol=1e-4)
 
 
 if __name__ == "__main__":

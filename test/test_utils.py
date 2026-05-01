@@ -450,12 +450,8 @@ class TestUtilityFunction(unittest.TestCase):
         X = torch.rand(10, 3)
         X_0, Y_0, Yvar_0 = get_day_zero_data(X, bounds=bounds, n=n)
         self.assertEqual(X_0.shape[0], n)
-        expected_time = (
-            bounds[0, -1].expand(n)
-            if bounds is not None
-            else X.amin(dim=0)[-1].expand(n)
-        )
-        torch.testing.assert_close(X_0[:, -1], expected_time)
+        # Time column must always be zero (day-zero conditioning)
+        torch.testing.assert_close(X_0[:, -1], torch.zeros(n))
         torch.testing.assert_close(Y_0, torch.zeros(n, 1))
 
 
@@ -682,25 +678,151 @@ class TestDataRegressions(unittest.TestCase):
 
     def test_default_data_size(self):
         dataset = load_concrete_strength(data_path=DATA_PATH)
-        self.assertEqual(dataset.X.shape[0], 709)
+        self.assertEqual(dataset.X.shape[0], 697)
         self.assertEqual(dataset.X.shape[1], len(DEFAULT_X_COLUMNS))
 
     def test_gwp_data_count(self):
         dataset = load_concrete_strength(data_path=DATA_PATH)
         X_gwp, _, _, _ = dataset.gwp_data
-        self.assertEqual(X_gwp.shape[0], 155)
+        self.assertEqual(X_gwp.shape[0], 154)
 
     def test_slump_data_count(self):
         dataset = load_concrete_strength(data_path=DATA_PATH, Y_columns=SLUMP_Y_COLUMNS)
         # Slump data unchanged even with SLUMP_Y_COLUMNS
-        self.assertEqual(dataset.X.shape[0], 709)
+        self.assertEqual(dataset.X.shape[0], 697)
         X_sl, _, _, _ = dataset.slump_data
         self.assertEqual(X_sl.shape[0], 74)
 
     def test_strength_28d_count(self):
         dataset = load_concrete_strength(data_path=DATA_PATH)
         X_str, _, _ = dataset.strength_data_by_time(28.0)
-        self.assertEqual(X_str.shape[0], 150)
+        self.assertEqual(X_str.shape[0], 147)
+
+    def test_binder_consistency(self):
+        """Binder column must equal Cement + Fly Ash + Slag (within rounding).
+
+        This test catches data integrity issues such as mixes containing
+        unmodeled binder materials (e.g. clay) that were not properly excluded.
+        """
+        import pandas as pd
+
+        df = pd.read_csv(DATA_PATH)
+        computed = df["Cement (kg/m3)"] + df["Fly Ash (kg/m3)"] + df["Slag (kg/m3)"]
+        diff = (df["Binder (kg/m3)"] - computed).abs()
+        # Allow 1 kg/m³ tolerance for rounding
+        violators = df[diff > 1.5]
+        self.assertEqual(
+            len(violators),
+            0,
+            f"Binder != Cement+FA+Slag for mixes: "
+            f"{violators['Mix Name'].unique().tolist()}",
+        )
+
+    def test_gwp_linearity(self):
+        """GWP should be a near-perfect linear function of composition.
+
+        Per-class R² > 0.999 ensures no unmodeled materials contribute to GWP.
+        This is a stronger check than the model-level test because it operates
+        directly on the data without model construction.
+        """
+        dataset = load_concrete_strength(data_path=DATA_PATH)
+        X, Y, _, _ = dataset.gwp_data
+        ms_col = dataset.X_columns[:-1].index("Material Source")
+
+        for ms_val in X[:, ms_col].unique():
+            mask = X[:, ms_col] == ms_val
+            X_sub = X[mask][:, [i for i in range(X.shape[1]) if i != ms_col]].double()
+            Y_sub = Y[mask].double()
+            coeffs = torch.linalg.lstsq(X_sub, Y_sub, driver="gelsd").solution.squeeze()
+            Y_pred = X_sub @ coeffs
+            residuals = Y_sub.squeeze() - Y_pred
+            ss_res = (residuals**2).sum().item()
+            ss_tot = ((Y_sub.squeeze() - Y_sub.mean()) ** 2).sum().item()
+            r2 = 1 - ss_res / ss_tot
+            self.assertGreater(
+                r2,
+                0.999,
+                f"GWP not linear for Material Source={ms_val.item():.0f}: "
+                f"R²={r2:.6f}, max |residual|={residuals.abs().max().item():.2f}",
+            )
+
+
+class TestMakeLinearCoefficients(unittest.TestCase):
+    """Tests for make_linear_coefficients."""
+
+    def test_basic(self):
+        from boxcrete.utils import make_linear_coefficients
+
+        columns = ["Cement (kg/m3)", "Water (kg/m3)", "Slag (kg/m3)"]
+        coefficients = {
+            "Cement (kg/m3)": (0.12, 0.015),
+            "Slag (kg/m3)": (0.09, 0.015),
+        }
+        means, variances = make_linear_coefficients(columns, coefficients)
+        self.assertEqual(means.shape[0], 3)
+        self.assertAlmostEqual(means[0].item(), 0.12)
+        self.assertAlmostEqual(means[1].item(), 0.0)  # Water not in dict
+        self.assertAlmostEqual(means[2].item(), 0.09)
+        self.assertAlmostEqual(variances[0].item(), 0.015**2, places=6)
+        self.assertAlmostEqual(variances[1].item(), 0.0)
+
+    def test_missing_columns_get_zero(self):
+        from boxcrete.utils import make_linear_coefficients
+
+        columns = ["A", "B", "C"]
+        coefficients = {"B": (1.0, 0.1)}
+        means, variances = make_linear_coefficients(columns, coefficients)
+        self.assertAlmostEqual(means[0].item(), 0.0)
+        self.assertAlmostEqual(means[1].item(), 1.0)
+        self.assertAlmostEqual(means[2].item(), 0.0)
+
+
+class TestDefaultCostCoefficients(unittest.TestCase):
+    """Tests for DEFAULT_COST_COEFFICIENTS."""
+
+    def test_structure(self):
+        from boxcrete.utils import DEFAULT_COST_COEFFICIENTS
+
+        # All expected ingredients should be present
+        expected_keys = [
+            "Cement (kg/m3)",
+            "Fly Ash (kg/m3)",
+            "Slag (kg/m3)",
+            "Water (kg/m3)",
+            "HRWR (kg/m3)",
+            "MRWR (kg/m3)",
+            "Fine Aggregate (kg/m3)",
+            "Coarse Aggregates (kg/m3)",
+        ]
+        for key in expected_keys:
+            self.assertIn(key, DEFAULT_COST_COEFFICIENTS)
+            mean, std = DEFAULT_COST_COEFFICIENTS[key]
+            self.assertGreater(mean, 0)  # Natural units (positive)
+            self.assertGreater(std, 0)
+
+
+class TestGetReferencePointWithCost(unittest.TestCase):
+    """Tests for get_reference_point with include_cost flag."""
+
+    def test_default_no_cost(self):
+        ref = get_reference_point("concrete")
+        self.assertEqual(ref.shape[0], 3)
+
+    def test_include_cost_concrete(self):
+        ref = get_reference_point("concrete", include_cost=True)
+        self.assertEqual(ref.shape[0], 4)
+        self.assertLess(ref[-1].item(), 0)  # -Cost threshold is negative
+
+    def test_include_cost_mortar(self):
+        ref = get_reference_point("mortar", include_cost=True)
+        self.assertEqual(ref.shape[0], 4)
+        self.assertLess(ref[-1].item(), 0)
+
+    def test_backward_compatible(self):
+        """Default call should be unchanged."""
+        ref = get_reference_point()
+        self.assertEqual(ref.shape[0], 3)
+        torch.testing.assert_close(ref, CONCRETE_REFERENCE_POINT)
 
 
 if __name__ == "__main__":

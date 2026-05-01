@@ -17,8 +17,9 @@ from parameterized import parameterized
 matplotlib.use("Agg")
 
 from boxcrete.plotting import (  # noqa: E402
+    compute_loo_cv,
+    plot_calibration,
     plot_feature_importance,
-    plot_slump_calibration,
     plot_strength_curve,
 )
 
@@ -92,8 +93,8 @@ class TestPlotStrengthCurve(unittest.TestCase):
         self.assertEqual(self.model.strength_model.posterior.call_count, 3)
 
 
-class TestPlotSlumpCalibration(unittest.TestCase):
-    """Tests for the plot_slump_calibration function."""
+class TestPlotCalibration(unittest.TestCase):
+    """Tests for the plot_calibration function."""
 
     def setUp(self):
         plt.close("all")
@@ -104,21 +105,69 @@ class TestPlotSlumpCalibration(unittest.TestCase):
     def test_basic_call(self):
         observed = torch.tensor([1.0, 3.0, 5.0, 7.0, 9.0])
         predicted = torch.tensor([1.2, 2.8, 5.1, 6.9, 8.8])
-        fig = plot_slump_calibration(observed, predicted, dpi=50)
+        fig = plot_calibration(observed, predicted, dpi=50)
         self.assertIsInstance(fig, plt.Figure)
 
     def test_with_error_bars(self):
         observed = torch.tensor([1.0, 3.0, 5.0])
         predicted = torch.tensor([1.2, 2.8, 5.1])
         std = torch.tensor([0.1, 0.2, 0.15])
-        fig = plot_slump_calibration(observed, predicted, predicted_std=std, dpi=50)
+        fig = plot_calibration(observed, predicted, predicted_std=std, dpi=50)
         self.assertIsInstance(fig, plt.Figure)
 
     def test_without_error_bars(self):
         observed = torch.tensor([1.0, 3.0, 5.0])
         predicted = torch.tensor([1.2, 2.8, 5.1])
-        fig = plot_slump_calibration(observed, predicted, dpi=50)
+        fig = plot_calibration(observed, predicted, dpi=50)
         self.assertIsInstance(fig, plt.Figure)
+
+    def test_custom_labels(self):
+        observed = torch.tensor([100.0, 200.0, 300.0])
+        predicted = torch.tensor([110.0, 190.0, 310.0])
+        fig = plot_calibration(
+            observed,
+            predicted,
+            title="Strength LOO-CV",
+            xlabel="Observed (psi)",
+            ylabel="Predicted (psi)",
+            dpi=50,
+        )
+        self.assertIsInstance(fig, plt.Figure)
+
+
+class TestComputeLooCv(unittest.TestCase):
+    """Tests for the compute_loo_cv function."""
+
+    def test_basic_loo(self):
+        """LOO-CV should return tensors of correct shape."""
+        from botorch.models import SingleTaskGP
+        from botorch.models.transforms.outcome import Standardize
+
+        torch.manual_seed(0)
+        X = torch.rand(10, 3, dtype=torch.double)
+        Y = (X @ torch.tensor([1.0, 2.0, 3.0], dtype=torch.double)).unsqueeze(-1)
+        model = SingleTaskGP(X, Y, outcome_transform=Standardize(1))
+
+        loo_obs, loo_pred, loo_std = compute_loo_cv(model)
+        self.assertEqual(loo_obs.shape[0], 10)
+        self.assertEqual(loo_pred.shape[0], 10)
+        self.assertEqual(loo_std.shape[0], 10)
+        self.assertTrue((loo_std > 0).all())
+
+    def test_n_real_truncation(self):
+        """n_real should restrict output to first n_real points."""
+        from botorch.models import SingleTaskGP
+        from botorch.models.transforms.outcome import Standardize
+
+        torch.manual_seed(0)
+        X = torch.rand(15, 3, dtype=torch.double)
+        Y = torch.rand(15, 1, dtype=torch.double)
+        model = SingleTaskGP(X, Y, outcome_transform=Standardize(1))
+
+        loo_obs, loo_pred, loo_std = compute_loo_cv(model, n_real=10)
+        self.assertEqual(loo_obs.shape[0], 10)
+        self.assertEqual(loo_pred.shape[0], 10)
+        self.assertEqual(loo_std.shape[0], 10)
 
 
 class TestPlotFeatureImportance(unittest.TestCase):

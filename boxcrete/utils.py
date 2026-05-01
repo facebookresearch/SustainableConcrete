@@ -898,23 +898,117 @@ def get_subset_sum_tensors(
 MORTAR_REFERENCE_POINT = torch.tensor([-400.0, 1000.0, 5000.0], dtype=torch.double)
 CONCRETE_REFERENCE_POINT = torch.tensor([-200.0, 1000.0, 5000.0], dtype=torch.double)
 
+# Cost reference point thresholds ($/m³) in NATURAL units (positive).
+# Negated internally by get_reference_point to match the -cost convention.
+# Permissive values (well above typical $100-120/m³) to retain the full mix range.
+CONCRETE_COST_THRESHOLD = 250.0
+MORTAR_COST_THRESHOLD = 300.0
 
-def get_reference_point(optimization_mode: str = "concrete") -> Tensor:
+# Representative ingredient costs (USD/kg) as (mean, std) tuples in NATURAL
+# units (positive values). The negation for joint maximization (minimize cost
+# → maximize -cost) is applied internally by `fit_cost_model`.
+# Sources: USGS 2023 Mineral Commodity Summaries, RS Means, PCA reports.
+#
+# Conversion example (Cement):
+#   Range: $100-150/ton → midpoint $125/ton ÷ 1000 kg/ton = $0.125/kg ≈ 0.12
+#   Std: range $50/ton ÷ 4 (≈ ±2σ) = $12.5/ton ÷ 1000 = $0.0125/kg ≈ 0.015
+DEFAULT_COST_COEFFICIENTS: dict[str, tuple[float, float]] = {
+    "Cement (kg/m3)": (0.12, 0.015),  # $100-150/ton regional variation
+    "Fly Ash (kg/m3)": (0.04, 0.010),  # $30-60/ton; supply-dependent byproduct
+    "Slag (kg/m3)": (0.09, 0.015),  # $70-120/ton; transport-dependent
+    "Water (kg/m3)": (0.002, 0.001),  # Municipal rates, negligible
+    "HRWR (kg/m3)": (3.00, 0.90),  # $2000-5000/ton; brand/supplier variation
+    "MRWR (kg/m3)": (2.00, 0.50),  # $1500-3000/ton
+    "Fine Aggregate (kg/m3)": (0.02, 0.006),  # $10-30/ton; transport-heavy
+    "Coarse Aggregates (kg/m3)": (0.015, 0.005),  # $10-25/ton; transport-heavy
+}
+
+# GWP emission factors per Material Source class, as (mean, std) tuples in
+# NATURAL units (positive values = kg CO₂ per kg of ingredient). The negation
+# for joint maximization (minimize GWP → maximize -GWP) is applied internally
+# by `fit_gwp_model`.
+# Derived via per-class least-squares regression on training data (which
+# stores -GWP). Magnitudes here are the absolute emission factors.
+DEFAULT_GWP_COEFFICIENTS: dict[int, dict[str, tuple[float, float]]] = {
+    0: {  # Material Source 0
+        "Cement (kg/m3)": (0.762613, 0.000384),
+        "Fly Ash (kg/m3)": (0.029577, 0.000457),
+        "Slag (kg/m3)": (0.085921, 0.000326),
+        "Water (kg/m3)": (0.001829, 0.001177),
+        "HRWR (kg/m3)": (3.184316, 0.016840),
+        "Fine Aggregate (kg/m3)": (0.002762, 0.000113),
+        "Coarse Aggregates (kg/m3)": (0.003895, 0.000121),
+        "Temp (C)": (0.002967, 0.005397),
+    },
+    1: {  # Material Source 1
+        "Cement (kg/m3)": (0.774398, 0.007709),
+        "Fly Ash (kg/m3)": (0.036826, 0.005956),
+        "Slag (kg/m3)": (0.094776, 0.007031),
+        "Water (kg/m3)": (0.001752, 0.020415),
+        "HRWR (kg/m3)": (3.102591, 0.531138),
+        "Fine Aggregate (kg/m3)": (0.002823, 0.003714),
+        "Coarse Aggregates (kg/m3)": (0.001063, 0.003163),
+        "Temp (C)": (0.072522, 0.054983),
+    },
+}
+
+
+def get_reference_point(
+    optimization_mode: str = "concrete", include_cost: bool = False
+) -> Tensor:
     """Returns a reference point for Pareto frontier computation.
 
     The reference point specifies minimum acceptable values for each objective
-    (GWP, 1-day strength, 28-day strength). Solutions that do not dominate
-    this point are excluded from the Pareto frontier.
+    (GWP, 1-day strength, 28-day strength, and optionally cost). Solutions that
+    do not dominate this point are excluded from the Pareto frontier.
 
     Args:
         optimization_mode: ``"concrete"`` (default) or ``"mortar"``.
+        include_cost: If True, appends a permissive cost threshold to the
+            reference point.
 
     Returns:
-        A 3-element Tensor ``[-GWP_threshold, 1-day_threshold, 28-day_threshold]``.
+        A Tensor with 3 elements ``[-GWP, 1-day, 28-day]`` or 4 elements
+        ``[-GWP, 1-day, 28-day, -Cost]`` when ``include_cost=True``.
     """
     if optimization_mode == "mortar":
-        return MORTAR_REFERENCE_POINT.clone()
-    return CONCRETE_REFERENCE_POINT.clone()
+        ref = MORTAR_REFERENCE_POINT.clone()
+        if include_cost:
+            # Negate: threshold is in natural units, model predicts -cost.
+            ref = torch.cat([ref, torch.tensor([-MORTAR_COST_THRESHOLD])])
+    else:
+        ref = CONCRETE_REFERENCE_POINT.clone()
+        if include_cost:
+            # Negate: threshold is in natural units, model predicts -cost.
+            ref = torch.cat([ref, torch.tensor([-CONCRETE_COST_THRESHOLD])])
+    return ref
+
+
+def make_linear_coefficients(
+    X_columns: list[str],
+    coefficients: dict[str, tuple[float, float]],
+) -> tuple[Tensor, Tensor]:
+    """Builds aligned coefficient tensors from a column-name-keyed dictionary.
+
+    Maps a dictionary of ``{column_name: (mean, std)}`` pairs to a pair of
+    tensors aligned with ``X_columns``. Columns not present in the dictionary
+    receive zero mean and zero variance.
+
+    Args:
+        X_columns: Column names of the input features (without Time).
+        coefficients: Mapping from column name to ``(mean, std)`` tuples.
+
+    Returns:
+        A 2-tuple ``(means, variances)`` of ``(d,)``-dim Tensors.
+    """
+    means = torch.zeros(len(X_columns), dtype=torch.double)
+    variances = torch.zeros(len(X_columns), dtype=torch.double)
+    for i, col in enumerate(X_columns):
+        if col in coefficients:
+            mean, std = coefficients[col]
+            means[i] = mean
+            variances[i] = std**2
+    return means, variances
 
 
 def get_day_zero_data(X: Tensor, bounds: Tensor | None, n: int = 128):
@@ -939,6 +1033,7 @@ def get_day_zero_data(X: Tensor, bounds: Tensor | None, n: int = 128):
     X_0 = torch.cat((X_0, torch.zeros(n, 1)), dim=-1)  # append time (zero)
     a, b = bounds[0], bounds[1]
     X_0 = (b - a) * X_0 + a  # scaling according to bounds
+    X_0[:, -1] = 0.0  # explicitly set time to zero (day zero conditioning)
     Y_0 = torch.zeros(n, 1)  #  zero strength
     Yvar_0 = torch.full((n, 1), 1e-4)  #  with large certainty
     return X_0, Y_0, Yvar_0
