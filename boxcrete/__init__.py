@@ -18,6 +18,16 @@ from boxcrete.plotting import (
     plot_feature_importance,
     plot_strength_curve,
 )
+from boxcrete.units import (
+    convert_slump,
+    convert_strength,
+    DEFAULT_UNIT_SYSTEM,
+    SLUMP_DISPLAY_SCALE,
+    STRENGTH_DISPLAY_SCALE,
+    slump_label,
+    strength_label,
+    UnitSystem,
+)
 from boxcrete.utils import (
     CONCRETE_BOUNDS_DICT,
     CONCRETE_CONSTRAINTS,
@@ -53,6 +63,7 @@ __all__ = [
     "DEFAULT_BOUNDS_DICT",
     "DEFAULT_COST_COEFFICIENTS",
     "DEFAULT_GWP_COEFFICIENTS",
+    "DEFAULT_UNIT_SYSTEM",
     "DEFAULT_X_COLUMNS",
     "DEFAULT_Y_COLUMNS",
     "DEFAULT_YSTD_COLUMNS",
@@ -61,10 +72,15 @@ __all__ = [
     "MORTAR_BOUNDS_DICT",
     "MORTAR_CONSTRAINTS",
     "MORTAR_REFERENCE_POINT",
+    "SLUMP_DISPLAY_SCALE",
     "SLUMP_Y_COLUMNS",
+    "STRENGTH_DISPLAY_SCALE",
     "SustainableConcreteDataset",
     "SustainableConcreteModel",
+    "UnitSystem",
     "compute_loo_cv",
+    "convert_slump",
+    "convert_strength",
     "fit_slump_gp",
     "fit_strength_gp",
     "get_bounds",
@@ -79,4 +95,6 @@ __all__ = [
     "plot_strength_curve",
     "predict_pareto",
     "reduce_to_optimization_space",
+    "slump_label",
+    "strength_label",
 ]
