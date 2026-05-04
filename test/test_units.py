@@ -54,11 +54,19 @@ class TestLabels:
     def test_strength_label_metric(self):
         assert strength_label(UnitSystem.METRIC) == "MPa"
 
+    def test_strength_label_default(self):
+        # Covers the None → DEFAULT_UNIT_SYSTEM fallback branch
+        assert strength_label() == "psi"
+
     def test_slump_label_imperial(self):
         assert slump_label(UnitSystem.IMPERIAL) == "in"
 
     def test_slump_label_metric(self):
         assert slump_label(UnitSystem.METRIC) == "mm"
+
+    def test_slump_label_default(self):
+        # Covers the None → DEFAULT_UNIT_SYSTEM fallback branch
+        assert slump_label() == "in"
 
 
 class TestDefault:

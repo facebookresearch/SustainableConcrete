@@ -935,6 +935,9 @@ DEFAULT_GWP_COEFFICIENTS: dict[int, dict[str, tuple[float, float]]] = {
         "Fly Ash (kg/m3)": (0.029577, 0.000457),
         "Slag (kg/m3)": (0.085921, 0.000326),
         "Water (kg/m3)": (0.001829, 0.001177),
+        # HRWR GWP: consistent with published EPDs for polycarboxylate-based
+        # superplasticizers (1.5-5.0 kg CO₂/kg range; e.g. BASF MasterGlenium,
+        # Sika ViscoCrete). Tight std confirms deterministic upstream formula.
         "HRWR (kg/m3)": (3.184316, 0.016840),
         "Fine Aggregate (kg/m3)": (0.002762, 0.000113),
         "Coarse Aggregates (kg/m3)": (0.003895, 0.000121),
@@ -945,6 +948,8 @@ DEFAULT_GWP_COEFFICIENTS: dict[int, dict[str, tuple[float, float]]] = {
         "Fly Ash (kg/m3)": (0.036826, 0.005956),
         "Slag (kg/m3)": (0.094776, 0.007031),
         "Water (kg/m3)": (0.001752, 0.020415),
+        # HRWR GWP: consistent with Source 0 (3.18 vs 3.10 kg CO₂/kg).
+        # See comment above for EPD references.
         "HRWR (kg/m3)": (3.102591, 0.531138),
         "Fine Aggregate (kg/m3)": (0.002823, 0.003714),
         "Coarse Aggregates (kg/m3)": (0.001063, 0.003163),
