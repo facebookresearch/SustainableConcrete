@@ -14,6 +14,7 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import torch
 from botorch.models import SingleTaskGP
+from boxcrete.units import DEFAULT_UNIT_SYSTEM, PSI_TO_MPA, UnitSystem, strength_label
 from linear_operator.utils.cholesky import psd_safe_cholesky
 from matplotlib.ticker import MultipleLocator
 from torch import Tensor
@@ -34,11 +35,12 @@ def plot_strength_curve(
     num_t: int = 1024,
     nsigma: int = 2,
     xlim: tuple[float, float] = (0, 28),
-    ylim: tuple[float, float] = (-500, 16000),
+    ylim: tuple[float, float] | None = None,
     figsize: tuple[float, float] = (4, 4),
     dpi: int = 600,
     create_fig: bool = True,
     colors: list[str] | None = None,
+    unit_system: UnitSystem | None = None,
 ) -> plt.Figure:
     """Plots predicted compressive strength curves as a function of curing time.
 
@@ -62,16 +64,24 @@ def plot_strength_curve(
         num_t: Number of time points to evaluate.
         nsigma: Number of standard deviations for the uncertainty band.
         xlim: X-axis limits (days).
-        ylim: Y-axis limits (strength in psi).
+        ylim: Y-axis limits. Defaults to (-500, 16000) for psi or
+            (-3.5, 110) for MPa.
         figsize: Figure size in inches (width, height).
         dpi: Figure resolution.
         create_fig: Whether to create a new figure or plot on the current axes.
         colors: Optional list of colors for each composition. If None, uses
             matplotlib's Tableau color cycle.
+        unit_system: Unit system for the y-axis. If None, uses
+            ``DEFAULT_UNIT_SYSTEM``.
 
     Returns:
         The matplotlib Figure object containing the plot.
     """
+    if unit_system is None:
+        unit_system = DEFAULT_UNIT_SYSTEM
+    scale = PSI_TO_MPA if unit_system == UnitSystem.METRIC else 1.0
+    if ylim is None:
+        ylim = (-3.5, 110.0) if unit_system == UnitSystem.METRIC else (-500, 16000)
     if compositions.dim() == 1:
         compositions = compositions.unsqueeze(0)
 
@@ -95,20 +105,26 @@ def plot_strength_curve(
         curve_std = curve_post.variance.sqrt().detach().squeeze()
 
         color = tableau[i % len(tableau)]
-        plt.plot(plot_times, curve_mean, color=color)
+        plt.plot(plot_times, curve_mean * scale, color=color)
 
         if plot_uncertainties:
             plt.fill_between(
                 plot_times,
-                curve_mean - nsigma * curve_std,
-                curve_mean + nsigma * curve_std,
+                (curve_mean - nsigma * curve_std) * scale,
+                (curve_mean + nsigma * curve_std) * scale,
                 alpha=0.2,
                 label="Predicted" if i == 0 else None,
                 color=color,
             )
 
         if observed_data is not None and observed_times is not None:
-            plt.plot(observed_times, observed_data, "o", label="Observations", c=color)
+            plt.plot(
+                observed_times,
+                observed_data * scale,
+                "o",
+                label="Observations",
+                c=color,
+            )
             plt.legend()
 
     # Configure axes (once, after all curves are plotted)
@@ -126,9 +142,10 @@ def plot_strength_curve(
     plt.xlim(xlim)
     plt.ylim(ylim)
     ax.set_xlabel("Curing Age (days)", fontsize=9)
-    ax.set_ylabel("Compressive Strength (psi)", fontsize=9)
-    ax.yaxis.set_major_locator(MultipleLocator(4000))
-    ax.yaxis.set_minor_locator(MultipleLocator(2000))
+    ax.set_ylabel(f"Compressive Strength ({strength_label(unit_system)})", fontsize=9)
+    major_tick = 20 if unit_system == UnitSystem.METRIC else 4000
+    ax.yaxis.set_major_locator(MultipleLocator(major_tick))
+    ax.yaxis.set_minor_locator(MultipleLocator(major_tick / 2))
     for spine in ax.spines.values():
         spine.set_linewidth(1)
     ax.tick_params(which="major", width=1, length=8)

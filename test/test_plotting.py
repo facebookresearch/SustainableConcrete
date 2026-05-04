@@ -92,6 +92,24 @@ class TestPlotStrengthCurve(unittest.TestCase):
         )
         self.assertEqual(self.model.strength_model.posterior.call_count, 3)
 
+    def test_metric_unit_system(self):
+        from boxcrete.units import UnitSystem
+
+        fig = plot_strength_curve(
+            self.model, self.compositions, unit_system=UnitSystem.METRIC, **_FAST
+        )
+        ax = fig.axes[0]
+        self.assertIn("MPa", ax.get_ylabel())
+
+    def test_imperial_unit_system(self):
+        from boxcrete.units import UnitSystem
+
+        fig = plot_strength_curve(
+            self.model, self.compositions, unit_system=UnitSystem.IMPERIAL, **_FAST
+        )
+        ax = fig.axes[0]
+        self.assertIn("psi", ax.get_ylabel())
+
 
 class TestPlotCalibration(unittest.TestCase):
     """Tests for the plot_calibration function."""
