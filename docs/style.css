@@ -388,6 +388,20 @@ h2 {
   margin: 0 auto;
 }
 
+/* Tight desktop — narrow iPad-landscape band (e.g. 1024 × 768).
+   Shrink the slider column and tighten gaps/body padding so each chart
+   panel gets ~370 px instead of the cramped ~344 px under desktop sizes.
+   The .layout max-width and panel internals are unchanged. */
+@media (min-width: 901px) and (max-width: 1100px) {
+  .layout {
+    grid-template-columns: 240px 1fr 1fr;
+    gap: 0.5rem;
+  }
+  body {
+    padding: 0 0.6rem 1rem;
+  }
+}
+
 /* Each column flows independently — panels size to content */
 .column-flow {
   display: flex;
@@ -1165,8 +1179,10 @@ a.ref-link {
   opacity: 0.7;
 }
 
-/* Responsive — switch to mobile at 1050px to prevent title/warning overlap in panels */
-@media (max-width: 1050px) {
+/* Responsive — switch to mobile at 900px so iPad landscape (≥ 944 px) keeps
+   the desktop 3-column layout. Below 900 px we stack vertically to prevent
+   title/warning overlap in panels. */
+@media (max-width: 900px) {
   body {
     padding: 0 0.5rem 1rem;
     padding-bottom: env(safe-area-inset-bottom, 1rem);
@@ -1422,7 +1438,7 @@ a.ref-link {
 }
 
 /* Landscape mobile — panels side by side */
-@media (max-width: 1050px) and (orientation: landscape) {
+@media (max-width: 900px) and (orientation: landscape) {
   .layout {
     flex-direction: row;
     flex-wrap: wrap;

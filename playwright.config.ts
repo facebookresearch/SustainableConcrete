@@ -6,9 +6,11 @@ import { defineConfig, devices } from "@playwright/test";
  * Tests live in test/e2e/*.spec.ts and run against a local http-server
  * serving the docs/ folder.
  *
- * Two projects:
- *   - desktop: 1280×800 Chromium
- *   - mobile:  iPhone 14 emulation (touch + 390×844 viewport)
+ * Three projects:
+ *   - desktop:          1280×800 Chromium
+ *   - mobile:           Pixel 7 emulation (touch + 412×915 viewport)
+ *   - tablet-landscape: iPad (gen 7) landscape (1080×810, touch) — forced
+ *                       onto Chromium so CI doesn't have to install WebKit.
  *
  * Each test runs once per project unless skipped via testInfo.project.name.
  *
@@ -54,6 +56,18 @@ export default defineConfig({
       // matches the engine real Android Chrome users will hit.
       use: {
         ...devices["Pixel 7"],
+      },
+    },
+    {
+      name: "tablet-landscape",
+      // iPad gen 7 (1080 × 810) is representative of the iPad-landscape band:
+      // covers the cramped end (1024 × 768 on gen 5/6/Mini/9) reasonably and
+      // the comfortable end (1194 × 834 on iPad Pro 11) without two projects.
+      // Force Chromium so CI doesn't need a WebKit install — same trade-off as
+      // the mobile project above.
+      use: {
+        ...devices["iPad (gen 7) landscape"],
+        browserName: "chromium",
       },
     },
   ],

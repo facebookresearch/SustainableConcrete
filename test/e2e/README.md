@@ -62,7 +62,24 @@ property on a PR, add a spec for it before merging.
 | `mobile-value-fit.spec.ts`    | Imperial values fit (worst-case mass conversion)                          | mobile |
 | `mobile-value-fit.spec.ts`    | Imperial max-bound values fit                                             | mobile |
 | `mobile-value-fit.spec.ts`    | Narrow viewport (320 px): values fit at all unit/value combinations       | mobile |
+| `ipad-layout.spec.ts`         | Desktop layout active on iPad landscape: `.layout` is a 3-column grid     | tablet-landscape |
+| `ipad-layout.spec.ts`         | Desktop sliders panel visible; mobile-sliders-view hidden                 | tablet-landscape |
+| `ipad-layout.spec.ts`         | No horizontal scroll on iPad landscape                                    | tablet-landscape |
+| `ipad-layout.spec.ts`         | Scatter and strength-curve canvases both visible                          | tablet-landscape |
+| `ipad-layout.spec.ts`         | Tap on inactive Material Source toggle activates it                       | tablet-landscape |
 | `visual-regression.spec.ts`   | Full-page screenshot matches committed baseline (skipped by default)      | desktop+mobile |
+
+## Project matrix
+
+Tests run across three Playwright projects (all on Chromium):
+
+- **desktop** — 1280 × 800
+- **mobile** — Pixel 7 (412 × 915, touch)
+- **tablet-landscape** — iPad (gen 7) landscape (1080 × 810, touch)
+
+Use `testInfo.project.name` (or `test.describe(... )` with `test.skip`) to
+scope a spec to a single project. The iPad-landscape band uses the same
+desktop CSS layout as the desktop project but with touch input enabled.
 
 ## Running
 
@@ -76,6 +93,9 @@ npm run test:e2e
 
 # run only mobile project
 npm run test:e2e -- --project=mobile
+
+# run only the iPad-landscape project
+npm run test:e2e -- --project=tablet-landscape
 
 # headed (watch the browser)
 npm run test:e2e:headed
