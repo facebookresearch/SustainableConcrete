@@ -11,6 +11,12 @@ property on a PR, add a spec for it before merging.
 |-------------------------------|---------------------------------------------------------------------------|------------|
 | `home-loads.spec.ts`          | Home page loads with no console/page errors and core canvases visible     | desktop+mobile |
 | `home-loads.spec.ts`          | Strength curve canvas renders within a few seconds of load                | desktop+mobile |
+| `curve-hover.spec.ts`         | Hovering inside the strength-curve plot shows continuous tooltip with day + strength + uncertainty | desktop |
+| `curve-hover.spec.ts`         | Tooltip's day value increases as cursor moves rightward                   | desktop |
+| `curve-hover.spec.ts`         | Pointer-leave hides the tooltip                                           | desktop |
+| `curve-hover.spec.ts`         | Unit toggle flips tooltip strength format (MPa ↔ psi)                     | desktop |
+| `curve-hover.spec.ts`         | Hovering an observation dot shows observation format (not continuous)     | desktop |
+| `curve-hover.spec.ts`         | Mobile: tap on the curve canvas shows a persistent tooltip                | mobile |
 | `header-layout.spec.ts`       | Theme toggle is the rightmost element in the header                       | desktop+mobile |
 | `header-layout.spec.ts`       | On desktop, cite group is to the left of the theme toggle and not overlapping | desktop |
 | `header-layout.spec.ts`       | On mobile, cite group is hidden                                           | mobile |

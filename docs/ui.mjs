@@ -45,6 +45,17 @@ let currentComposition = null; // current slider values (without time)
 let scatterDay = 28;
 let scatterXAxis = "gwp"; // "gwp" or "cost"
 let curveObsPositions = []; // [{px, py, time, strength}] for tooltip hit-testing
+// Strength-curve continuous hover state. When the user hovers (or taps) the
+// curve canvas at a point that's NOT an observation, we show a vertical
+// guide + dot at the cursor and a tooltip with the predicted strength at
+// that time. Cleared on pointer-leave / pointer-up. Coexists with
+// `hoveredCurveObsIdx`: if an observation is under the cursor, that's
+// shown instead (observation tooltip has its own format).
+let _curveHover = null; // {canvasX} — cursor position in canvas-local CSS px, or null
+// Geometry of the most recent `drawStrengthCurve` frame, cached so the
+// pointer handler can interpolate predictions at the cursor's x without
+// re-running the GP. Updated every draw, read by `readCurveAt`.
+let _lastCurveGeom = null; // {pad, W, H, times, means, stds, sf}
 let animationId = null; // for smooth transitions
 // Most recent animation TARGET (intended end state). When the user commits a
 // click-to-edit value during an in-flight animation, we build the new target
@@ -938,6 +949,49 @@ function hideExtrapolationWarning() {
   if (warningEl) warningEl.classList.remove("visible");
 }
 
+// Linear interpolate `(mean, std)` at curing time `t` (days) from the curve's
+// log-spaced sample arrays. Used by the continuous-hover indicator and tooltip.
+function interpolateCurveAtTime(t, times, means, stds) {
+  const n = times.length;
+  if (n === 0) return null;
+  if (t <= times[0]) return { mean: means[0], std: stds[0] };
+  if (t >= times[n - 1]) return { mean: means[n - 1], std: stds[n - 1] };
+  // Linear scan (n is 32–64, not worth a binary search)
+  let lo = 0;
+  for (let i = 1; i < n; i++) {
+    if (times[i] >= t) { lo = i - 1; break; }
+  }
+  const t0 = times[lo], t1 = times[lo + 1];
+  const frac = t1 > t0 ? (t - t0) / (t1 - t0) : 0;
+  return {
+    mean: means[lo] + (means[lo + 1] - means[lo]) * frac,
+    std: stds[lo] + (stds[lo + 1] - stds[lo]) * frac,
+  };
+}
+
+// Read the curve's predicted (time, mean, std) at a given canvas-local x.
+// Returns `null` if the cache is empty (page hasn't drawn yet) or the x is
+// outside the plot area's horizontal padding.
+function readCurveAt(canvasX) {
+  if (!_lastCurveGeom) return null;
+  const { pad, W, times, means, stds } = _lastCurveGeom;
+  if (canvasX < pad.left || canvasX > W - pad.right) return null;
+  const t = (canvasX - pad.left) / (W - pad.left - pad.right) * 28;
+  const interp = interpolateCurveAtTime(t, times, means, stds);
+  if (!interp) return null;
+  return { time: t, meanRaw: interp.mean, stdRaw: interp.std };
+}
+
+// Format a strength value for the tooltip in the active unit.
+//  - psi (large): rounded, locale-grouped (e.g., 8,240).
+//  - MPa (small): one decimal (e.g., 56.7).
+function formatStrengthForTooltip(rawValue, df) {
+  const display = Math.max(0, rawValue * df.strengthFactor);
+  return display < 10
+    ? display.toFixed(1)
+    : Math.round(display).toLocaleString();
+}
+
 // --- Strength Curve Canvas ---
 function drawStrengthCurve() {
   const canvas = document.getElementById("curve-canvas");
@@ -1096,6 +1150,46 @@ function drawStrengthCurve() {
       ctx.globalAlpha = 1;
     }
   }
+
+  // === Continuous-curve hover indicator ===
+  // When `_curveHover` is set and the cursor isn't already over an observation
+  // point (which has its own affordance), draw a vertical dashed guide + a
+  // dot at the predicted mean. The tooltip text is computed independently in
+  // the pointer handler via `readCurveAt(...)`.
+  if (_curveHover !== null && hoveredCurveObsIdx === null) {
+    const cx = _curveHover.canvasX;
+    if (cx >= pad.left && cx <= W - pad.right) {
+      const t = (cx - pad.left) / (W - pad.left - pad.right) * 28;
+      const interp = interpolateCurveAtTime(t, times, means, stds);
+      if (interp) {
+        const dotY = yScale(Math.max(0, interp.mean * sf));
+        // Vertical dashed guide spanning the plot area
+        ctx.save();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = colors.text;
+        ctx.globalAlpha = 0.4;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx, pad.top);
+        ctx.lineTo(cx, H - pad.bottom);
+        ctx.stroke();
+        ctx.restore();
+        // Dot at the predicted mean (visually distinct from the orange
+        // observation dots: uses --accent + a thicker white border)
+        ctx.beginPath();
+        ctx.arc(cx, dotY, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = colors.accent;
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.9)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Cache the geometry so the pointer handler in `setupEventListeners` can
+  // interpolate predictions at the cursor's x without re-running the GP.
+  _lastCurveGeom = { pad, W, H, times, means, stds, sf };
 
   // Axes
   ctx.strokeStyle = colors.axis;
@@ -1864,59 +1958,119 @@ function setupEventListeners() {
     }
   });
 
-  // Tooltip on strength curve canvas for observed data points
+  // Tooltip on strength curve canvas.
+  //
+  // Two hover modes share the same DOM tooltip element:
+  //   (1) cursor over a real observation point — "Day N: <strength> <unit>"
+  //   (2) cursor anywhere else on the plot — "Day X.X · <mean> <unit> (±<std>)"
+  // Mode (1) takes priority via observation hit-test inside `_obsHitTest`.
+  // Pointer events (rather than mouse events) cover both desktop mouse and
+  // mobile touch input.
   const curveCanvas = document.getElementById("curve-canvas");
   const tooltip = document.createElement("div");
   tooltip.className = "tooltip";
   tooltip.style.display = "none";
   document.body.appendChild(tooltip);
 
-  curveCanvas.addEventListener("mousemove", (e) => {
+  function _obsHitTest(mx, my) {
+    for (const pt of curveObsPositions) {
+      const dx = mx - pt.px;
+      const dy = my - pt.py;
+      if (dx * dx + dy * dy < 100) return pt; // 10 px radius
+    }
+    return null;
+  }
+
+  function handleCurvePointer(e) {
     const rect = curveCanvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
-    // Check if cursor is near any observation point
-    let hit = null;
-    let hitIdx = null;
-    for (const pt of curveObsPositions) {
-      const dx = mx - pt.px;
-      const dy = my - pt.py;
-      if (dx * dx + dy * dy < 100) { // within 10px radius
-        hit = pt;
-        hitIdx = pt.idx;
-        break;
-      }
-    }
-
-    // Update hover state for animation
-    if (hitIdx !== hoveredCurveObsIdx) {
-      hoveredCurveObsIdx = hitIdx;
+    // (1) Observation hit-test takes priority.
+    const obsHit = _obsHitTest(mx, my);
+    const obsIdx = obsHit ? obsHit.idx : null;
+    if (obsIdx !== hoveredCurveObsIdx) {
+      hoveredCurveObsIdx = obsIdx;
       curveObsHoverScale = 0;
       startAnimLoop();
     }
 
-    if (hit) {
-      const dispStrength = (hit.strength * U().strengthFactor);
-      const unit = U().strength;
-      tooltip.textContent = `Day ${hit.time}: ${dispStrength < 10 ? dispStrength.toFixed(1) : Math.round(dispStrength).toLocaleString()} ${unit}`;
+    if (obsHit) {
+      const df = U();
+      const value = formatStrengthForTooltip(obsHit.strength, df);
+      tooltip.textContent = `Day ${obsHit.time}: ${value} ${df.strength}`;
       tooltip.style.display = "block";
       tooltip.style.left = `${e.clientX + 12}px`;
       tooltip.style.top = `${e.clientY - 28}px`;
       curveCanvas.style.cursor = "pointer";
+      // Continuous-curve indicator suppressed while hovering an observation.
+      if (_curveHover !== null) {
+        _curveHover = null;
+        startAnimLoop();
+      }
+      return;
+    }
+
+    // (2) Continuous-curve hover — read predicted (mean, ±std) at the cursor's
+    //     time projection.
+    const reading = readCurveAt(mx);
+    if (reading) {
+      const df = U();
+      const meanFmt = formatStrengthForTooltip(reading.meanRaw, df);
+      const stdFmt = formatStrengthForTooltip(reading.stdRaw, df);
+      tooltip.textContent = `Day ${reading.time.toFixed(1)} · ${meanFmt} ${df.strength} (±${stdFmt})`;
+      tooltip.style.display = "block";
+      tooltip.style.left = `${e.clientX + 12}px`;
+      tooltip.style.top = `${e.clientY - 28}px`;
+      curveCanvas.style.cursor = "crosshair";
+      _curveHover = { canvasX: mx };
+      startAnimLoop();
     } else {
       tooltip.style.display = "none";
       curveCanvas.style.cursor = "default";
+      if (_curveHover !== null) {
+        _curveHover = null;
+        startAnimLoop();
+      }
     }
-  });
+  }
 
-  curveCanvas.addEventListener("mouseleave", () => {
+  function handleCurvePointerLeave(e) {
+    // For touch input the OS fires pointerleave / pointercancel right after
+    // every tap — hiding the tooltip there would erase the value the user
+    // just tapped to read. We only hide on mouse-driven leaves; touch
+    // tooltips are dismissed by the document-level outside-tap handler
+    // installed below.
+    if (e && e.pointerType === "touch") return;
     tooltip.style.display = "none";
     curveCanvas.style.cursor = "default";
     if (hoveredCurveObsIdx !== null) {
       hoveredCurveObsIdx = null;
       startAnimLoop();
     }
+    if (_curveHover !== null) {
+      _curveHover = null;
+      startAnimLoop();
+    }
+  }
+
+  // `pointerdown` covers brief touch taps where `pointermove` may not fire;
+  // `pointermove` covers mouse movement and touch dragging.
+  curveCanvas.addEventListener("pointerdown", handleCurvePointer);
+  curveCanvas.addEventListener("pointermove", handleCurvePointer);
+  curveCanvas.addEventListener("pointerleave", handleCurvePointerLeave);
+  curveCanvas.addEventListener("pointercancel", handleCurvePointerLeave);
+
+  // Touch dismiss: tap anywhere off the curve canvas hides the persistent
+  // tooltip and clears the indicator. Mouse users get the same effect via
+  // `pointerleave`; this handler only matters for touch.
+  document.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "touch") return;
+    if (curveCanvas.contains(e.target)) return;
+    if (tooltip.style.display === "none" && _curveHover === null && hoveredCurveObsIdx === null) return;
+    tooltip.style.display = "none";
+    if (_curveHover !== null) { _curveHover = null; startAnimLoop(); }
+    if (hoveredCurveObsIdx !== null) { hoveredCurveObsIdx = null; startAnimLoop(); }
   });
 }
 
