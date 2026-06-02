@@ -16,7 +16,7 @@ This repository contains probabilistic models and data for the
 2) The associated global warming potential (GWP)
 3) Slump prediction using Gaussian Process regression with derived features
 
-as a function of their composition, consisting of cement, fly ash, slag, fine and coarse aggregate, admixtures, and water, to name a few basic ingredients. See `boxcrete/models.py` for implementation details.
+as a function of their composition, consisting of cement, fly ash, slag, fine and coarse aggregate, admixtures, and water, to name a few basic ingredients. See `boxcrete/concrete_model.py` for implementation details.
 
 ### Included Data
 
@@ -51,7 +51,7 @@ pip install -e ".[notebooks]"
 ```python
 import torch
 from boxcrete.utils import load_concrete_strength, get_bounds
-from boxcrete.models import SustainableConcreteModel
+from boxcrete.concrete_model import SustainableConcreteModel
 from boxcrete.plotting import plot_strength_curve
 
 # Load data and fit models
@@ -105,7 +105,7 @@ The models can be used for a variety of tasks, including but not limited to
 
 ## Compressive Strength Model
 
-The `SustainableConcreteModel` in [`boxcrete/models.py`](boxcrete/models.py) includes a strength_model that predicts the evolution of compressive strength as a function of mixture composition. A demo is provided in [`notebooks/strength_curve_prediction_demo.ipynb`](notebooks/strength_curve_prediction_demo.ipynb), which demonstrates how the model can be used to predict the full strength development curve for any user-specified mix. A comprehensive tutorial covering prediction, calibration, Pareto frontiers, and gradient-based experimental design is available in [`notebooks/prediction_and_optimization_tutorial.ipynb`](notebooks/prediction_and_optimization_tutorial.ipynb). The model is based on Gaussian Process (GP) regression and incorporates custom modeling steps to ensure physically consistent strength evolution and calibrated uncertainty.
+The `SustainableConcreteModel` in [`boxcrete/concrete_model.py`](boxcrete/concrete_model.py) includes a strength_model that predicts the evolution of compressive strength as a function of mixture composition. A demo is provided in [`notebooks/strength_curve_prediction_demo.ipynb`](notebooks/strength_curve_prediction_demo.ipynb), which demonstrates how the model can be used to predict the full strength development curve for any user-specified mix. A comprehensive tutorial covering prediction, calibration, Pareto frontiers, and gradient-based experimental design is available in [`notebooks/prediction_and_optimization_tutorial.ipynb`](notebooks/prediction_and_optimization_tutorial.ipynb). The model is based on Gaussian Process (GP) regression and incorporates custom modeling steps to ensure physically consistent strength evolution and calibrated uncertainty.
 
 ### Strength Curve Predictions
 

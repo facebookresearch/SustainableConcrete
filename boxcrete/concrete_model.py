@@ -1,0 +1,380 @@
+#!/usr/bin/env python3
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
+"""Top-level orchestrator class :class:`SustainableConcreteModel`.
+
+Combines a strength GP, an optional slump GP, a GWP linear model, and an
+optional cost linear model into a single ``ModelList`` that maps
+composition (without time) onto ``[GWP, day-1 strength, day-28 strength,
+..., (Slump), (Cost)]`` for use as a multi-output objective in
+acquisition functions / Pareto exploration.
+
+The strength model's time dimension is sliced at each ``strength_day``
+via ``FixedFeatureModel`` to produce per-day strength sub-models;
+time-independent sub-models (GWP, slump, cost) can additionally have
+non-time features fixed (e.g., ``Coarse Aggregates = 0`` for mortar
+mode).
+"""
+
+from __future__ import annotations
+
+import torch
+from botorch.models import ModelList, SingleTaskGP
+from botorch.models.model import Model
+
+from boxcrete.model_utils import FixedFeatureModel, LinearModel
+from boxcrete.slump_model import fit_slump_gp
+from boxcrete.strength_model import fit_strength_gp
+from boxcrete.utils import (
+    DEFAULT_COST_COEFFICIENTS,
+    DEFAULT_GWP_COEFFICIENTS,
+    make_linear_coefficients,
+    SustainableConcreteDataset,
+)
+
+
+class SustainableConcreteModel:
+    """Multi-output model that jointly predicts GWP, slump, and compressive strength.
+
+    The model consists of a GWP model and an optional slump model (both independent
+    of curing time) and a strength model (dependent on composition *and* time).
+    At optimisation time the strength model is sliced at each of the
+    ``strength_days`` via ``FixedFeatureModel`` to produce a ``ModelList`` that
+    maps composition only to ``[GWP, (Slump), 1-day strength, 28-day strength, ...]``.
+    """
+
+    def __init__(
+        self,
+        strength_days: list[int],
+        strength_model: Model | None = None,
+        gwp_model: Model | None = None,
+        slump_model: Model | None = None,
+        cost_model: Model | None = None,
+        d: int | None = None,
+    ):
+        """A multi-output model that jointly predicts GWP, slump, and compressive
+        strength at pre-defined days `strength_days`.
+
+        Args:
+            strength_days: A list of days to predict strength for.
+            strength_model: The strength model. Defaults to None.
+            gwp_model: The GWP model. Defaults to None.
+            slump_model: The slump model. Defaults to None.
+            cost_model: The cost model. Defaults to None.
+            d: The dimensionality of the input to the strength model.
+                Is inferred automatically if the fit functions are called. NOTE: The model
+                assumes that the last element of the input corresponds to the time dimension.
+        """
+        self.strength_days = strength_days
+        self.strength_model = strength_model
+        self.gwp_model = gwp_model
+        self.slump_model = slump_model
+        self.cost_model = cost_model
+        self.d = d
+
+    def fit_strength_model(self, data: SustainableConcreteDataset) -> SingleTaskGP:
+        """Fits the strength model to the given `data`. Upon completion, the model
+        can be accessed with the `strength_model` attribute.
+
+        Args:
+            data: A SustainableConcreteDataset containing the strength data.
+
+        Returns:
+            The fitted strength model.
+        """
+        X, Y, Yvar, X_bounds = data.strength_data
+        self._set_d(X.shape[-1])
+        # V2 ignores Yvar (uses a learnable gated heteroscedastic
+        # noise) — see fit_strength_gp's docstring. We still pass it
+        # through for signature compatibility with the public API.
+        self.strength_model = fit_strength_gp(X=X, Y=Y, Yvar=Yvar, X_bounds=X_bounds)
+        return self.strength_model
+
+    def fit_gwp_model(
+        self,
+        data: SustainableConcreteDataset,
+        gwp_coefficients: dict[int, dict[str, tuple[float, float]]] | None = None,
+    ) -> LinearModel:
+        """Constructs the GWP model from per-class emission factor coefficients.
+
+        No fitting is required — the model is constructed directly from the
+        given coefficients and their uncertainties. By default uses
+        ``DEFAULT_GWP_COEFFICIENTS`` derived from training data via
+        least-squares regression (see ``boxcrete.utils``).
+
+        Args:
+            data: A SustainableConcreteDataset (used only for column alignment
+                and dimensionality inference).
+            gwp_coefficients: Per-class mapping from ingredient column name to
+                ``(mean, std)`` tuples. Keys are integer class labels (Material
+                Source values). Defaults to ``DEFAULT_GWP_COEFFICIENTS``.
+
+        Returns:
+            The constructed LinearModel (also stored as ``self.gwp_model``).
+        """
+        if gwp_coefficients is None:
+            gwp_coefficients = DEFAULT_GWP_COEFFICIENTS
+
+        X_columns = data.X_columns[:-1]  # without Time
+        # +1 to include the Time column — strength sees an [n, 10] X but
+        # GWP/cost see [n, 9] (no time). The latch-once contract in
+        # ``_set_d`` keeps the strength fit's value if it ran first.
+        self._set_d(len(X_columns) + 1)
+        ms_col = (
+            X_columns.index("Material Source")
+            if "Material Source" in X_columns
+            else None
+        )
+
+        if ms_col is not None:
+            # Per-class coefficients: build (K, d) tensor
+            K = max(gwp_coefficients.keys()) + 1
+            # Feature columns: everything except Material Source
+            feature_cols = [c for i, c in enumerate(X_columns) if i != ms_col]
+            d_features = len(feature_cols)
+            all_coeffs = torch.zeros(K, d_features, dtype=torch.double)
+            all_vars = torch.zeros(K, d_features, dtype=torch.double)
+
+            for cls_val, cls_coefficients in gwp_coefficients.items():
+                means, variances = make_linear_coefficients(
+                    feature_cols, cls_coefficients
+                )
+                # Negate: coefficients are positive emission factors, but the
+                # model predicts -GWP for joint maximization (minimize GWP).
+                all_coeffs[cls_val] = -means
+                all_vars[cls_val] = variances
+
+            self.gwp_model = LinearModel(
+                coefficients=all_coeffs,
+                coefficient_vars=all_vars,
+                class_dim=ms_col,
+            )
+        else:
+            # No Material Source: use class 0 coefficients as single set
+            means, variances = make_linear_coefficients(
+                X_columns, gwp_coefficients.get(0, {})
+            )
+            # Negate: coefficients are positive emission factors, but the
+            # model predicts -GWP for joint maximization (minimize GWP).
+            self.gwp_model = LinearModel(
+                coefficients=-means,
+                coefficient_vars=variances,
+            )
+
+        return self.gwp_model
+
+    def fit_slump_model(
+        self, data: SustainableConcreteDataset, use_fixed_noise: bool = False
+    ) -> SingleTaskGP:
+        """Fits the slump model to the given `data`.
+        Upon completion, the model can be accessed with the `slump_model` attribute.
+
+        Args:
+            data: A SustainableConcreteDataset containing slump data.
+            use_fixed_noise: Toggles the use of known observation variances.
+
+        Returns:
+            The fitted slump model.
+
+        Raises:
+            ValueError: If slump data is not available in the dataset.
+        """
+        slump_data = data.slump_data
+        if slump_data is None:
+            raise ValueError(
+                "Slump data not available. Ensure 'Slump (in)' is in Y_columns."
+            )
+        X, Y, Yvar, _ = slump_data
+        # +1 because slump's X is composition only (no Time); the full
+        # multi-output model carries time, so register d as 9 + 1 = 10.
+        self._set_d(X.shape[-1] + 1)
+        self.slump_model = fit_slump_gp(
+            X=X, Y=Y, Yvar=Yvar, use_fixed_noise=use_fixed_noise
+        )
+        return self.slump_model
+
+    def _set_d(self, d: int) -> None:
+        """Latch-once setter for the input dimensionality. Subsequent calls
+        are no-ops once ``self.d`` has been initialised — see the
+        constructor docstring for why we accept later sub-models defining
+        their own ``d`` first."""
+        if self.d is None:
+            self.d = d
+
+    def fit_cost_model(
+        self,
+        data: SustainableConcreteDataset,
+        cost_coefficients: dict[str, tuple[float, float]] | None = None,
+    ) -> LinearModel:
+        """Constructs a linear cost model from known ingredient cost coefficients.
+
+        No fitting is required — the model is constructed directly from the
+        given coefficients and their uncertainties.
+
+        Note: Coefficients are specified in natural units (positive $/kg).
+        They are negated internally so that all objectives in the Pareto
+        optimization are jointly maximized (minimize cost → maximize -cost).
+
+        Args:
+            data: A SustainableConcreteDataset (used only for column alignment).
+            cost_coefficients: Mapping from ingredient column name to
+                ``(mean_cost_per_kg, std_cost_per_kg)`` tuples in natural
+                (positive) units. Defaults to ``DEFAULT_COST_COEFFICIENTS``.
+
+        Returns:
+            The constructed LinearModel (also stored as ``self.cost_model``).
+        """
+        if cost_coefficients is None:
+            cost_coefficients = DEFAULT_COST_COEFFICIENTS
+
+        # Align coefficients with the composition columns (without Time)
+        X_columns = data.X_columns[:-1]
+        means, variances = make_linear_coefficients(X_columns, cost_coefficients)
+        # +1 to include the Time column (see ``fit_gwp_model`` for rationale).
+        self._set_d(len(X_columns) + 1)
+        # Negate: coefficients are positive costs, but the model predicts
+        # -cost for joint maximization (minimize cost).
+        self.cost_model = LinearModel(coefficients=-means, coefficient_vars=variances)
+        return self.cost_model
+
+    def get_model_list(
+        self, fixed_features: dict[int, float] | None = None
+    ) -> ModelList:
+        """Returns a ``ModelList`` modelling GWP, optional slump, and compressive
+        strength as a function of composition only.
+
+        Converts the strength, GWP, and optional slump models into a model list
+        of independent models by fixing the time input of the strength model at
+        each ``strength_day``.
+
+        Args:
+            fixed_features: Optional mapping from input column **index** to a
+                fixed value.  When provided these features are fixed *in
+                addition to* the Time dimension for the strength models, and
+                the non-Time entries are also applied to the GWP and slump
+                models via ``FixedFeatureModel``.  Useful for fixing e.g.
+                ``Coarse Aggregates = 0`` in mortar mode.
+
+        Returns:
+            A ``ModelList`` with sub-models ordered as:
+
+            - Index 0: GWP model (composition → GWP)
+            - Indices 1..n: strength at each ``strength_day``
+            - (If fitted): slump model (composition → Slump)
+            - (If fitted): cost model (composition → Cost)
+
+            Total: ``1 + len(strength_days) + (1 if slump) + (1 if cost)``.
+
+        Raises:
+            ValueError: If the model has not been fitted yet.
+        """
+        if self.d is None or self.strength_model is None or self.gwp_model is None:
+            raise ValueError(
+                "Model not fit yet. Call fit_gwp_model() and fit_strength_model() first."
+            )
+
+        time_idx = self.d - 1  # last column is Time
+
+        # Helper to optionally wrap a time-independent model with FixedFeatureModel
+        def _maybe_wrap(base_model: Model) -> Model:
+            if fixed_features is None:
+                return base_model
+            non_time = {k: v for k, v in fixed_features.items() if k != time_idx}
+            if not non_time:
+                return base_model
+            ff_indices = sorted(non_time.keys())
+            ff_values = [non_time[i] for i in ff_indices]
+            return FixedFeatureModel(
+                base_model=base_model,
+                dim=self.d - 1,  # time-independent models have no Time
+                indices=ff_indices,
+                values=ff_values,
+            )
+
+        models: list[Model] = [_maybe_wrap(self.gwp_model)]
+
+        for day in self.strength_days:
+            indices = [time_idx]
+            values: list[float] = [float(day)]
+            if fixed_features is not None:
+                for idx, val in sorted(fixed_features.items()):
+                    if idx != time_idx:
+                        indices.append(idx)
+                        values.append(val)
+            models.append(
+                FixedFeatureModel(
+                    base_model=self.strength_model,
+                    dim=self.d,
+                    indices=indices,
+                    values=values,
+                )
+            )
+
+        if self.slump_model is not None:
+            models.append(_maybe_wrap(self.slump_model))
+
+        if self.cost_model is not None:
+            models.append(_maybe_wrap(self.cost_model))
+
+        assert len(models) == len(self.model_names), (
+            f"ModelList length ({len(models)}) != model_names length "
+            f"({len(self.model_names)}): {self.model_names}"
+        )
+        return ModelList(*models)
+
+    @property
+    def model_names(self) -> list[str]:
+        """Ordered names of outputs in the ``ModelList`` from ``get_model_list``.
+
+        Returns:
+            A list like ``["GWP", "1-day Strength", "28-day Strength", "Slump (in)", "Cost"]``.
+        """
+        names = ["GWP"]
+        for day in self.strength_days:
+            names.append(f"{day}-day Strength")
+        if self.slump_model is not None:
+            names.append("Slump (in)")
+        if self.cost_model is not None:
+            names.append("Cost")
+        return names
+
+    def output_index(self, name: str) -> int:
+        """Returns the positional index for a named output in the ModelList.
+
+        Args:
+            name: Output name (e.g., "GWP", "1-day Strength", "Cost").
+
+        Returns:
+            The integer index into the ModelList outputs.
+
+        Raises:
+            ValueError: If the name is not found in ``model_names``.
+        """
+        names = self.model_names
+        if name not in names:
+            raise ValueError(f"Unknown output name '{name}'. Available: {names}")
+        return names.index(name)
+
+    def get_model_dict(
+        self, fixed_features: dict[int, float] | None = None
+    ) -> dict[str, Model]:
+        """Returns a name-to-model dictionary for the multi-output model.
+
+        Equivalent to ``dict(zip(model.model_names, model.get_model_list(...).models))``.
+
+        Args:
+            fixed_features: Same as ``get_model_list``.
+
+        Returns:
+            A dictionary mapping output names to sub-models.
+        """
+        model_list = self.get_model_list(fixed_features=fixed_features)
+        return dict(zip(self.model_names, model_list.models))
+
+
+__all__ = [
+    "SustainableConcreteModel",
+]

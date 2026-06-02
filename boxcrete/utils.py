@@ -319,7 +319,12 @@ class SustainableConcreteDataset:
         all_inds = []
         new_batch_name_to_indices = {}
         if self._batch_name_to_indices is None:
-            raise ValueError("batch_name_to_indices is None.")
+            raise ValueError(
+                "subselect_batch_names: this dataset was loaded without batch-"
+                "name indices. Re-load with "
+                "``load_concrete_strength(..., process_batch_names_from_mix_name=True)`` "
+                "or pass an explicit ``batch_name_to_indices`` dict."
+            )
 
         for name, inds in self._batch_name_to_indices.items():
             if name in names:
@@ -534,7 +539,10 @@ def load_concrete_strength(
             )
     else:
         raise NotImplementedError(
-            "Multiple Ystd columns not supported yet."
+            "Multiple Ystd columns are not currently supported. The deployed "
+            "model uses a single Ystd column ('Strength (Std)'); pass "
+            "``Ystd_columns=['Strength (Std)']`` (the default), or open an "
+            "issue describing the multi-Ystd shape you need."
         )  # pragma: no cover
 
     # dividing empirical standard deviations of strength by the number of measurements.
@@ -591,7 +599,10 @@ def get_bounds(
 
     # Columns not in bounds_dict get (0, 0) bounds (e.g. Coarse Aggregates in
     # mortar mode).
-    bounds = torch.tensor([bounds_dict.get(col, (0, 0)) for col in X_columns]).T
+    bounds = torch.tensor(
+        [bounds_dict.get(col, (0, 0)) for col in X_columns],
+        dtype=torch.float64,
+    ).T
     logger.info("The lower and upper bounds for the respective variables are set to:")
     for col, bound in zip(X_columns, bounds.T):
         logger.info(f"  - {col}: [{bound[0].item()}, {bound[1].item()}]")
@@ -862,7 +873,7 @@ def get_proportional_sum_constraints(
 
     Returns:
         A list of tuples of the form `(indices, coefficients, constant)` that represents
-        the porportional sum constraint in its linear representation.
+        the proportional sum constraint in its linear representation.
     """
     _, num_coeffs = get_subset_sum_tensors(
         X_columns=X_columns, subset_names=numerator_names
@@ -901,7 +912,7 @@ def get_subset_sum_tensors(
         compute the subset sum.
     """
     indices = [X_columns.index(name) for name in subset_names]
-    coeffs = torch.zeros(len(X_columns))
+    coeffs = torch.zeros(len(X_columns), dtype=torch.float64)
     coeffs[indices] = 1
     return indices, coeffs
 
@@ -985,12 +996,21 @@ def get_reference_point(
         ref = MORTAR_REFERENCE_POINT.clone()
         if include_cost:
             # Negate: threshold is in natural units, model predicts -cost.
-            ref = torch.cat([ref, torch.tensor([-MORTAR_COST_THRESHOLD])])
-    else:
+            ref = torch.cat(
+                [ref, torch.tensor([-MORTAR_COST_THRESHOLD], dtype=ref.dtype)]
+            )
+    elif optimization_mode == "concrete":
         ref = CONCRETE_REFERENCE_POINT.clone()
         if include_cost:
             # Negate: threshold is in natural units, model predicts -cost.
-            ref = torch.cat([ref, torch.tensor([-CONCRETE_COST_THRESHOLD])])
+            ref = torch.cat(
+                [ref, torch.tensor([-CONCRETE_COST_THRESHOLD], dtype=ref.dtype)]
+            )
+    else:
+        raise ValueError(
+            "get_reference_point: optimization_mode must be 'concrete' or "
+            f"'mortar'; got {optimization_mode!r}."
+        )
     return ref
 
 
@@ -1021,7 +1041,7 @@ def make_linear_coefficients(
     return means, variances
 
 
-def get_day_zero_data(X: Tensor, bounds: Tensor | None = None, n: int = 128):
+def get_day_zero_data(X: Tensor, n: int = 128):
     """Generates pseudo-observations at time=0 for conditioning the GP to predict
     zero strength at day zero.
 
@@ -1031,7 +1051,6 @@ def get_day_zero_data(X: Tensor, bounds: Tensor | None = None, n: int = 128):
 
     Args:
         X: The input tensor (n_train x d), where the last column is time.
-        bounds: Unused, kept for API compatibility. Will be removed in a future version.
         n: Maximum number of pseudo-observations. If there are fewer unique
             compositions than n, all unique compositions are used.
 
@@ -1045,7 +1064,7 @@ def get_day_zero_data(X: Tensor, bounds: Tensor | None = None, n: int = 128):
     if n_unique <= n:
         # Use all unique compositions
         X_comps = unique_comps
-    else:
+    else:  # pragma: no cover -- only triggered when training data has >n unique compositions; the strength dataset has 647 unique mixes < 128 default n
         # Random subset of unique compositions
         perm = torch.randperm(n_unique)[:n]
         X_comps = unique_comps[perm]
@@ -1056,6 +1075,56 @@ def get_day_zero_data(X: Tensor, bounds: Tensor | None = None, n: int = 128):
     Y_0 = torch.zeros(n_out, 1, dtype=X.dtype)
     Yvar_0 = torch.full((n_out, 1), 1e-4, dtype=X.dtype)
     return X_0, Y_0, Yvar_0
+
+
+def derive_bounds_from_X(X: Tensor, *, eps: float = 1e-8) -> Tensor:
+    """Derive a ``[2, d]`` bounds tensor from per-dim min/max of ``X``,
+    safely handling zero-width columns.
+
+    Both :mod:`boxcrete.slump_model` and :mod:`boxcrete.strength_model`
+    need to fall back to data-derived bounds when the caller doesn't
+    supply explicit bounds. A zero-width column (e.g., a categorical
+    material-source indicator that takes a single value across the fit
+    subset, or any column containing a single value) causes ``Normalize``
+    to produce NaNs — this helper widens such columns to
+    ``[min, min + 1.0]`` so downstream normalisation stays finite.
+
+    NaN inputs are rejected loudly: ``amin``/``amax`` propagate NaN,
+    ``(NaN - NaN) < eps`` is False, and the helper would otherwise
+    silently return NaN bounds — exactly the failure mode this helper
+    is supposed to insulate ``Normalize`` from.
+
+    Args:
+        X: ``[n, d]`` input tensor.
+        eps: width below which a column is treated as zero-width.
+
+    Returns:
+        ``[2, d]`` tensor stacked as ``[lower, upper]``.
+
+    Raises:
+        ValueError: if ``X`` contains NaN or infinite values, or has
+            no rows.
+    """
+    if X.shape[0] < 1:
+        raise ValueError(
+            "derive_bounds_from_X: X must have at least one row; got X.shape="
+            f"{tuple(X.shape)}."
+        )
+    nan_mask = torch.isnan(X).any(dim=0)
+    inf_mask = torch.isinf(X).any(dim=0)
+    bad_mask = nan_mask | inf_mask
+    if bad_mask.any():
+        bad_cols = bad_mask.nonzero(as_tuple=True)[0].tolist()
+        raise ValueError(
+            "derive_bounds_from_X: X contains NaN or infinite values in "
+            f"columns {bad_cols}. Clean the input before deriving bounds, or "
+            "pass an explicit ``X_bounds`` tensor."
+        )
+    x_min = X.amin(dim=0)
+    x_max = X.amax(dim=0)
+    zero_width = (x_max - x_min) < eps
+    x_max = torch.where(zero_width, x_min + 1.0, x_max)
+    return torch.stack([x_min, x_max], dim=0)
 
 
 def unique_elements(x: list) -> list:
