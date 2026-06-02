@@ -3,6 +3,9 @@
 // and exact GP posterior (mean + variance).
 // Optionally uses WASM SIMD for accelerated variance computation.
 
+import { predictStrengthCurveV2 } from "./gp_v2_fast.mjs";
+import { appendFeatures } from "./feature_registry.mjs";
+
 // --- WASM BLAS state (initialized asynchronously) ---
 let _wasm = null;
 let _wasmN = 0;     // matrix size stored in WASM
@@ -15,8 +18,11 @@ const _MAX_NRHS = 256;
 
 /**
  * Initialize WASM BLAS for accelerated GP inference.
- * Stores L, X_train, alpha, and lengthscales permanently in WASM memory.
- * Call after initStrengthModel(). Falls back gracefully if unavailable.
+ * Allocates persistent WASM-resident buffers and copies the rebuilt
+ * Cholesky factor `L` (from `initStrengthModel`) into them. `alpha`,
+ * `X_train`, and lengthscales remain JS-side typed arrays and are
+ * passed by pointer to BLAS calls per request. Call after
+ * initStrengthModel(). Falls back gracefully if unavailable.
  * @param {object} params - Model params
  * @returns {Promise<boolean>} true if WASM loaded
  */
@@ -74,40 +80,128 @@ function rbf(t1, t2, lengthscale, outputscale) {
 }
 
 /**
- * Combined additive kernel: ScaleKernel(Matérn5/2) + ScaleKernel(RBF on time).
+ * Matern-5/2 kernel restricted to a subset of input dims.
+ * Used for the "blind" component of the multi-Matern kernel — it
+ * operates on all dims EXCEPT the source dim, so the kernel is
+ * source-agnostic.
+ *
+ * @param x1, x2 - full input vectors (length d_aug)
+ * @param activeDims - array of dim indices to include (e.g. all except source)
+ * @param lengthscales - per-active-dim lengthscales (length matches activeDims)
+ * @param outputscale - kernel outputscale
  */
-function kernel(x1, x2, params) {
-  const timeDim = params.time_dim;
-  const kMatern = matern52(x1, x2, params.matern_lengthscales, params.matern_outputscale);
-  const kRbf = rbf(x1[timeDim], x2[timeDim], params.rbf_lengthscale, params.rbf_outputscale);
-  return kMatern + kRbf;
+function matern52ActiveDims(x1, x2, activeDims, lengthscales, outputscale) {
+  let r2 = 0;
+  for (let k = 0; k < activeDims.length; k++) {
+    const i = activeDims[k];
+    const d = (x1[i] - x2[i]) / lengthscales[k];
+    r2 += d * d;
+  }
+  const r = Math.sqrt(r2);
+  const sqrt5r = Math.sqrt(5) * r;
+  return outputscale * (1 + sqrt5r + (5 * r2) / 3) * Math.exp(-sqrt5r);
 }
 
 /**
- * Apply input transforms: time+1 → log10 → normalize to [0,1].
- * Modifies input in-place and returns it.
+ * Time gate: h(t) = 1 - exp(-t / tau).
+ * Applied multiplicatively to the kernel: K_gated(x1, x2) = h(t1) * K(x1, x2) * h(t2).
+ * This makes the prior covariance vanish at t = 0, structurally enforcing the
+ * physics constraint f(x, 0) = 0 without anchor pseudo-observations.
+ *
+ * @param t - time value (post-input-transform; in [0, 1] roughly)
+ * @param tau - gate timescale (default 0.05)
+ */
+function gateFunction(t, tau) {
+  if (t < 0) t = 0;
+  return 1.0 - Math.exp(-t / tau);
+}
+
+/**
+ * Combined kernel.
+ *
+ * Schema v1 (legacy): ScaleKernel(Matérn5/2) + ScaleKernel(RBF on time).
+ * Schema v2 (V2 strength GP): time-gated multi-Matern.
+ *   K_gated(x1, x2) = h(t1) * (M_blind + M_specific + RBF_time) * h(t2)
+ * where:
+ *   - M_blind:    matern52 over all dims EXCEPT the source dim
+ *   - M_specific: matern52 over ALL dims (including source)
+ *   - RBF_time:   rbf on the time dim
+ *   - h(t) = 1 - exp(-t / tau) with tau = 0.05
+ */
+function kernel(x1, x2, params) {
+  const timeDim = params.time_dim_aug;
+  const blind = params.matern_blind;
+  const specific = params.matern_specific;
+  const rbfT = params.rbf_time;
+  // Multi-Matern base
+  let kBase = matern52ActiveDims(
+    x1, x2, blind.active_dims, blind.lengthscales, blind.outputscale,
+  );
+  kBase += matern52ActiveDims(
+    x1, x2, specific.active_dims, specific.lengthscales, specific.outputscale,
+  );
+  // RBF on time dim only
+  const tIdx = rbfT.active_dims[0];
+  kBase += rbf(x1[tIdx], x2[tIdx], rbfT.lengthscale, rbfT.outputscale);
+  // Multiplicative time gate: kernel * h(t1) * h(t2). At t=0 the kernel
+  // is exactly zero, enforcing f(x, 0) = 0 in the prior (and posterior).
+  const h1 = gateFunction(x1[timeDim], params.gate_tau);
+  const h2 = gateFunction(x2[timeDim], params.gate_tau);
+  return kBase * h1 * h2;
+}
+
+/**
+ * F5_alllog engineered features — see `feature_registry.mjs` for the
+ * actual implementations. Order MUST match Python's
+ * `_FEATURE_CONFIGS["F5_alllog"]` and `engineered_feature_names`
+ * in the JSON.
+ */
+
+/**
+ * Apply input transforms (matches Python `ChainedInputTransform`):
+ *   1. derive (append 7 engineered features) — uses RAW values for ALL
+ *      dims, including raw time. `log_maturity_robust = log((T+10)*t + 1)`.
+ *   2. log_offset on time: `time += 1`.
+ *   3. log10 on time: `time = log10(time)`.
+ *   4. normalize all dims (with the time slot using identity bounds [0, 1]
+ *      because Python's Normalize was built with `skip_time_in_normalize=True`).
+ *
+ * KEY: features see RAW time, NOT post-log time. The Python order is
+ * derive → log_offset → log → normalize (kwargs to ChainedInputTransform).
  */
 function transformInput(x, params) {
-  const out = new Array(x.length);
-  const timeDim = params.time_dim;
-
-  // Copy all dims
-  for (let i = 0; i < x.length; i++) {
-    out[i] = x[i];
-  }
-
-  // Time transform: log10(time + 1)
-  out[timeDim] = Math.log10(out[timeDim] + 1);
-
-  // Normalize all dims to [0, 1]
+  const timeDim = params.time_dim_raw;  // 9
+  // 1. Append features using RAW input (before any time transformation).
+  //    Use the registry-driven appendFeatures which dispatches by name
+  //    so the JS stays in sync with whatever feature set the deployed
+  //    model was trained on (advertised via engineered_feature_names).
+  const out = appendFeatures(x, params.engineered_feature_names);
+  // 2. log_offset on time (now in the augmented input).
+  out[timeDim] = out[timeDim] + (params.log_time_offset || 1.0);
+  // 3. log10 on time.
+  out[timeDim] = Math.log10(out[timeDim]);
+  // 4. Normalize all dims to [0, 1] using stored bounds.
   for (let i = 0; i < out.length; i++) {
     const lo = params.normalize_lower[i];
     const hi = params.normalize_upper[i];
     out[i] = (out[i] - lo) / (hi - lo);
   }
-
   return out;
 }
+
+/**
+ * Compute the 7 engineered F5_alllog features from the RAW 10-dim
+ * composition vector (NOT post-log on time). Order MUST match Python's
+ * `_FEATURE_CONFIGS["F5_alllog"]`:
+ *   wb_ratio, scm_frac, log_hrwr_binder, log_wc_ratio,
+ *   log_coarse_fine, log_agg_paste, log_maturity_robust
+ *
+ * The +1.0 / +1e-3 / +1e-4 offsets match Python's `_FEATURE_BUILDERS`.
+ *
+ * Engineered features are computed via the registry in
+ * `feature_registry.mjs`; the deployed model declares its feature set
+ * via `engineered_feature_names` in strength.json.
+ */
 
 /**
  * Compute kernel vector k(x*, X_train) for a single test point.
@@ -143,75 +237,167 @@ function cholesky(A) {
 }
 
 /**
- * Initialize a strength model: compute the kernel matrix, Cholesky factor,
- * L⁻¹ (for fast variance), and alpha vector from the exported parameters.
- * Call once on page load.
- * Mutates params by adding `L_inv_flat`, `alpha_f64`, and `X_train_flat` fields.
+ * Initialize a strength model: rebuild the training kernel matrix
+ * `K_lik = K + σ²·I` from the kernel ingredients in `params`,
+ * factor it via Cholesky, and solve `α = K_lik⁻¹ Y_train`. Call once on
+ * page load.
+ *
+ * Note on the noise diagonal: we add the **bare scalar σ²**, not
+ * `σ²·h(t)²`, exactly mirroring Python's posterior path (the V2
+ * `GatedGaussianLikelihood` caches *raw* days in `_train_times`, and
+ * `h(raw_t≥1 / 0.05)` saturates to ≈1.0 for the strength dataset, so
+ * the gate is empirically a no-op on the training-data diagonal). The
+ * kernel-side gate `h(t1)·k·h(t2)` IS still applied via `kernel(...)`
+ * below — it's only the additional diagonal-noise gate that's skipped.
+ *
+ * Why we (re)compute these client-side instead of consuming a serialized
+ * Cholesky factor: the Python and JS Cholesky implementations differ
+ * subtly (jitter strategy, summation order), and pre-shipping `L` couples
+ * the JS posterior to whichever Python backend happened to factor it.
+ * That coupling caused a ~1e-3 relative variance drift between JS
+ * inference and `test_vectors.json`. Rebuilding `K` here from the same
+ * `kernel(x, x', params)` function the predictor uses, then running our
+ * own Cholesky, makes both sides reach the same K from the same kernel
+ * evaluations — drift is now bounded by FP-summation order (~ε·n ≈ 1e-13).
+ *
+ * Mutates params by adding `L_factor` (2D), `L_flat`, `alpha`, `alpha_f64`,
+ * and `X_train_flat` fields used by the inference paths.
  * @param {object} params - Raw parameters from strength.json.
  */
 export function initStrengthModel(params) {
+  if (params.schema_version !== 2) {
+    throw new Error(
+      "initStrengthModel: only schema_version=2 is supported. " +
+      "The legacy v1 schema was retired in 2026-05-17 — see " +
+      "experiments/STRENGTH_GP_BENCHMARK.md §0a."
+    );
+  }
+  if (!Array.isArray(params.Y_train)) {
+    throw new Error(
+      "initStrengthModel: `Y_train` is missing from strength.json. " +
+      "Re-run experiments/regenerate_strength_json.py and commit the " +
+      "regenerated artifact."
+    );
+  }
+  if (!Array.isArray(params.X_train) || params.X_train.length === 0) {
+    throw new Error(
+      "initStrengthModel: `X_train` is missing or empty in strength.json. " +
+      "Re-run experiments/regenerate_strength_json.py and commit the " +
+      "regenerated artifact."
+    );
+  }
+  if (typeof params.n_train !== "number" || typeof params.d_aug !== "number") {
+    throw new Error(
+      "initStrengthModel: `n_train` / `d_aug` schema fields missing. " +
+      "Re-run experiments/regenerate_strength_json.py and commit the " +
+      "regenerated artifact."
+    );
+  }
   const n = params.n_train;
-  const d = params.d_in;
   const X = params.X_train;
+  const d = params.d_aug;
+  params.n = n;
 
-  // Convert X_train to flat Float64Array for cache-friendly access
+  // Convert X_train to flat Float64Array for cache-friendly access.
   const X_flat = new Float64Array(n * d);
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < d; j++) X_flat[i * d + j] = X[i][j];
   }
   params.X_train_flat = X_flat;
 
-  // Build kernel matrix K + noise*I (heteroscedastic: learned for real, fixed for pseudo)
-  const K = new Float64Array(n * n);
-  const nReal = params.n_real || n;
-  const pseudoNoise = params.pseudo_noise || params.noise_variance;
+  // Build the noisy training kernel matrix K_lik = K + σ²·I.
+  // K[i, j] uses the same time-gated multi-Matern + RBF-time kernel that
+  // the predictor calls. The diagonal noise is the bare scalar σ², NOT
+  // σ²·h(t_i)² — this mirrors Python's actual posterior path: the V2
+  // model's GatedGaussianLikelihood stores raw-day train times in its
+  // `_train_times` cache, and h(raw_t ≥ 1 day / 0.05) saturates to ≈1.0,
+  // so the gate is a no-op on the training diagonal. Mirroring this
+  // empirical behaviour is what makes the JS posterior match
+  // `test_vectors.json` (which was generated by the same Python posterior
+  // path). The kernel gate h(t_i)·k·h(t_j) IS still applied — that comes
+  // from the `kernel(...)` call below — only the additional diagonal-noise
+  // gate is skipped.
+  const noise = params.noise;
+  const K_lik = Array.from({ length: n }, () => new Array(n));
   for (let i = 0; i < n; i++) {
-    for (let j = i; j < n; j++) {
-      const k = kernel(X[i], X[j], params);
-      K[i * n + j] = k;
-      K[j * n + i] = k;
+    K_lik[i][i] = kernel(X[i], X[i], params) + noise;
+    for (let j = 0; j < i; j++) {
+      const k_ij = kernel(X[i], X[j], params);
+      K_lik[i][j] = k_ij;
+      K_lik[j][i] = k_ij;
     }
-    K[i * n + i] += i < nReal ? params.noise_variance : pseudoNoise;
   }
 
-  // Cholesky decomposition (flat storage)
-  const L = new Float64Array(n * n);
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j <= i; j++) {
-      let s = K[i * n + j];
-      for (let k = 0; k < j; k++) s -= L[i * n + k] * L[j * n + k];
-      L[i * n + j] = i === j ? Math.sqrt(s) : s / L[j * n + j];
+  // Cholesky factor: K_lik = L Lᵀ. The kernel is PSD by construction, so
+  // a successful chol with no jitter is the expected path; we add a tiny
+  // adaptive jitter only on numerical failure (matches BoTorch's
+  // psd_safe_cholesky escalation strategy).
+  let L_2d;
+  try {
+    L_2d = cholesky(K_lik);
+    // Detect NaN/Inf in the diagonal — silent failure mode of naive chol.
+    for (let i = 0; i < n; i++) {
+      if (!Number.isFinite(L_2d[i][i]) || L_2d[i][i] <= 0) throw new Error("non-PSD");
+    }
+  } catch (_e) {
+    // Escalating jitter, mirroring linear_operator's psd_safe_cholesky.
+    // Snapshot the original diagonal so each attempt sets jitter from the
+    // base matrix rather than accumulating it across attempts.
+    const diag0 = new Array(n);
+    for (let i = 0; i < n; i++) diag0[i] = K_lik[i][i];
+    let jitter = 1e-8;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      for (let i = 0; i < n; i++) K_lik[i][i] = diag0[i] + jitter;
+      try {
+        L_2d = cholesky(K_lik);
+        let ok = true;
+        for (let i = 0; i < n; i++) {
+          if (!Number.isFinite(L_2d[i][i]) || L_2d[i][i] <= 0) { ok = false; break; }
+        }
+        if (ok) break;
+      } catch (_e2) { /* fall through */ }
+      jitter *= 10;
+    }
+    if (!L_2d) {
+      throw new Error("initStrengthModel: Cholesky factorization failed even after jitter escalation.");
     }
   }
 
-  params.L_flat = L; // flat Float64Array for forward solve in predictStrengthCurve
-  params.n = n;
-
-  // Solve for alpha using the flat L
-  // Forward solve: L z = (Y - prior_mean)
-  const rhs = new Float64Array(n);
-  for (let i = 0; i < n; i++) rhs[i] = params.Y_train[i] - params.prior_mean;
-  const z = new Float64Array(n);
-  for (let i = 0; i < n; i++) {
-    let s = rhs[i];
-    for (let j = 0; j < i; j++) s -= L[i * n + j] * z[j];
-    z[i] = s / L[i * n + i];
-  }
-
-  // Backward solve: L^T alpha = z
-  const alpha = new Float64Array(n);
+  // Solve L Lᵀ α = Y_train (forward then back substitution).
+  const Y = params.Y_train;
+  const z = solveTriangularLower(L_2d, Y);
+  const alpha = new Array(n);
   for (let i = n - 1; i >= 0; i--) {
     let s = z[i];
-    for (let j = i + 1; j < n; j++) s -= L[j * n + i] * alpha[j];
-    alpha[i] = s / L[i * n + i];
+    for (let j = i + 1; j < n; j++) s -= L_2d[j][i] * alpha[j];
+    alpha[i] = s / L_2d[i][i];
   }
-  params.alpha_f64 = alpha;
-  // Keep backward-compatible alpha for predictStrength (single point)
-  params.alpha = Array.from(alpha);
-  // Keep L_factor for backward compat with test
-  params.L_factor = Array.from({ length: n }, (_, i) =>
-    Array.from({ length: n }, (_, j) => L[i * n + j])
-  );
+
+  // Materialize on params in both nested-2D (legacy predict path) and
+  // flat Float64Array (gp_v2_fast.mjs / WASM BLAS) forms.
+  params.L_factor = L_2d;
+  const L_flat = new Float64Array(n * n);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) L_flat[i * n + j] = L_2d[i][j];
+  }
+  params.L_flat = L_flat;
+  params.alpha = alpha;
+  const alpha_f64 = new Float64Array(n);
+  for (let i = 0; i < n; i++) alpha_f64[i] = alpha[i];
+  params.alpha_f64 = alpha_f64;
+
+  // Map v2 fields onto the legacy y_std / y_mean / prior_mean fields so
+  // the existing predict* functions un-scale correctly:
+  // - max-scale: Y_scaled = Y / y_max, so un-scale: mean * y_max + 0.
+  // - ZeroMean: prior_mean = 0.
+  params.y_std = params.y_max;
+  params.y_mean = params.y_mean ?? 0.0;
+  params.prior_mean = 0.0;
+  // UI compatibility: ui.mjs computes display std as sqrt(var + noiseVar)
+  // where noiseVar = params.noise_variance * y_std². The schema-v2
+  // export stores the noise as `params.noise` (in scaled-output space);
+  // alias it to `noise_variance` for the legacy UI code path.
+  params.noise_variance = params.noise;
 }
 
 /**
@@ -231,48 +417,20 @@ function solveTriangularLower(L, b) {
 }
 
 /**
- * Predict GP posterior mean at a single (already-transformed) test point.
- * μ(x*) = prior_mean + k* · α, un-standardized to original scale.
- */
-function predictMeanTransformed(xStar, params) {
-  const kVec = kernelVector(xStar, params.X_train, params);
-  let mean = params.prior_mean;
-  for (let i = 0; i < kVec.length; i++) {
-    mean += kVec[i] * params.alpha[i];
-  }
-  // Un-standardize
-  return mean * params.y_std + params.y_mean;
-}
-
-/**
- * Predict GP posterior variance at a single (already-transformed) test point.
- * σ²(x*) = k(x*,x*) - k*ᵀ K⁻¹ k* = k(x*,x*) - ||L⁻¹k*||²
- * Un-standardized to original scale.
- */
-function predictVarianceTransformed(xStar, params) {
-  const kVec = kernelVector(xStar, params.X_train, params);
-  const kSelf = kernel(xStar, xStar, params);
-
-  // Solve L v = k* (forward substitution)
-  const v = solveTriangularLower(params.L_factor, kVec);
-
-  // ||v||² = k*ᵀ K⁻¹ k*
-  let vNormSq = 0;
-  for (let i = 0; i < v.length; i++) {
-    vNormSq += v[i] * v[i];
-  }
-
-  const varStd = Math.max(0, kSelf - vNormSq);
-  // Un-standardize: variance scales by y_std²
-  return varStd * params.y_std * params.y_std;
-}
-
-/**
  * Predict strength (mean and variance) for a raw composition + time.
+ *
+ * The returned variance is the **total** predictive variance: the latent
+ * f-variance ``kSelf − ‖L⁻¹ k_*‖²`` PLUS the gated aleatoric term
+ * ``h(t)² · σ²``, in scaled-output (Y / y_max) space, then un-standardised
+ * by ``y_max²`` to psi². Both this single-point predictor and
+ * :func:`predictStrengthCurve` honour the same contract, advertised by
+ * ``strength.json::variance_includes_aleatoric: true`` — UI consumers
+ * MUST NOT add noise on top.
+ *
  * @param {number[]} composition - Raw composition values (without time).
  * @param {number} time - Curing time in days.
  * @param {object} params - Model parameters from strength.json.
- * @returns {{mean: number, variance: number}}
+ * @returns {{mean: number, variance: number}} variance includes aleatoric.
  */
 export function predictStrength(composition, time, params) {
   // Build full input vector (composition + time)
@@ -292,7 +450,19 @@ export function predictStrength(composition, time, params) {
   const v = solveTriangularLower(params.L_factor, kVec);
   let vNormSq = 0;
   for (let i = 0; i < v.length; i++) vNormSq += v[i] * v[i];
-  const varStd = Math.max(0, kSelf - vNormSq);
+  let varStd = Math.max(0, kSelf - vNormSq);
+
+  // Gated aleatoric: ``h(t_post)² · σ²`` in scaled-output space. Mirrors
+  // ``predictStrengthCurveV2`` so single-point and batch paths return the
+  // same total variance — see docstring above. Only applied when the
+  // schema declares the gated-noise model (``noise_kind === "gated"``);
+  // legacy / non-gated schemas read ``params.noise`` as a plain scalar
+  // already added by the kernel-side noise term in those variants.
+  if (params.noise_kind === "gated") {
+    const tIdx = params.time_dim_aug;
+    const h = gateFunction(xT[tIdx], params.noise_gate_tau ?? params.gate_tau);
+    varStd += h * h * params.noise;
+  }
 
   return {
     mean: mean * params.y_std + params.y_mean,
@@ -310,175 +480,26 @@ export function predictStrength(composition, time, params) {
  * @returns {{means: number[], variances: number[]}}
  */
 export function predictStrengthCurve(composition, times, params) {
-  const timeDim = params.time_dim;
-  const n = params.n_train;
-  const d = params.d_in;
-
-  // Pre-transform composition (everything except time)
-  const xBase = new Float64Array(d);
-  for (let i = 0; i < composition.length; i++) {
-    if (i === timeDim) continue;
-    const lo = params.normalize_lower[i];
-    const hi = params.normalize_upper[i];
-    xBase[i] = (composition[i] - lo) / (hi - lo);
-  }
-
-  const timeLo = params.normalize_lower[timeDim];
-  const timeHi = params.normalize_upper[timeDim];
-  const X_flat = params.X_train_flat; // Float64Array[n * d]
-  const alpha = params.alpha_f64;     // Float64Array[n]
-  const L = params.L_flat;            // Float64Array[n * n] (lower triangular)
-  const yStd = params.y_std;
-  const yMean = params.y_mean;
-  const priorMean = params.prior_mean;
-  const mLS = params.matern_lengthscales;
-  const mOS = params.matern_outputscale;
-  const rbfLS = params.rbf_lengthscale;
-  const rbfOS = params.rbf_outputscale;
-  const kSelf = mOS + rbfOS; // k(x,x) for any x
-
-  const nTimes = times.length;
-  const means = new Float64Array(nTimes);
-  const variances = new Float64Array(nTimes);
-
-  // Build all kernel vectors and compute means
-  // If WASM available, use fully-accelerated path (kernels + solve in WASM)
-  const useWasm = _wasm !== null && _wasmN === n;
-
-  if (useWasm) {
-    // --- ALL-F64 WASM SIMD PATH ---
-    // Compute kernel vectors in JS F64 (precision), solve with WASM F64 dtrsm (speed)
-    const ptrK64 = _wasm._malloc(n * nTimes * 8);
-    const h64v = new Float64Array(_wasm.HEAPF64.buffer);
-
-    for (let ti = 0; ti < nTimes; ti++) {
-      const tTransformed = (Math.log10(times[ti] + 1) - timeLo) / (timeHi - timeLo);
-      xBase[timeDim] = tTransformed;
-      const colOff = ptrK64 / 8 + ti * n;
-      let mean = priorMean;
-      for (let i = 0; i < n; i++) {
-        const rowOff = i * d;
-        let r2 = 0;
-        for (let dim = 0; dim < d; dim++) {
-          const dd = (xBase[dim] - X_flat[rowOff + dim]) / mLS[dim];
-          r2 += dd * dd;
-        }
-        const r = Math.sqrt(r2);
-        const sqrt5r = 2.23606797749979 * r;
-        const kM = mOS * (1 + sqrt5r + (5 * r2) / 3) * Math.exp(-sqrt5r);
-        const dt = (tTransformed - X_flat[rowOff + timeDim]) / rbfLS;
-        const kVal = kM + rbfOS * Math.exp(-0.5 * dt * dt);
-        h64v[colOff + i] = kVal;
-        mean += kVal * alpha[i];
-      }
-      means[ti] = mean * yStd + yMean;
-    }
-
-    // Variance: WASM F64 SIMD triangular solve + column norms
-    _wasm._dtrsm_lower(n, nTimes, _ptrL, ptrK64);
-    _wasm._col_norms_sq_f64(n, nTimes, ptrK64, _ptrNorms);
-
-    const normsF64 = new Float64Array(_wasm.HEAPF64.buffer).subarray(_ptrNorms / 8, _ptrNorms / 8 + nTimes);
-    for (let ti = 0; ti < nTimes; ti++) {
-      variances[ti] = Math.max(0, kSelf - normsF64[ti]) * yStd * yStd;
-    }
-    _wasm._free(ptrK64);
-  } else {
-    // --- JS FALLBACK PATH ---
-    const kVec = new Float64Array(n);
-    const v = new Float64Array(n);
-
-    for (let ti = 0; ti < nTimes; ti++) {
-      const tTransformed = (Math.log10(times[ti] + 1) - timeLo) / (timeHi - timeLo);
-      xBase[timeDim] = tTransformed;
-
-      let mean = priorMean;
-      for (let i = 0; i < n; i++) {
-        const rowOff = i * d;
-        let r2 = 0;
-        for (let dim = 0; dim < d; dim++) {
-          const dd = (xBase[dim] - X_flat[rowOff + dim]) / mLS[dim];
-          r2 += dd * dd;
-        }
-        const r = Math.sqrt(r2);
-        const sqrt5r = 2.23606797749979 * r;
-        const kM = mOS * (1 + sqrt5r + (5 * r2) / 3) * Math.exp(-sqrt5r);
-        const dt = (tTransformed - X_flat[rowOff + timeDim]) / rbfLS;
-        const kVal = kM + rbfOS * Math.exp(-0.5 * dt * dt);
-        kVec[i] = kVal;
-        mean += kVal * alpha[i];
-      }
-      means[ti] = mean * yStd + yMean;
-
-      // Variance via forward solve
-      let vNormSq = 0;
-      for (let i = 0; i < n; i++) {
-        let s = kVec[i];
-        const rowOff = i * n;
-        for (let j = 0; j < i; j++) s -= L[rowOff + j] * v[j];
-        v[i] = s / L[rowOff + i];
-      }
-      for (let i = 0; i < n; i++) vNormSq += v[i] * v[i];
-      variances[ti] = Math.max(0, kSelf - vNormSq) * yStd * yStd;
-    }
-  }
-
-  return { means, variances };
+  // Delegates to the WASM-accelerated batched V2 path. This inlines the
+  // kernel computation (no per-pair function-call overhead so the JIT
+  // can vectorise), batches all `times` test points, and routes the
+  // variance solve through the WASM dtrsm + col_norms_sq if available.
+  return predictStrengthCurveV2(composition, times, params, {
+    wasm: _wasm, wasmN: _wasmN, ptrL: _ptrL, ptrNorms: _ptrNorms,
+  });
 }
 
 /**
- * Predict strength curve MEAN ONLY (no variance) — much faster for previews.
- * Skips the expensive Cholesky solve; only computes k_star^T @ alpha.
+ * Predict strength curve MEAN ONLY (variance discarded). Currently a thin
+ * wrapper around the full predictStrengthCurveV2 path that throws away
+ * the variance — TODO: route to a dedicated mean-only fast path that
+ * skips the Cholesky solve entirely (k_star^T @ alpha is much cheaper).
  */
 export function predictStrengthMeanOnly(composition, times, params) {
-  const timeDim = params.time_dim;
-  const n = params.n_train;
-  const d = params.d_in;
-
-  const xBase = new Float64Array(d);
-  for (let i = 0; i < composition.length; i++) {
-    if (i === timeDim) continue;
-    const lo = params.normalize_lower[i];
-    const hi = params.normalize_upper[i];
-    xBase[i] = (composition[i] - lo) / (hi - lo);
-  }
-
-  const timeLo = params.normalize_lower[timeDim];
-  const timeHi = params.normalize_upper[timeDim];
-  const X_flat = params.X_train_flat;
-  const alpha = params.alpha_f64;
-  const yStd = params.y_std;
-  const yMean = params.y_mean;
-  const priorMean = params.prior_mean;
-  const mLS = params.matern_lengthscales;
-  const mOS = params.matern_outputscale;
-  const rbfLS = params.rbf_lengthscale;
-  const rbfOS = params.rbf_outputscale;
-
-  const nTimes = times.length;
-  const means = new Float64Array(nTimes);
-
-  for (let ti = 0; ti < nTimes; ti++) {
-    const tTransformed = (Math.log10(times[ti] + 1) - timeLo) / (timeHi - timeLo);
-    xBase[timeDim] = tTransformed;
-    let mean = priorMean;
-    for (let i = 0; i < n; i++) {
-      const rowOff = i * d;
-      let r2 = 0;
-      for (let dim = 0; dim < d; dim++) {
-        const dd = (xBase[dim] - X_flat[rowOff + dim]) / mLS[dim];
-        r2 += dd * dd;
-      }
-      const r = Math.sqrt(r2);
-      const sqrt5r = 2.23606797749979 * r;
-      const kM = mOS * (1 + sqrt5r + (5 * r2) / 3) * Math.exp(-sqrt5r);
-      const dt = (tTransformed - X_flat[rowOff + timeDim]) / rbfLS;
-      const kVal = kM + rbfOS * Math.exp(-0.5 * dt * dt);
-      mean += kVal * alpha[i];
-    }
-    means[ti] = mean * yStd + yMean;
-  }
-  return means;
+  // Reuse the full V2 path and discard the variance.
+  return predictStrengthCurveV2(composition, times, params, {
+    wasm: _wasm, wasmN: _wasmN, ptrL: _ptrL, ptrNorms: _ptrNorms,
+  }).means;
 }
 
 /**
@@ -516,11 +537,28 @@ export function predictGWP(composition, gwpParams, materialSource = 0) {
  * Predict Cost using the linear model.
  * mean = Σᵢ xᵢ * cᵢ (negated, as model stores -Cost)
  * variance = Σᵢ xᵢ² * σᵢ²
+ *
+ * **Asymmetry vs predictGWP**: cost coefficients today are class-agnostic
+ * (a single global ``{means, variances}`` pair, no ``class_dim`` field
+ * in cost.json), so this function deliberately ignores the material
+ * source class. ``predictGWP``, by contrast, indexes coefficients by
+ * material-source class. If cost is ever retrained with class structure
+ * — and cost.json grows a ``class_dim`` field — this function must be
+ * updated symmetrically with predictGWP; the asymmetry is otherwise a
+ * silent-fallback hazard.
+ *
  * @param {number[]} composition - Raw composition values (without time).
  * @param {object} costParams - Model parameters (coefficients.means/variances).
  * @returns {{mean: number, variance: number}}
  */
 export function predictCost(composition, costParams) {
+  if (costParams.class_dim !== undefined) {
+    throw new Error(
+      "predictCost: cost.json has a ``class_dim`` field but this implementation " +
+      "is class-agnostic. Update predictCost to mirror predictGWP's class-indexed " +
+      "lookup before shipping the new cost.json."
+    );
+  }
   const means = costParams.coefficients.means;
   const variances = costParams.coefficients.variances;
 

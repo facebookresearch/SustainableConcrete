@@ -3,21 +3,22 @@
 
 name: Notebooks
 
+# Cancel obsolete runs on rapid pushes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main, master]
-    paths:
+    paths: &notebook_paths
       - 'notebooks/**'
       - 'boxcrete/**'
       - 'pyproject.toml'
       - '.github/workflows/notebooks.yml'
   pull_request:
     branches: [main, master]
-    paths:
-      - 'notebooks/**'
-      - 'boxcrete/**'
-      - 'pyproject.toml'
-      - '.github/workflows/notebooks.yml'
+    paths: *notebook_paths
   schedule:
     # Run nightly at 3:00 AM UTC
     - cron: '0 3 * * *'
@@ -41,20 +42,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: Cache pip dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-3.10-${{ hashFiles('pyproject.toml') }}
+          key: ${{ runner.os }}-pip-3.12-${{ hashFiles('pyproject.toml') }}
           restore-keys: |
-            ${{ runner.os }}-pip-3.10-
+            ${{ runner.os }}-pip-3.12-
             ${{ runner.os }}-pip-
 
       - name: Install dependencies
@@ -64,61 +65,29 @@ jobs:
 
       - name: Install Jupyter kernel
         run: |
-          python -m ipykernel install --user --name python3
+          python -m ipykernel install --user --name python3 --display-name "Python 3"
 
       - name: Execute mode-dependent notebooks (${{ matrix.optimization-mode }}, cost=${{ matrix.include-cost }})
+        # nbconvert produces the rendered .ipynb artifact (cells + plots
+        # embedded as base64) for the upload-artifact step below. The
+        # cell-by-cell fast-fail check above runs first and catches
+        # hangs / cell errors with clear progress markers, so we don't
+        # need the diagnostic wrapper that previously surrounded this
+        # step (free -h / dmesg / signal-name parsing). If a cell ever
+        # hangs again, the cell-by-cell step will surface it before we
+        # reach this nbconvert call.
         env:
           BOXCRETE_OPTIMIZATION_MODE: ${{ matrix.optimization-mode }}
           BOXCRETE_INCLUDE_COST: ${{ matrix.include-cost }}
+          BOXCRETE_SMOKE_TEST: "1"
         run: |
-          python - << 'PYEOF'
-          import subprocess, sys, os
-          from pathlib import Path
-
-          # Only notebooks that use BOXCRETE_OPTIMIZATION_MODE
-          MODE_DEPENDENT = [
-              "notebooks/prediction_and_optimization_tutorial.ipynb",
-          ]
-
-          mode = os.environ.get("BOXCRETE_OPTIMIZATION_MODE", "concrete")
-          failed = []
-
-          for nb in MODE_DEPENDENT:
-              nb_path = Path(nb)
-              if not nb_path.exists():
-                  print(f"⚠️  Skipping (not found): {nb}")
-                  continue
-
-              print(f"{'=' * 40}")
-              print(f"Executing ({mode}): {nb}")
-              print(f"{'=' * 40}")
-
-              result = subprocess.run(
-                  [
-                      sys.executable, "-m", "jupyter", "nbconvert",
-                      "--to", "notebook",
-                      "--execute",
-                      "--inplace",
-                      "--ExecutePreprocessor.timeout=600",
-                      "--ExecutePreprocessor.kernel_name=python3",
-                      str(nb),
-                  ],
-                  capture_output=False,
-              )
-
-              if result.returncode != 0:
-                  failed.append(str(nb))
-                  print(f"❌ Failed ({mode}): {nb}")
-              else:
-                  print(f"✅ Successfully executed ({mode}): {nb}")
-              print()
-
-          if failed:
-              print(f"\n{len(failed)} notebook(s) failed in {mode} mode:")
-              for f in failed:
-                  print(f"  - {f}")
-              sys.exit(1)
-          PYEOF
+          python -m jupyter nbconvert \
+              --to notebook \
+              --execute \
+              --inplace \
+              --ExecutePreprocessor.timeout=600 \
+              --ExecutePreprocessor.kernel_name=python3 \
+              notebooks/prediction_and_optimization_tutorial.ipynb
 
       - name: Upload executed notebooks as artifacts
         uses: actions/upload-artifact@v4
@@ -139,20 +108,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: Cache pip dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-3.10-${{ hashFiles('pyproject.toml') }}
+          key: ${{ runner.os }}-pip-3.12-${{ hashFiles('pyproject.toml') }}
           restore-keys: |
-            ${{ runner.os }}-pip-3.10-
+            ${{ runner.os }}-pip-3.12-
             ${{ runner.os }}-pip-
 
       - name: Install dependencies
@@ -227,12 +196,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: Install dependencies
         run: |

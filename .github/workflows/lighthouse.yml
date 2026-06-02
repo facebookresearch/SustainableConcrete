@@ -4,19 +4,21 @@
 
 name: Lighthouse CI
 
+# Cancel obsolete runs on rapid pushes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
-    branches: [main]
-    paths:
+    branches: [main, master]
+    paths: &lighthouse_paths
       - 'docs/**'
       - 'lighthouserc.json'
       - '.github/workflows/lighthouse.yml'
   pull_request:
-    branches: [main]
-    paths:
-      - 'docs/**'
-      - 'lighthouserc.json'
-      - '.github/workflows/lighthouse.yml'
+    branches: [main, master]
+    paths: *lighthouse_paths
   workflow_dispatch:
 
 permissions:
@@ -31,7 +33,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-node@v4
         with:

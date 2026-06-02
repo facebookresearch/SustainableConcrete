@@ -1,0 +1,99 @@
+# Verifies that docs/model/*.json artifacts are coherent with the
+# Python V2 strength GP fit. Runs the regen pipeline and asserts no
+# diff — any uncommitted drift in strength.json / test_vectors.json /
+# compositions.json (e.g., from a manual edit, a partial regen, or
+# upstream model code that wasn't followed by a regen run) fails CI.
+#
+# See docs/model/README.md for the artifact schema + regen workflow.
+
+name: Model Artifacts Coherence
+
+# Cancel obsolete runs on rapid pushes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, master]
+    paths: &artifacts_paths
+      - 'boxcrete/strength_model.py'
+      - 'boxcrete/kernels.py'
+      - 'boxcrete/likelihoods.py'
+      - 'boxcrete/priors.py'
+      - 'boxcrete/features.py'
+      - 'boxcrete/utils.py'
+      - 'boxcrete/__init__.py'
+      - 'data/**'
+      - 'experiments/regenerate_strength_json.py'
+      - 'experiments/regenerate_compositions_strength_predictions.mjs'
+      - 'experiments/augment_test_vectors_with_gwp_cost.mjs'
+      - 'experiments/regenerate_all_artifacts.sh'
+      - 'docs/model/**'
+      - 'docs/feature_registry.mjs'
+      - 'docs/gp.mjs'
+      - 'docs/gp_v2_fast.mjs'
+      - '.github/workflows/model-artifacts-coherence.yml'
+  pull_request:
+    branches: [main, master]
+    paths: *artifacts_paths
+  workflow_dispatch: {}
+
+jobs:
+  regen-idempotency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Save committed docs/model/ for later comparison
+        # Snapshot the JSON artifacts BEFORE regen overwrites them, so
+        # the post-regen comparison can diff against the committed copy.
+        # We snapshot only the JSONs (not the .pt) because cross-arch
+        # determinism on binary state_dicts requires bit-equality which
+        # we can't expect from a multi-modal MLL fit; the JSON-level
+        # checks cover the same coverage surface (lengthscales +
+        # prediction surface) via experiments/check_artifacts_drift.py.
+        run: |
+          mkdir -p /tmp/committed_docs_model
+          cp docs/model/strength.json /tmp/committed_docs_model/
+          cp docs/model/test_vectors.json /tmp/committed_docs_model/
+          cp docs/model/compositions.json /tmp/committed_docs_model/
+
+      - name: Run regen pipeline
+        run: bash experiments/regenerate_all_artifacts.sh
+
+      - name: Assert artifacts agree with committed copy within tolerance
+        # Replaces the legacy ``git diff --exit-code docs/model/`` check,
+        # which was over-strict: it required bit-equality of JSON output
+        # across architectures, but the V2 strength GP fit goes through
+        # scipy's L-BFGS-B against a multi-modal MLL surface, and
+        # different CPU architectures land in different local optima
+        # (Apple Silicon via qemu-emulated amd64 vs GitHub-runner native
+        # x86_64 produce ~2x different lengthscales while predicting
+        # nearly the same surface). The new check tolerates this
+        # cross-architecture basin divergence (10x ratio band on
+        # internal hyperparameters) while still catching the original
+        # failure mode (a stale export typically shifts predictions
+        # by 100s of psi at OOT compositions). See the docstring of
+        # ``experiments/check_artifacts_drift.py`` for the full rationale.
+        run: |
+          python experiments/check_artifacts_drift.py \
+            --committed-dir /tmp/committed_docs_model \
+            --fresh-dir docs/model

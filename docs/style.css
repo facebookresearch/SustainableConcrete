@@ -923,6 +923,12 @@ h2 {
   -webkit-appearance: none;
   margin: 0;
 }
+.filter-row input.filter-input-invalid {
+  /* Visual feedback that the value isn't a number — without it, a typo
+     would silently make the filter dead (NaN compares always false). */
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+}
 .filter-row input[type=number]:focus {
   border-color: var(--accent);
   outline: none;

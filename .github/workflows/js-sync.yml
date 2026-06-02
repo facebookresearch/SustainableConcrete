@@ -1,7 +1,19 @@
-# Verifies that the JavaScript GP implementation matches Python reference predictions.
-# Catches drift if model parameters or JS code are changed without re-syncing.
+# Runs the full JS-side test suite that pairs with the Python boxcrete
+# package: Python ↔ JS predictor parity, V2 posterior parity, JS-side
+# physical-constraint guards, lengthscale parity, curve monotonicity,
+# data-freshness check, units, and explorer UI smoke.
+#
+# Catches drift between the Python fit (boxcrete) and the in-browser
+# JavaScript GP (docs/gp*.mjs + docs/model/*.json artifacts) — if the
+# model, JS code, or model artifacts change without re-syncing the JS
+# port and the test_vectors.json baseline, this workflow fails.
 
 name: JS Model Sync
+
+# Cancel obsolete runs on rapid pushes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 # Restrict GITHUB_TOKEN to the minimum needed: read-only access to repo
 # contents (required by actions/checkout). The workflow never writes to the
@@ -12,16 +24,30 @@ permissions:
 on:
   push:
     branches: [main, master]
-    paths:
+    paths: &js_sync_paths
       - 'docs/gp.mjs'
+      - 'docs/gp_v2_fast.mjs'
+      - 'docs/feature_registry.mjs'
+      - 'docs/units.mjs'
       - 'docs/model/**'
+      - 'boxcrete/features.py'
+      - 'package.json'
+      - 'package-lock.json'
       - 'test/test_js_gp.mjs'
+      - 'test/test_js_strength_v2.mjs'
+      - 'test/test_js_predictor_parity.mjs'
+      - 'test/test_js_physical_constraints.mjs'
+      - 'test/test_js_ui_smoke.mjs'
+      - 'test/test_js_units.mjs'
+      - 'test/test_lengthscales_v2.mjs'
+      - 'test/test_js_feature_parity.mjs'
+      - 'test/fixtures/feature_parity_fixture.json'
+      - 'test/test_curve_monotonicity.mjs'
+      - 'test/test_data_freshness.mjs'
+      - '.github/workflows/js-sync.yml'
   pull_request:
     branches: [main, master]
-    paths:
-      - 'docs/gp.mjs'
-      - 'docs/model/**'
-      - 'test/test_js_gp.mjs'
+    paths: *js_sync_paths
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -30,11 +56,41 @@ jobs:
   js-model-sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Run JS GP sync test
+      # Run each JS test individually rather than via a globbing wrapper
+      # so a single test failure surfaces with its own step in the CI UI
+      # (easy to skim "which test broke" without scrolling logs).
+      - name: Python ↔ JS GP equivalence (test_vectors.json)
         run: node test/test_js_gp.mjs
+
+      - name: JS ↔ Python feature builder parity
+        run: node test/test_js_feature_parity.mjs
+
+      - name: V2 posterior parity (Python vs JS)
+        run: node test/test_js_strength_v2.mjs
+
+      - name: Single-vs-batch JS predictor contract
+        run: node test/test_js_predictor_parity.mjs
+
+      - name: JS-side f(x, t=0) = 0 physical-constraint guard
+        run: node test/test_js_physical_constraints.mjs
+
+      - name: Explorer UI smoke
+        run: node test/test_js_ui_smoke.mjs
+
+      - name: JS unit conversions
+        run: node test/test_js_units.mjs
+
+      - name: JS-side lengthscale parity / identifiability
+        run: node test/test_lengthscales_v2.mjs
+
+      - name: JS-side strength-curve monotonicity
+        run: node test/test_curve_monotonicity.mjs
+
+      - name: Data-freshness (compositions.json vs live JS GP)
+        run: node test/test_data_freshness.mjs

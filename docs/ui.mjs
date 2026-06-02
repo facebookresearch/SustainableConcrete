@@ -17,6 +17,26 @@ function easeInOutCubic(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
+/**
+ * Resolve a column name to an index in the schema, throwing loudly if
+ * the name isn't present. Replaces the previous ``cols.indexOf(name) ||
+ * 0`` pattern, which silently fell back to column 0 if the name didn't
+ * match (e.g., after a Python-side rename of ``"Cement (kg/m3)"`` to
+ * ``"Cement"`` or a Unicode ``"Cement (kg/m³)"``).
+ */
+function colIdx(cols, name) {
+  const i = cols.indexOf(name);
+  if (i < 0) {
+    throw new Error(
+      `[boxcrete] column ${JSON.stringify(name)} is not in the compositions ` +
+      `schema. Known columns: ${JSON.stringify(cols)}. ` +
+      "If column names changed in Python, update both ``DEFAULT_X_COLUMNS`` " +
+      "(``boxcrete/utils.py``) AND the JS-side references in docs/ui.mjs."
+    );
+  }
+  return i;
+}
+
 // Generate `nPts` log-spaced curing times in [0, 28] days. Denser at early
 // times where strength changes fastest — inverse of `log10(t+1)/log10(29)`.
 // Used by `drawStrengthCurve` (32 pts interactive / 64 pts idle), the
@@ -30,9 +50,17 @@ function logSpacedTimes(nPts) {
 }
 
 // Convert GP variances to standard deviations including model noise.
-// `variances` is the array returned by `predictStrengthCurve`; we add the
-// noise variance (in the GP's normalised target space) before sqrt.
+// `variances` is the array returned by `predictStrengthCurve`.
+//
+// For schema-v2 models with a heteroscedastic gated likelihood, the
+// noise variance returned by predictStrengthCurve already incorporates
+// h(t)² scaling and is summed into `variances` (advertised by
+// `variance_includes_aleatoric: true`). For legacy v1 models or
+// schema-v2 with global noise, we add `noise_variance * y_std²` here.
 function computeStds(variances, params) {
+  if (params.variance_includes_aleatoric) {
+    return variances.map((v) => Math.sqrt(Math.max(0, v)));
+  }
   const noiseVar = params.noise_variance * params.y_std * params.y_std;
   return variances.map((v) => Math.sqrt(v + noiseVar));
 }
@@ -145,8 +173,15 @@ async function init() {
     loadJSON("model/compositions.json"),
   ]);
 
-  // Load mix analyses (non-blocking, optional)
-  loadJSON("model/mix_analyses.json").then(d => { mixAnalyses = d; updateMixInsight(); }).catch(() => {});
+  // Load mix analyses (non-blocking, optional). Warn loudly on failure
+  // rather than swallowing silently — a missing or malformed
+  // mix_analyses.json should be visible in the console so it can be
+  // diagnosed during development.
+  loadJSON("model/mix_analyses.json")
+    .then(d => { mixAnalyses = d; updateMixInsight(); })
+    .catch(err => {
+      console.warn("[boxcrete] mix_analyses.json failed to load; mix-insight panel will be empty:", err);
+    });
 
   // Compute Cholesky and alpha from training data + kernel params
   initStrengthModel(strengthParams);
@@ -773,10 +808,10 @@ function updateReadouts() {
 
   // W/B ratio
   const cols = compositionsData.column_names;
-  const cement = currentComposition[cols.indexOf("Cement (kg/m3)")] || 0;
-  const flyAsh = currentComposition[cols.indexOf("Fly Ash (kg/m3)")] || 0;
-  const slag = currentComposition[cols.indexOf("Slag (kg/m3)")] || 0;
-  const water = currentComposition[cols.indexOf("Water (kg/m3)")] || 0;
+  const cement = currentComposition[colIdx(cols, "Cement (kg/m3)")];
+  const flyAsh = currentComposition[colIdx(cols, "Fly Ash (kg/m3)")];
+  const slag = currentComposition[colIdx(cols, "Slag (kg/m3)")];
+  const water = currentComposition[colIdx(cols, "Water (kg/m3)")];
   const binder = cement + flyAsh + slag;
   const wb = binder > 0 ? (water / binder).toFixed(3) : "–";
   document.getElementById("wb-value").textContent = wb;
@@ -1089,17 +1124,15 @@ function drawStrengthCurve() {
         // Animated hover: enlarge if this is the hovered observation
         const isHovered = (hoveredCurveObsIdx === oi);
         const radius = isHovered ? 4 + curveObsHoverScale * 3 : 4;
-        ctx.beginPath();
-        ctx.arc(x, yp, radius, 0, 2 * Math.PI);
-        ctx.fillStyle = colors.observation;
-        ctx.fill();
         if (isHovered && curveObsHoverScale > 0.01) {
-          // Glow
+          // Glow halo behind the marker
           ctx.beginPath();
           ctx.arc(x, yp, radius + 4 * curveObsHoverScale, 0, 2 * Math.PI);
           ctx.fillStyle = `rgba(217, 119, 6, ${0.2 * curveObsHoverScale})`;
           ctx.fill();
         }
+        // Marker fill + white outline (single draw, was previously
+        // drawn twice).
         ctx.beginPath();
         ctx.arc(x, yp, radius, 0, 2 * Math.PI);
         ctx.fillStyle = colors.observation;
@@ -1721,33 +1754,33 @@ function setupEventListeners() {
   // Computed filter quantities (derived from composition)
   const computedFilters = [
     { id: "wb", label: "W/B Ratio", compute: (comp) => {
-      const c = comp[colNames.indexOf("Cement (kg/m3)")] || 0;
-      const fa = comp[colNames.indexOf("Fly Ash (kg/m3)")] || 0;
-      const s = comp[colNames.indexOf("Slag (kg/m3)")] || 0;
-      const w = comp[colNames.indexOf("Water (kg/m3)")] || 0;
+      const c = comp[colIdx(colNames, "Cement (kg/m3)")];
+      const fa = comp[colIdx(colNames, "Fly Ash (kg/m3)")];
+      const s = comp[colIdx(colNames, "Slag (kg/m3)")];
+      const w = comp[colIdx(colNames, "Water (kg/m3)")];
       const b = c + fa + s;
       return b > 0 ? w / b : Infinity;
     }},
     { id: "binder", label: "Total Binder", compute: (comp) => {
-      const c = comp[colNames.indexOf("Cement (kg/m3)")] || 0;
-      const fa = comp[colNames.indexOf("Fly Ash (kg/m3)")] || 0;
-      const s = comp[colNames.indexOf("Slag (kg/m3)")] || 0;
+      const c = comp[colIdx(colNames, "Cement (kg/m3)")];
+      const fa = comp[colIdx(colNames, "Fly Ash (kg/m3)")];
+      const s = comp[colIdx(colNames, "Slag (kg/m3)")];
       return c + fa + s;
     }},
     { id: "scm", label: "SCM Replacement %", compute: (comp) => {
-      const c = comp[colNames.indexOf("Cement (kg/m3)")] || 0;
-      const fa = comp[colNames.indexOf("Fly Ash (kg/m3)")] || 0;
-      const s = comp[colNames.indexOf("Slag (kg/m3)")] || 0;
+      const c = comp[colIdx(colNames, "Cement (kg/m3)")];
+      const fa = comp[colIdx(colNames, "Fly Ash (kg/m3)")];
+      const s = comp[colIdx(colNames, "Slag (kg/m3)")];
       const b = c + fa + s;
       return b > 0 ? (fa + s) / b * 100 : 0;
     }},
     { id: "paste", label: "Paste Fraction", compute: (comp) => {
-      const c = comp[colNames.indexOf("Cement (kg/m3)")] || 0;
-      const fa = comp[colNames.indexOf("Fly Ash (kg/m3)")] || 0;
-      const s = comp[colNames.indexOf("Slag (kg/m3)")] || 0;
-      const w = comp[colNames.indexOf("Water (kg/m3)")] || 0;
-      const ca = comp[colNames.indexOf("Coarse Aggregates (kg/m3)")] || 0;
-      const fna = comp[colNames.indexOf("Fine Aggregate (kg/m3)")] || 0;
+      const c = comp[colIdx(colNames, "Cement (kg/m3)")];
+      const fa = comp[colIdx(colNames, "Fly Ash (kg/m3)")];
+      const s = comp[colIdx(colNames, "Slag (kg/m3)")];
+      const w = comp[colIdx(colNames, "Water (kg/m3)")];
+      const ca = comp[colIdx(colNames, "Coarse Aggregates (kg/m3)")];
+      const fna = comp[colIdx(colNames, "Fine Aggregate (kg/m3)")];
       const total = c + fa + s + w + ca + fna;
       return total > 0 ? (c + fa + s + w) / total : 0;
     }},
@@ -1834,10 +1867,30 @@ function setupEventListeners() {
       scatterFilter = [];
       for (const row of rows) {
         const colVal = row.querySelector(".filter-col").value;
-        const minVal = row.querySelector(".filter-min").value;
-        const maxVal = row.querySelector(".filter-max").value;
-        const min = minVal !== "" ? parseFloat(minVal) : -Infinity;
-        const max = maxVal !== "" ? parseFloat(maxVal) : Infinity;
+        const minInput = row.querySelector(".filter-min");
+        const maxInput = row.querySelector(".filter-max");
+        const minVal = minInput.value;
+        const maxVal = maxInput.value;
+        // Validate numeric input: parseFloat("") → NaN and parseFloat("foo") →
+        // NaN, both of which would silently make the filter dead (any
+        // comparison against NaN is false, so nothing gets excluded). Treat
+        // an empty input as "no bound" (-/+ Infinity); flag any non-empty
+        // non-numeric input visually so the user knows the filter is bad.
+        const parseBound = (raw, defaultVal, input) => {
+          if (raw === "") {
+            input.classList.remove("filter-input-invalid");
+            return defaultVal;
+          }
+          const v = parseFloat(raw);
+          if (Number.isNaN(v)) {
+            input.classList.add("filter-input-invalid");
+            return defaultVal;
+          }
+          input.classList.remove("filter-input-invalid");
+          return v;
+        };
+        const min = parseBound(minVal, -Infinity, minInput);
+        const max = parseBound(maxVal, Infinity, maxInput);
         if (colVal.startsWith("computed:")) {
           const cfId = colVal.replace("computed:", "");
           const cf = computedFilters.find(c => c.id === cfId);
@@ -1980,4 +2033,24 @@ if (typeof location !== "undefined" &&
 }
 
 // --- Start ---
-init();
+// Surface model-load and init failures to the user instead of leaving
+// the page in a silently-broken half-rendered state. A schema mismatch
+// or missing artifact field throws hard inside ``initStrengthModel``
+// (see docs/gp.mjs); without this catch the rejection becomes an
+// unhandled error that no one notices.
+init().catch(err => {
+  console.error("[boxcrete] init failed:", err);
+  const banner = document.createElement("div");
+  banner.setAttribute("role", "alert");
+  banner.style.cssText = (
+    "position:fixed;top:0;left:0;right:0;z-index:99999;" +
+    "background:#dc2626;color:#fff;padding:12px 16px;" +
+    "font:14px/1.4 system-ui, sans-serif;text-align:center;"
+  );
+  banner.textContent = (
+    "Model failed to load. Try a hard refresh; if this persists, " +
+    "the model artefacts may be incompatible with the current explorer build. " +
+    "See the browser console for the underlying error."
+  );
+  document.body.appendChild(banner);
+});

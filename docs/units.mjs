@@ -3,7 +3,7 @@
 // All native (stored) values are in metric — see `boxcrete/units.py` for the
 // canonical authority over data units in this repo:
 //   compositions: kg/m³,  strength: psi,  temperature: °C,
-//   GWP: kg CO₂/m³,  cost: $/m³,  slump: inches.
+//   GWP: kg CO₂e/m³,  cost: $/m³,  slump: inches.
 //
 // Imperial display layers in the UI apply the conversions below at render
 // time. Composition/GWP/cost are simple linear factors; temperature has an
@@ -18,7 +18,7 @@ export const UNITS = {
     strengthFactor: 1 / 145.04, // psi → MPa
     mass: "kg/m³",
     massFactor: 1,
-    gwp: "kg CO₂/m³",
+    gwp: "kg CO₂e/m³",
     gwpFactor: 1,
     cost: "$/m³",
     costFactor: 1,

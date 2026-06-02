@@ -1,6 +1,11 @@
 /**
- * CI sync test: verifies that the JavaScript GP implementation produces
- * predictions matching the Python reference within tolerance.
+ * Port-equivalence test: verifies the JavaScript GP implementation
+ * (in docs/gp.mjs, fed by docs/model/strength.json) produces the same
+ * predictions as the Python reference (the expected_mean / expected_variance
+ * values baked into docs/model/test_vectors.json by
+ * experiments/regenerate_strength_json.py).
+ *
+ * See docs/model/README.md for schema + regen workflow.
  *
  * Run: node test/test_js_gp.mjs
  */
@@ -54,8 +59,13 @@ for (const [idx, vec] of testData.test_vectors.entries()) {
 
   // Test GWP prediction
   try {
-    // Determine material source from composition (class_dim in gwp model)
-    const materialSource = gwpParams.class_dim !== null
+    // Determine material source from composition (class_dim in gwp model).
+    // Use the same strict ``typeof === "number"`` check as the regen
+    // script (``experiments/augment_test_vectors_with_gwp_cost.mjs``):
+    // ``!== null`` would let ``undefined`` slip through and produce
+    // ``composition[undefined] = undefined``, then ``Math.round(undefined)
+    // = NaN``, then a confusing class-lookup failure downstream.
+    const materialSource = typeof gwpParams.class_dim === "number"
       ? Math.round(composition[gwpParams.class_dim])
       : 0;
     const gwp = predictGWP(composition, gwpParams, materialSource);
