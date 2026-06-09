@@ -799,12 +799,16 @@ function updateReadouts() {
   document.getElementById("gwp-value").textContent =
     (Math.abs(gwp.mean) * u.gwpFactor).toFixed(1);
 
-  // Cost (with uncertainty)
+  // Cost (with uncertainty). Show ±2σ to match the strength-curve
+  // band convention; the explicit "(±2σ)" suffix tells users which
+  // confidence band they're seeing rather than leaving them to guess
+  // at the meaning of the bare ``±``.
   const cost = predictCost(compForGWP, costParams);
   const costMean = Math.abs(cost.mean) * u.costFactor;
   const costStd = Math.sqrt(cost.variance) * u.costFactor;
   document.getElementById("cost-value").textContent = costMean.toFixed(1);
-  document.getElementById("cost-uncertainty").textContent = `± ${costStd.toFixed(1)}`;
+  document.getElementById("cost-uncertainty").textContent =
+    `± ${(2 * costStd).toFixed(1)} (2σ)`;
 
   // W/B ratio
   const cols = compositionsData.column_names;
@@ -1185,6 +1189,30 @@ function drawStrengthCurve() {
   ctx.rotate(-Math.PI / 2);
   ctx.textAlign = "center";
   ctx.fillText(`Strength (${U().strength})`, 0, 0);
+  ctx.restore();
+
+  // Uncertainty-band legend (top-right corner, in-canvas). Tells
+  // viewers what the shaded band means without needing to open the
+  // About modal. Matches the ``± 2σ`` convention used by the cost
+  // readout and the About-text description.
+  ctx.save();
+  ctx.font = "11px -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+  // Legend swatch (small filled rectangle in band color).
+  const swatchSize = 10;
+  const legendPadX = 8;
+  const legendPadY = 6;
+  const swatchX = W - pad.right - 70;
+  const swatchY = pad.top + legendPadY;
+  ctx.fillStyle = colors.band;
+  ctx.fillRect(swatchX, swatchY + 1, swatchSize, swatchSize);
+  ctx.fillStyle = colors.text;
+  ctx.fillText(
+    "shaded: ±2σ",
+    W - pad.right - legendPadX,
+    pad.top + legendPadY,
+  );
   ctx.restore();
 }
 
