@@ -128,10 +128,12 @@ class GatedGaussianLikelihood(_GaussianLikelihoodBase):
         noise_prior=None,
         **kwargs,
     ):
-        if (
-            noise_constraint is None
-        ):  # pragma: no cover -- production callers always pass an explicit noise_constraint via build_strength_kernel_for_aug_dim; this default-fallback path is research-only
-            noise_constraint = LogTransformedInterval(
+        if noise_constraint is None:
+            # ``pragma: no cover`` -- production callers always pass
+            # an explicit ``noise_constraint`` via
+            # ``build_strength_kernel_for_aug_dim``; this default-
+            # fallback path is research-only.
+            noise_constraint = LogTransformedInterval(  # pragma: no cover
                 1e-6,
                 1.0,
                 initial_value=1e-1,
@@ -161,9 +163,10 @@ class GatedGaussianLikelihood(_GaussianLikelihoodBase):
         doesn't proxy this automatically when we override
         ``_shaped_noise_covar`` with a ``HomoskedasticNoise`` placeholder,
         so we expose it explicitly here."""
-        return (
-            self.noise_covar.noise
-        )  # pragma: no cover -- exposed for notebook ergonomics; production fit/predict paths read self.noise_covar.noise directly
+        # ``pragma: no cover`` -- exposed for notebook ergonomics;
+        # production fit/predict paths read ``self.noise_covar.noise``
+        # directly.
+        return self.noise_covar.noise  # pragma: no cover
 
     def set_train_times(self, time_values: torch.Tensor) -> None:
         """Stash post-input-transform train times so the MLL path (which
@@ -193,8 +196,13 @@ class GatedGaussianLikelihood(_GaussianLikelihoodBase):
             t = params[0][..., self.time_idx]
         elif getattr(self, "_train_times", None) is not None:
             t = self._train_times
-        else:  # pragma: no cover -- defensive fallback; V2 fit always either passes a 2D X (training) or has _train_times set (eval) before this method is called
-            return super()._shaped_noise_covar(base_shape, *params, **kwargs)
+        else:
+            # ``pragma: no cover`` -- defensive fallback; V2 fit always
+            # either passes a 2D X (training) or has ``_train_times``
+            # set (eval) before this method is called.
+            return super()._shaped_noise_covar(  # pragma: no cover
+                base_shape, *params, **kwargs
+            )
         h = self._gate(t)
         h2 = h * h  # element-wise [n]
         # Scalar global noise (broadcasted to per-row).
@@ -203,9 +211,12 @@ class GatedGaussianLikelihood(_GaussianLikelihoodBase):
         n = int(base_shape[-1])
         if per_row_var.shape[0] >= n:
             per_row_var = per_row_var[:n]
-        else:  # pragma: no cover -- pad branch; V2 fit pre-sizes _train_times to match training data, so per_row_var.shape[0] always >= n
-            pad = sigma2.expand(n - per_row_var.shape[0])
-            per_row_var = torch.cat([per_row_var, pad], dim=0)
+        else:
+            # ``pragma: no cover`` -- pad branch; V2 fit pre-sizes
+            # ``_train_times`` to match training data, so
+            # ``per_row_var.shape[0]`` always >= n.
+            pad = sigma2.expand(n - per_row_var.shape[0])  # pragma: no cover
+            per_row_var = torch.cat([per_row_var, pad], dim=0)  # pragma: no cover
         return DiagLinearOperator(per_row_var)
 
 

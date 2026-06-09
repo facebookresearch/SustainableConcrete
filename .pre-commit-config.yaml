@@ -20,11 +20,11 @@ repos:
     rev: 7.1.1
     hooks:
       - id: flake8
-        # CI's hard gate: fail only on syntax errors / undefined names.
-        # Style warnings are reported but non-blocking on CI, and we keep
-        # the same posture locally to avoid pre-commit becoming a nag.
+        # Mirrors the CI lint gate in .github/workflows/tests.yml. Fails
+        # on the same codes CI fails on, so a successful local commit
+        # implies a green lint job upstream.
         args:
           - --count
-          - --select=E9,F63,F7,F82
+          - --select=E9,E202,E226,E251,E402,E501,E741,F401,F63,F7,F811,F82,F841
           - --show-source
           - --statistics

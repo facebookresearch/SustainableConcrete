@@ -43,10 +43,10 @@ from boxcrete.utils import DEFAULT_X_COLUMNS, load_concrete_strength  # noqa: E4
 
 # F5_alllog feature names — order matters; matches Python's
 # F5_ALLLOG_FEATURES in boxcrete.features (single source of truth).
-from boxcrete.features import (
+from boxcrete.features import (  # noqa: E402
     F5_ALLLOG_FEATURES,
     GATE_TAU as _PROD_GATE_TAU,
-)  # noqa: E402
+)
 
 # pyrefly: ignore [missing-import]
 # ``_SOURCE_DIM`` is the index of the "Material Source" column in the
@@ -257,8 +257,9 @@ def main() -> None:
         "comment": (
             "V2 strength GP. Architecture: gated multi-Matern + 7 engineered "
             "features + Y/y_max scaling + ZeroMean + block-LOO HP refinement. "
-            "Block-LOO RMSE 665 psi at full data, phantom-anchor RMSE = 0 by construction. "
-            "See experiments/STRENGTH_GP_BENCHMARK.md for the full study."
+            "Block-LOO RMSE 665 psi at full data, phantom-anchor RMSE = 0 by "
+            "construction. See experiments/STRENGTH_GP_BENCHMARK.md for the "
+            "full study."
         ),
         # Dataset metadata
         "n_train": n_real,
@@ -327,7 +328,8 @@ def main() -> None:
     }
 
     print(
-        "[regenerate] Writing test vectors (multi-format) for JS-side regression checks…"
+        "[regenerate] Writing test vectors (multi-format) for JS-side "
+        "regression checks\u2026"
     )
     # 32 random training rows, picked uniformly across the dataset
     rng = torch.Generator().manual_seed(0)

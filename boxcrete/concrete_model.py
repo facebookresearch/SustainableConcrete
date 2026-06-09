@@ -65,8 +65,9 @@ class SustainableConcreteModel:
             slump_model: The slump model. Defaults to None.
             cost_model: The cost model. Defaults to None.
             d: The dimensionality of the input to the strength model.
-                Is inferred automatically if the fit functions are called. NOTE: The model
-                assumes that the last element of the input corresponds to the time dimension.
+                Is inferred automatically if the fit functions are called.
+                NOTE: The model assumes that the last element of the input
+                corresponds to the time dimension.
         """
         self.strength_days = strength_days
         self.strength_model = strength_model
@@ -273,7 +274,8 @@ class SustainableConcreteModel:
         """
         if self.d is None or self.strength_model is None or self.gwp_model is None:
             raise ValueError(
-                "Model not fit yet. Call fit_gwp_model() and fit_strength_model() first."
+                "Model not fit yet. Call fit_gwp_model() and "
+                "fit_strength_model() first."
             )
 
         time_idx = self.d - 1  # last column is Time
@@ -330,7 +332,8 @@ class SustainableConcreteModel:
         """Ordered names of outputs in the ``ModelList`` from ``get_model_list``.
 
         Returns:
-            A list like ``["GWP", "1-day Strength", "28-day Strength", "Slump (in)", "Cost"]``.
+            A list like
+            ``["GWP", "1-day Strength", "28-day Strength", "Slump (in)", "Cost"]``.
         """
         names = ["GWP"]
         for day in self.strength_days:
@@ -363,7 +366,8 @@ class SustainableConcreteModel:
     ) -> dict[str, Model]:
         """Returns a name-to-model dictionary for the multi-output model.
 
-        Equivalent to ``dict(zip(model.model_names, model.get_model_list(...).models))``.
+        Equivalent to
+        ``dict(zip(model.model_names, model.get_model_list(...).models))``.
 
         Args:
             fixed_features: Same as ``get_model_list``.

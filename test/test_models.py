@@ -217,7 +217,7 @@ class TestSustainableConcreteModel(BaseModelTest):
             model.fit_slump_model(mock_data)
 
     def test_get_model_list_with_slump_and_fixed_features(self):
-        """Test model list wraps slump model when fixed_features has non-time entries."""
+        """Slump model wrapped when fixed_features has non-time entries."""
         n, d = 10, self.d - 1
         slump_model = SingleTaskGP(
             train_X=torch.rand(n, d, dtype=self.dtype),
@@ -409,8 +409,8 @@ class TestPredictiveQualityRegression(unittest.TestCase):
         L = psd_safe_cholesky(K)
         res = (train_Y - prior.mean).unsqueeze(-1)
         Kinv_res = torch.cholesky_solve(res, L)
-        I = torch.eye(n, dtype=L.dtype, device=L.device)
-        Linv = torch.linalg.solve_triangular(L, I, upper=False)
+        eye_n = torch.eye(n, dtype=L.dtype, device=L.device)
+        Linv = torch.linalg.solve_triangular(L, eye_n, upper=False)
         Kinv_diag = (Linv**2).sum(dim=-2)
         loo_var = (1.0 / Kinv_diag).unsqueeze(-1)
         loo_mean = train_Y.unsqueeze(-1) - Kinv_res * loo_var

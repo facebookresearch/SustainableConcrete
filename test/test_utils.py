@@ -676,7 +676,7 @@ class TestReduceToOptimizationSpace(unittest.TestCase):
         self.assertIs(out_ineq, ineq)
 
     def test_reduces_bounds_remaps_constraints_absorbs_values(self):
-        """Bounds are reduced, constraint indices remapped, and fixed values absorbed."""
+        """Bounds reduced, constraint indices remapped, fixed values absorbed."""
         bounds = torch.tensor([[0.0] * 4, [10.0] * 4])
         # eq: 2*x[0] + 3*x[1] + 4*x[2] + 5*x[3] = 100
         eq = [(torch.tensor([0, 1, 2, 3]), torch.tensor([2.0, 3.0, 4.0, 5.0]), 100.0)]

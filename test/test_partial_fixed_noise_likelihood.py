@@ -121,7 +121,6 @@ class TestPartialFixedNoiseLikelihood(unittest.TestCase):
         d = 3
         n_real = 15
         n_pseudo = 5
-        n_total = n_real + n_pseudo
 
         # Real observations
         X_real = torch.rand(n_real, d, dtype=torch.double)

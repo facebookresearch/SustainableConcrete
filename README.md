@@ -235,5 +235,30 @@ For the earlier workshop paper that introduced the model with mortar data, pleas
 }
 ```
 
+## Development
+
+For local development, install with the `dev` extras and register the
+pre-commit hook so every `git commit` is auto-checked against the same
+lint gate the CI uses:
+
+```bash
+pip install -e ".[dev]"
+pre-commit install
+```
+
+`black` will auto-format whitespace, quoting, and most line wrapping on
+commit. `flake8` will fail the commit if it finds any of: syntax errors,
+undefined names, unused imports / locals, late imports, ambiguous names,
+or lines over 88 characters. To run the gate manually across the whole
+repo (matching CI):
+
+```bash
+pre-commit run --all-files
+```
+
+When adding a new long string literal or comment that black can't auto-
+split, hand-wrap it to ≤ 88 columns — the same convention BoTorch and
+GPyTorch use.
+
 ## License
 `SustainableConcrete` is released under the MIT license, as found in the LICENSE file.

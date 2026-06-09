@@ -93,7 +93,10 @@ jobs:
 
       - name: Lint with flake8
         run: |
-          # Stop build if there are Python syntax errors or undefined names
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Exit-zero treats all errors as warnings
+          # Hard gate: syntax errors, undefined names, unused imports /
+          # locals (real bugs), AND style violations (long lines,
+          # whitespace, etc.) — keeping local pre-commit and CI in sync
+          # so 'green locally' implies 'green on CI'.
+          flake8 . --count --select=E9,E202,E226,E251,E402,E501,E741,F401,F63,F7,F811,F82,F841 --show-source --statistics
+          # Exit-zero treats remaining E/W warnings as informational.
           flake8 . --count --exit-zero --statistics

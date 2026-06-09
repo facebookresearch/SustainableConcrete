@@ -173,9 +173,11 @@ class TimeGatedKernel(Kernel):
         h2 = self._h(x2[..., self.time_idx])
         if diag:
             # K shape: [..., n] — element-wise multiply by h1, h2 (same shape)
-            return (
-                K * h1 * h2
-            )  # pragma: no cover -- diag=True kernel-eval branch; BoTorch's posterior(...).variance computes full covariance and extracts the diagonal, never calling kernel.forward with diag=True
+            # ``diag=True`` kernel-eval branch; BoTorch's
+            # ``posterior(...).variance`` computes the full covariance
+            # and extracts the diagonal, so kernel.forward is never
+            # called with diag=True in the production fit path.
+            return K * h1 * h2  # pragma: no cover
         # K shape: [..., n1, n2]; multiply by h1[...,n1,1] and h2[...,1,n2]
         return K * h1.unsqueeze(-1) * h2.unsqueeze(-2)
 
