@@ -8,24 +8,34 @@ version = "0.1.0"
 description = "Probabilistic models for sustainable concrete design via Bayesian optimization"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
+    # Lower bounds reflect the V2 strength GP's compatibility floor: we
+    # ship `docs/model/strength_model.pt` whose state_dict layout depends
+    # on gpytorch's internal buffer naming (e.g. LogNormalPrior renamed
+    # ``_transformed_loc/_scale`` -> ``_buffered_loc/_scale`` between
+    # 1.15.1 and 1.15.2; older versions fail to load the .pt). botorch
+    # 0.18 introduced API tightenings that are now consumed by the
+    # variant catalog. linear_operator 0.6 carries the corresponding
+    # cholesky-fallback semantics relied on by the JS-Python parity test.
+    # Bumping the lower bounds in lockstep with re-fitting + committing
+    # docs/model/* artifacts is the canonical upgrade path.
     "torch>=2.0.0",
-    "botorch>=0.9.0",
-    "gpytorch>=1.10.0",
-    "linear_operator>=0.5.0",
+    "botorch>=0.18.0",
+    "gpytorch>=1.15.2",
+    "linear_operator>=0.6.0",
     "pandas>=1.5.0",
     "numpy>=1.20.0",
     "matplotlib>=3.5.0",
+    "scipy>=1.10.0",
 ]
 
 [project.optional-dependencies]

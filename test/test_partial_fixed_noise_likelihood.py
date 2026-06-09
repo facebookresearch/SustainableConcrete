@@ -10,7 +10,7 @@ import unittest
 
 import torch
 from botorch.models import SingleTaskGP
-from boxcrete.models import PartialFixedNoiseLikelihood
+from boxcrete.likelihoods import PartialFixedNoiseLikelihood
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from linear_operator.operators import DiagLinearOperator
 

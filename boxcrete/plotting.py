@@ -20,7 +20,7 @@ from matplotlib.ticker import MultipleLocator
 from torch import Tensor
 
 if TYPE_CHECKING:
-    from boxcrete.models import SustainableConcreteModel
+    from boxcrete.concrete_model import SustainableConcreteModel
 
 
 def plot_strength_curve(

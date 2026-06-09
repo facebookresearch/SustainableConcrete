@@ -4,20 +4,18 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Unit tests for boxcrete.models."""
+"""Unit tests for the V2 strength GP, slump GP, and SustainableConcreteModel."""
 
 import unittest
 from unittest.mock import MagicMock
 
 import torch
 from botorch.models import SingleTaskGP
+from boxcrete import fit_strength_gp
+from boxcrete.concrete_model import SustainableConcreteModel
 from boxcrete.model_utils import FixedFeatureModel
-from boxcrete.models import (
-    fit_slump_gp,
-    fit_strength_gp,
-    get_strength_gp_input_transform,
-    SustainableConcreteModel,
-)
+from boxcrete.slump_model import fit_slump_gp
+from boxcrete.strength_model_legacy import get_strength_gp_input_transform
 from boxcrete.utils import DATA_PATH, load_concrete_strength, SLUMP_Y_COLUMNS
 from parameterized import parameterized
 
@@ -32,7 +30,10 @@ class BaseModelTest(unittest.TestCase):
     def setUpClass(cls):
         torch.manual_seed(42)
         cls.dtype = torch.double
-        cls.n, cls.d = 20, 8
+        # Production V2 architecture hardcodes the 10-dim
+        # composition + time layout (see DEFAULT_X_COLUMNS); use the
+        # same shape here so fit_strength_gp can be exercised end-to-end.
+        cls.n, cls.d = 20, 10
         cls.strength_days = [1, 28]
         cls.X = torch.rand(cls.n, cls.d, dtype=cls.dtype) * 500 + 100
         cls.X[:, -1] = torch.tensor(
@@ -241,20 +242,42 @@ class TestSustainableConcreteModel(BaseModelTest):
 class TestFitGP(BaseModelTest):
     """Tests for fit_strength_gp and fit_slump_gp with fast optimizer."""
 
-    @parameterized.expand([(False, True), (True, True), (False, False)])
-    def test_fit_strength_gp(self, use_fixed_noise, with_bounds):
+    @parameterized.expand([(False,), (True,)])
+    def test_fit_strength_gp(self, with_bounds):
+        # When `with_bounds=False`, exercise the public-API fallback that
+        # derives bounds from X (covered separately by
+        # ``test_fit_strength_gp_x_bounds_none_*``).
         bounds = self.bounds if with_bounds else None
         model = fit_strength_gp(
             X=self.X,
             Y=self.Y_strength,
             Yvar=self.Yvar,
             X_bounds=bounds,
-            use_fixed_noise=use_fixed_noise,
-            optimizer_kwargs=FAST_FIT_KWARGS,
+            # V2 test affordance: cap the inner L-BFGS at 20 iters and
+            # use a single restart so the per-test wall time stays
+            # under ~1s. None preserves production defaults; values
+            # pass through to fit_gpytorch_mll's optimizer_kwargs.
+            max_optimizer_iter=20,
+            num_restarts=1,
         )
         self.assertEqual(model.num_outputs, 1)
         post = model.posterior(self.X[:3])
         self.assertTrue(torch.all(post.variance > 0))
+
+    def test_fit_strength_gp_x_bounds_none_rejects_3d_X(self):
+        """The X_bounds=None public-API fallback rejects non-2D X cleanly
+        instead of producing wrong-shape bounds via reduction over the
+        batch dim."""
+        X3d = torch.rand(2, self.n, self.X.shape[-1], dtype=self.dtype)
+        with self.assertRaisesRegex(ValueError, "X.ndim"):
+            fit_strength_gp(X=X3d, Y=self.Y_strength, X_bounds=None)
+
+    def test_fit_strength_gp_x_bounds_none_rejects_empty_X(self):
+        """The X_bounds=None public-API fallback rejects empty X cleanly."""
+        X_empty = torch.empty(0, self.X.shape[-1], dtype=self.dtype)
+        Y_empty = torch.empty(0, 1, dtype=self.dtype)
+        with self.assertRaisesRegex(ValueError, "X.shape\\[0\\]"):
+            fit_strength_gp(X=X_empty, Y=Y_empty, X_bounds=None)
 
     def test_fit_strength_gp_invalid_output_dim(self):
         with self.assertRaises(ValueError):
@@ -286,7 +309,7 @@ class TestAppendDerivedFeatures(unittest.TestCase):
     """Tests for AppendDerivedFeatures input transform."""
 
     def test_transform_shape(self):
-        from boxcrete.models import AppendDerivedFeatures
+        from boxcrete.features import AppendDerivedFeatures
 
         tf = AppendDerivedFeatures()
         X = torch.rand(10, 8, dtype=torch.float64) * 500
@@ -294,12 +317,12 @@ class TestAppendDerivedFeatures(unittest.TestCase):
         self.assertEqual(X_out.shape, (10, 9))  # 8 + 1 appended
 
     def test_num_appended(self):
-        from boxcrete.models import AppendDerivedFeatures
+        from boxcrete.features import AppendDerivedFeatures
 
         self.assertEqual(AppendDerivedFeatures().num_appended, 1)
 
     def test_hrwr_binder_ratio(self):
-        from boxcrete.models import AppendDerivedFeatures
+        from boxcrete.features import AppendDerivedFeatures
 
         tf = AppendDerivedFeatures()
         X = torch.zeros(1, 8, dtype=torch.float64)
@@ -312,7 +335,7 @@ class TestAppendDerivedFeatures(unittest.TestCase):
         self.assertAlmostEqual(X_out[0, -1].item(), expected_ratio, places=6)
 
     def test_zero_binder_clamp(self):
-        from boxcrete.models import AppendDerivedFeatures
+        from boxcrete.features import AppendDerivedFeatures
 
         tf = AppendDerivedFeatures()
         X = torch.zeros(1, 8, dtype=torch.float64)  # all zeros → binder=0
@@ -332,6 +355,12 @@ class TestGetStrengthGPInputTransform(BaseModelTest):
         X = torch.rand(10, d, dtype=self.dtype)
         X[:, -1] = torch.randint(1, 29, (10,)).double()
         self.assertEqual(tf(X).shape, X.shape)
+        # Pin the float64 contract on the V1 input transform's affine
+        # parameters. A silent regression to default float32 would
+        # produce dtype-promotion warnings when chained with the V2
+        # float64 fit pipeline and erode the precision-fix story.
+        self.assertEqual(tf.tf1.coefficient.dtype, torch.float64)
+        self.assertEqual(tf.tf1.offset.dtype, torch.float64)
 
 
 class TestPredictiveQualityRegression(unittest.TestCase):
@@ -341,7 +370,29 @@ class TestPredictiveQualityRegression(unittest.TestCase):
     predictive quality. The thresholds are conservative lower bounds;
     actual performance should exceed them. Update thresholds only when
     intentional model/data changes justify it.
+
+    Each fit is expensive (~80s) and the same fit is needed by multiple
+    tests. We fit once in ``setUpClass`` and reuse via attribute access —
+    same pattern as ``TestGetModelListWithCost``. The tests are read-only
+    against the fitted models, so no per-test deepcopy is needed.
     """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        torch.manual_seed(42)
+        cls.data = load_concrete_strength(data_path=DATA_PATH)
+        cls.shared_model = SustainableConcreteModel(strength_days=[1, 28])
+        cls.shared_model.fit_gwp_model(cls.data)
+        cls.shared_model.fit_strength_model(cls.data)
+
+        # Slump uses a separate dataset shape (different Y_columns).
+        torch.manual_seed(42)
+        cls.slump_data = load_concrete_strength(
+            data_path=DATA_PATH, Y_columns=SLUMP_Y_COLUMNS
+        )
+        X, Y, Yvar, _ = cls.slump_data.slump_data
+        cls.shared_slump_gp = fit_slump_gp(X=X, Y=Y, Yvar=Yvar)
 
     @staticmethod
     def _loo_r2(model):
@@ -368,12 +419,8 @@ class TestPredictiveQualityRegression(unittest.TestCase):
 
     def test_gwp_calibration_r2(self):
         """GWP LinearModel should achieve near-perfect R² on training data."""
-        torch.manual_seed(42)
-        data = load_concrete_strength(data_path=DATA_PATH)
-        model = SustainableConcreteModel(strength_days=[1, 28])
-        model.fit_gwp_model(data)
-        X, Y, _, _ = data.gwp_data
-        Y_pred = model.gwp_model.posterior(X).mean.squeeze().detach()
+        X, Y, _, _ = self.data.gwp_data
+        Y_pred = self.shared_model.gwp_model.posterior(X).mean.squeeze().detach()
         residuals = Y.squeeze() - Y_pred
         ss_res = (residuals**2).sum().item()
         ss_tot = ((Y.squeeze() - Y.squeeze().mean()) ** 2).sum().item()
@@ -384,19 +431,11 @@ class TestPredictiveQualityRegression(unittest.TestCase):
         self.assertGreater(r2, 0.999, f"GWP R² = {r2:.6f}, expected > 0.999")
 
     def test_strength_loo_r2(self):
-        torch.manual_seed(42)
-        data = load_concrete_strength(data_path=DATA_PATH)
-        model = SustainableConcreteModel(strength_days=[1, 28])
-        model.fit_strength_model(data)
-        r2 = self._loo_r2(model.strength_model)
+        r2 = self._loo_r2(self.shared_model.strength_model)
         self.assertGreater(r2, 0.90, f"Strength LOO R² = {r2:.3f}, expected > 0.90")
 
     def test_slump_loo_r2(self):
-        torch.manual_seed(42)
-        data = load_concrete_strength(data_path=DATA_PATH, Y_columns=SLUMP_Y_COLUMNS)
-        X, Y, Yvar, _ = data.slump_data
-        gp = fit_slump_gp(X=X, Y=Y, Yvar=Yvar)
-        r2 = self._loo_r2(gp)
+        r2 = self._loo_r2(self.shared_slump_gp)
         # Slump is the noisiest of our targets and the test acts as a tight
         # regression guard around the current LOO R². With seed 42 the value
         # reproduces at ≈ 0.336 (down from the pre-cleanup ≈ 0.40 because
@@ -420,7 +459,7 @@ class TestFitCostModel(unittest.TestCase):
 
     def test_fit_cost_model(self):
         """fit_cost_model should construct a LinearModel."""
-        from boxcrete.models import LinearModel
+        from boxcrete.model_utils import LinearModel
 
         result = self.model.fit_cost_model(self.data)
         self.assertIsInstance(result, LinearModel)
@@ -474,7 +513,7 @@ class TestOutputIndex(unittest.TestCase):
 
     def test_with_cost(self):
         """Cost should be at end when cost_model is set."""
-        from boxcrete.models import LinearModel
+        from boxcrete.model_utils import LinearModel
 
         self.model.cost_model = LinearModel(torch.zeros(5), torch.zeros(5))
         self.assertEqual(self.model.output_index("Cost"), 3)
@@ -486,14 +525,32 @@ class TestOutputIndex(unittest.TestCase):
 
 
 class TestGetModelListWithCost(unittest.TestCase):
-    """Tests for get_model_list with cost model."""
+    """Tests for get_model_list with cost model.
+
+    The strength GP fit is expensive (~80s per fit on a CPU runner). To
+    avoid the ~10-minute total when each of the 8 tests in this class
+    re-fits, we fit ONCE in ``setUpClass`` and ``copy.deepcopy`` the
+    pre-fit model into ``self.model`` per test. Per-test deep-copy
+    keeps tests isolated (each can mutate ``self.model`` via
+    ``fit_cost_model`` etc. without polluting siblings) but skips the
+    expensive GP fit. Deep-copy of the fitted SingleTaskGP is on the
+    order of tens of milliseconds — negligible vs the ~80s fit.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        torch.manual_seed(42)
+        cls.shared_data = load_concrete_strength(data_path=DATA_PATH)
+        cls.shared_base_model = SustainableConcreteModel(strength_days=[1, 28])
+        cls.shared_base_model.fit_gwp_model(cls.shared_data)
+        cls.shared_base_model.fit_strength_model(cls.shared_data)
 
     def setUp(self):
-        torch.manual_seed(42)
-        self.data = load_concrete_strength(data_path=DATA_PATH)
-        self.model = SustainableConcreteModel(strength_days=[1, 28])
-        self.model.fit_gwp_model(self.data)
-        self.model.fit_strength_model(self.data, use_fixed_noise=True)
+        import copy
+
+        self.data = type(self).shared_data
+        self.model = copy.deepcopy(type(self).shared_base_model)
 
     def test_without_cost(self):
         """Default model_list has 3 outputs (GWP + 2 strength days)."""

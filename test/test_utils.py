@@ -20,6 +20,7 @@ from boxcrete.utils import (
     DEFAULT_X_COLUMNS,
     DEFAULT_Y_COLUMNS,
     DEFAULT_YSTD_COLUMNS,
+    derive_bounds_from_X,
     get_aggregate_constraint,
     get_bounds,
     get_cement_replacement_constraints,
@@ -399,6 +400,45 @@ class TestBoundsFunction(unittest.TestCase):
         self.assertIs(DEFAULT_BOUNDS_DICT, CONCRETE_BOUNDS_DICT)
 
 
+class TestDeriveBoundsFromX(unittest.TestCase):
+    """Tests for ``derive_bounds_from_X`` — the data-derived bounds helper
+    used by ``fit_strength_gp`` / ``fit_slump_gp`` when no explicit bounds
+    are supplied.
+
+    The validation guards (NaN/Inf rejection, empty-X rejection) exist
+    precisely to insulate downstream ``Normalize`` from producing NaN
+    bounds; these tests pin the behaviour so a future refactor can't
+    silently drop a guard without test failure.
+    """
+
+    def test_widens_zero_width_column(self):
+        # A column where every row has the same value would otherwise
+        # produce a zero-width Normalize bound (NaN downstream).
+        X = torch.tensor([[1.0, 5.0], [2.0, 5.0], [3.0, 5.0]], dtype=torch.float64)
+        bounds = derive_bounds_from_X(X)
+        self.assertEqual(bounds.shape, (2, 2))
+        self.assertEqual(bounds[0, 0].item(), 1.0)
+        self.assertEqual(bounds[1, 0].item(), 3.0)
+        # Zero-width column 1 widened to [5, 6].
+        self.assertEqual(bounds[0, 1].item(), 5.0)
+        self.assertEqual(bounds[1, 1].item(), 6.0)
+
+    def test_rejects_empty_X(self):
+        empty = torch.zeros((0, 3), dtype=torch.float64)
+        with self.assertRaisesRegex(ValueError, "at least one row"):
+            derive_bounds_from_X(empty)
+
+    def test_rejects_nan_input(self):
+        X = torch.tensor([[1.0, 2.0], [float("nan"), 3.0]], dtype=torch.float64)
+        with self.assertRaisesRegex(ValueError, "NaN or infinite"):
+            derive_bounds_from_X(X)
+
+    def test_rejects_inf_input(self):
+        X = torch.tensor([[1.0, 2.0], [float("inf"), 3.0]], dtype=torch.float64)
+        with self.assertRaisesRegex(ValueError, "NaN or infinite"):
+            derive_bounds_from_X(X)
+
+
 class TestUtilityFunction(unittest.TestCase):
     """Tests for utility helper functions."""
 
@@ -435,12 +475,10 @@ class TestUtilityFunction(unittest.TestCase):
         ref2 = get_reference_point("concrete")
         self.assertFalse(ref1.data_ptr() == ref2.data_ptr())
 
-    @parameterized.expand(
-        [(32, None), (64, torch.tensor([[0, 0, 0], [100, 100, 28]]).float())]
-    )
-    def test_get_day_zero_data(self, n, bounds):
+    @parameterized.expand([(32,), (64,)])
+    def test_get_day_zero_data(self, n):
         X = torch.rand(10, 3)
-        X_0, Y_0, Yvar_0 = get_day_zero_data(X, bounds=bounds, n=n)
+        X_0, Y_0, Yvar_0 = get_day_zero_data(X, n=n)
         n_unique = torch.unique(X[:, :-1], dim=0).shape[0]
         expected_n = min(n, n_unique)
         self.assertEqual(X_0.shape[0], expected_n)
@@ -792,17 +830,32 @@ class TestGetReferencePointWithCost(unittest.TestCase):
         ref = get_reference_point("concrete", include_cost=True)
         self.assertEqual(ref.shape[0], 4)
         self.assertLess(ref[-1].item(), 0)  # -Cost threshold is negative
+        # Pin the dtype-cast contract: the appended cost-threshold cell
+        # must inherit ``ref.dtype`` (= ``torch.float64``). A regression
+        # to default float32 would silently break dtype-strict downstream
+        # ops (``torch.cat`` on mixed dtypes raises).
+        self.assertEqual(ref.dtype, torch.float64)
 
     def test_include_cost_mortar(self):
         ref = get_reference_point("mortar", include_cost=True)
         self.assertEqual(ref.shape[0], 4)
         self.assertLess(ref[-1].item(), 0)
+        self.assertEqual(ref.dtype, torch.float64)
 
     def test_backward_compatible(self):
         """Default call should be unchanged."""
         ref = get_reference_point()
         self.assertEqual(ref.shape[0], 3)
         torch.testing.assert_close(ref, CONCRETE_REFERENCE_POINT)
+
+    def test_invalid_optimization_mode_raises(self):
+        # The validation guard exists so a typo like ``"morter"`` does
+        # not silently fall through and return a concrete reference
+        # point. Pins the public API contract.
+        with self.assertRaisesRegex(ValueError, "must be 'concrete' or 'mortar'"):
+            get_reference_point("morter")
+        with self.assertRaisesRegex(ValueError, "must be 'concrete' or 'mortar'"):
+            get_reference_point("invalid", include_cost=True)
 
 
 if __name__ == "__main__":

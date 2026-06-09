@@ -4,7 +4,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Invariants for the JSON artifacts emitted by ``scripts/export_model.py``.
+"""Invariants for the JSON artifacts emitted by
+``experiments/regenerate_strength_json.py``.
 
 These guard properties of the *committed* files in ``docs/model/`` that the
 website consumes. They are CI-blocking because a bad artifact silently
