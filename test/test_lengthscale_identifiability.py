@@ -410,7 +410,7 @@ class TestStrengthLengthscaleIdentifiability(unittest.TestCase):
                     f"Fresh fit's prediction at OOT composition "
                     f"{v['composition']} (t={v['time']}d) differs from "
                     f"the committed test_vectors.json's expected_mean "
-                    f"by {abs_diff:.2f} psi ({rel_diff*100:.1f}% rel; "
+                    f"by {abs_diff:.2f} psi ({rel_diff * 100:.1f}% rel; "
                     f"tolerance was {delta:.2f} psi). This usually "
                     f"means a stale export — the model code or features "
                     f"changed but docs/model/*.json wasn't regenerated. "
@@ -422,7 +422,7 @@ class TestStrengthLengthscaleIdentifiability(unittest.TestCase):
         # Diagnostic on the worst case (always reported in logs).
         print(
             f"\n[test_committed_strength_matches_fresh_fit] worst case: "
-            f"{worst_abs:.2f} psi ({worst_rel*100:.2f}% rel) at "
+            f"{worst_abs:.2f} psi ({worst_rel * 100:.2f}% rel) at "
             f"{worst_label}"
         )
 

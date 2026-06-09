@@ -35,6 +35,8 @@ import torch
 from botorch.models.transforms.input import InputTransform
 from torch import Tensor
 
+from boxcrete.utils import DEFAULT_X_COLUMNS
+
 # Time gate constant: h(t) = 1 - exp(-t / GATE_TAU).
 # tau=0.05 (post-input-transform time units) was found to be optimal in
 # the τ-sweep; see §4.5 of the benchmark.
@@ -53,8 +55,6 @@ F5_ALLLOG_FEATURES = (
     "log_maturity_robust",
 )
 
-
-from boxcrete.utils import DEFAULT_X_COLUMNS
 
 # Short alias → full column name in :data:`boxcrete.utils.DEFAULT_X_COLUMNS`.
 # The integer indices in :data:`IDX` are *derived* from
@@ -176,10 +176,11 @@ def append_engineered_features_callable(
     """
 
     def f(X: torch.Tensor) -> torch.Tensor:
-        if (
-            not feature_names
-        ):  # pragma: no cover -- V2 fit always has F5_alllog (7 features); empty-feature_names branch only used by research-only ablations
-            return X.new_empty((*X.shape[:-1], 1, 0))
+        if not feature_names:
+            # ``pragma: no cover`` -- V2 fit always has F5_alllog
+            # (7 features); empty-feature_names branch only used by
+            # research-only ablations.
+            return X.new_empty((*X.shape[:-1], 1, 0))  # pragma: no cover
         feats = torch.cat([FEATURE_BUILDERS[n](X) for n in feature_names], dim=-1)
         return feats.unsqueeze(-2)
 
@@ -197,10 +198,11 @@ def max_scale_Y(Y: Tensor) -> tuple[Tensor, Tensor, Tensor]:
     Returns ``(Y_scaled, y_mean=0, y_std=y_max)`` so the existing untransform
     code path ``mean * y_std + y_mean`` works correctly.
     """
-    if (
-        Y.dim() == 1
-    ):  # pragma: no cover -- V2 callers pass [n, 1] Y (Y-shape guard at fit_strength_gp top); 1D fallback retained for symmetry with BoTorch's Standardize signature
-        Y = Y.unsqueeze(-1)
+    if Y.dim() == 1:
+        # ``pragma: no cover`` -- V2 callers pass [n, 1] Y (Y-shape
+        # guard at ``fit_strength_gp`` top); 1D fallback retained for
+        # symmetry with BoTorch's Standardize signature.
+        Y = Y.unsqueeze(-1)  # pragma: no cover
     y_max = Y.abs().max(dim=0, keepdim=True).values.clamp_min(1e-6)
     y_mean = torch.zeros_like(y_max)
     return Y / y_max, y_mean, y_max
@@ -215,10 +217,11 @@ def augmented_bounds(
     empirical [min, max] (with 5% padding) over the appended features
     evaluated on X.
     """
-    if (
-        not feature_names
-    ):  # pragma: no cover -- V2 fit always passes F5_alllog (7 features); empty-feature_names branch only used by research-only no-feature ablations
-        return bounds
+    if not feature_names:
+        # ``pragma: no cover`` -- V2 fit always passes F5_alllog
+        # (7 features); empty-feature_names branch only used by
+        # research-only no-feature ablations.
+        return bounds  # pragma: no cover
     appended_vals = torch.cat([FEATURE_BUILDERS[n](X) for n in feature_names], dim=-1)
     aug_lower = appended_vals.min(dim=0).values
     aug_upper = appended_vals.max(dim=0).values

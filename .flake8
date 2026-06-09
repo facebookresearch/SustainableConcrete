@@ -2,4 +2,18 @@
 # E203, W503: black and flake8 disagree on whitespace/operator placement
 ignore = E203, W503
 max-line-length = 88
-exclude = build, dist, .eggs
+# When ``exclude`` is set explicitly it OVERRIDES flake8's defaults
+# (.svn, CVS, .bzr, .hg, .git, __pycache__, .tox, .eggs, *.egg) — so we
+# spell them out here. ``.git`` is critical: Sapling stores backup
+# copies of working-tree files under ``.git/sl/origbackups/`` and
+# without this exclude flake8 would lint them.
+exclude =
+    .git,
+    .hg,
+    .svn,
+    __pycache__,
+    .tox,
+    .eggs,
+    *.egg,
+    build,
+    dist,

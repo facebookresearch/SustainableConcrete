@@ -272,8 +272,8 @@ class SustainableConcreteDataset:
             ).any():
                 logger.warning(  # pragma: no cover
                     "Bounds do not hold in training data: "
-                    f"{X_bounds[0, :], X.amin(dim=0) = }"
-                    f"{X_bounds[1, :], X.amax(dim=0) = }"
+                    f"{X_bounds[0, :], X.amin(dim=0)=}"
+                    f"{X_bounds[1, :], X.amax(dim=0)=}"
                 )
         return X, Y, Yvar, X_bounds
 
@@ -322,7 +322,8 @@ class SustainableConcreteDataset:
             raise ValueError(
                 "subselect_batch_names: this dataset was loaded without batch-"
                 "name indices. Re-load with "
-                "``load_concrete_strength(..., process_batch_names_from_mix_name=True)`` "
+                "``load_concrete_strength(..., "
+                "process_batch_names_from_mix_name=True)`` "
                 "or pass an explicit ``batch_name_to_indices`` dict."
             )
 
@@ -464,7 +465,7 @@ def load_concrete_strength(
             logger.info("  - %s has %s missing entries.", name, missing.item())
         logger.info("Removing missing rows with missing entries from data.")
         missing_row_ind = [i for i in range(len(df)) if is_missing[i].any()]
-        logger.info(f"  -Rows indices to be removed: {missing_row_ind = }")
+        logger.info(f"  -Rows indices to be removed: {missing_row_ind=}")
         df = df.drop(missing_row_ind)
         logger.info(
             "  -Number of missing values after deletion (Should be zero): "
@@ -866,8 +867,10 @@ def get_proportional_sum_constraints(
 
     Args:
         X_columns: The column (variable) names of the inputs `X`.
-        numerator_names: The subset of variable names whose sum to use as the numerator.
-        denominator_names: The subset of variable names whose sum to use as the denominator.
+        numerator_names: The subset of variable names whose sum to use as
+            the numerator.
+        denominator_names: The subset of variable names whose sum to use as
+            the denominator.
         lower: The lower limit of the fractional constraint.
         upper: The upper limit of the fractional constraint.
 
@@ -900,7 +903,8 @@ def get_proportional_sum_constraints(
 def get_subset_sum_tensors(
     X_columns: list[str], subset_names: list[str]
 ) -> tuple[list[int], Tensor]:
-    """Returns indices and coefficients such that `X[indices].dot(coeffs) == X[indices].sum()`,
+    """Returns indices and coefficients such that
+    `X[indices].dot(coeffs) == X[indices].sum()`,
     where indices are the indices of subset_names in X_columns.
 
     Args:
@@ -1064,8 +1068,10 @@ def get_day_zero_data(X: Tensor, n: int = 128):
     if n_unique <= n:
         # Use all unique compositions
         X_comps = unique_comps
-    else:  # pragma: no cover -- only triggered when training data has >n unique compositions; the strength dataset has 647 unique mixes < 128 default n
-        # Random subset of unique compositions
+    else:  # pragma: no cover
+        # Only triggered when training data has >n unique compositions;
+        # the strength dataset has 647 unique mixes < 128 default n.
+        # Random subset of unique compositions.
         perm = torch.randperm(n_unique)[:n]
         X_comps = unique_comps[perm]
 
@@ -1229,11 +1235,14 @@ def predict_pareto(
             interesting application of this function is to use different bounds to
             get quantitative results for "what-if" scenarios.
         equality_constraints: Equality constraints. Similar to the bounds, these can be
-            different than those used to train the model to explore "what-if" scenarios.
-        inequality_constraints: Inequality constraints. Similar to the bounds, these can
-            be different than those used to train the model to explore "what-if" scenarios.
-        num_candidates: The number of random inputs to generate in order to approximate
-            the Pareto frontier. The higher the number of candidates, the more accurate.
+            different than those used to train the model to explore
+            "what-if" scenarios.
+        inequality_constraints: Inequality constraints. Similar to the
+            bounds, these can be different than those used to train the
+            model to explore "what-if" scenarios.
+        num_candidates: The number of random inputs to generate in order
+            to approximate the Pareto frontier. The higher the number of
+            candidates, the more accurate.
 
     Returns:
         A 3-tuple of Tensors containing the predicted Pareto-optimal inputs, outputs and

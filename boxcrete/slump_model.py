@@ -17,13 +17,12 @@ Public API:
   * :func:`fit_slump_gp` — fit a slump GP on raw (X, Y, Yvar) data.
 
 The HRWR/binder ratio is appended via :class:`AppendDerivedFeatures`
-from :mod:`boxcrete.features` (the same transform :mod:`boxcrete.strength_model_legacy`'s
-V1 input transform composes with).
+from :mod:`boxcrete.features` (the same transform
+:mod:`boxcrete.strength_model_legacy`'s V1 input transform composes with).
 """
 
 from __future__ import annotations
 
-import torch
 from botorch import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
 from botorch.models.transforms.input import ChainedInputTransform, Normalize

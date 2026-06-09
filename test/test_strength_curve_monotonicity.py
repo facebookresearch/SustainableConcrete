@@ -183,8 +183,9 @@ class TestStrengthCurveMonotonicity(unittest.TestCase):
             stats["frac_decreasing"],
             PASS_FRACTION_DECREASE,
             (
-                f"{label}: {100 * stats['frac_decreasing']:.1f}% of {stats['n_compositions']}"
-                f" compositions have decreasing intervals "
+                f"{label}: {100 * stats['frac_decreasing']:.1f}% of "
+                f"{stats['n_compositions']} compositions have decreasing "
+                f"intervals "
                 f"(threshold {100 * PASS_FRACTION_DECREASE:.0f}%). "
                 f"Strength curves should be monotone; this indicates "
                 f"the kernel has acquired pathological feature-time interactions."
@@ -195,17 +196,19 @@ class TestStrengthCurveMonotonicity(unittest.TestCase):
             stats["frac_oscillating_gt2"],
             PASS_FRACTION_OSCILLATE,
             (
-                f"{label}: {100 * stats['frac_oscillating_gt2']:.1f}% of compositions "
-                f"have > 2 inflection points (threshold {100 * PASS_FRACTION_OSCILLATE:.0f}%). "
-                f"This indicates the predictive mean is wiggling at intermediate times."
-                + msg_extra
+                f"{label}: {100 * stats['frac_oscillating_gt2']:.1f}% of "
+                f"compositions have > 2 inflection points (threshold "
+                f"{100 * PASS_FRACTION_OSCILLATE:.0f}%). "
+                f"This indicates the predictive mean is wiggling at "
+                f"intermediate times." + msg_extra
             ),
         )
         self.assertLess(
             stats["max_dropdown_psi"],
             PASS_MAX_DROP_PSI,
             (
-                f"{label}: worst single-step dropdown is {stats['max_dropdown_psi']:.0f} psi "
+                f"{label}: worst single-step dropdown is "
+                f"{stats['max_dropdown_psi']:.0f} psi "
                 f"(threshold {PASS_MAX_DROP_PSI:.0f} psi). "
                 f"This is well above measurement noise and clearly unphysical."
                 + msg_extra

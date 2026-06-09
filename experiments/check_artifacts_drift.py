@@ -136,8 +136,8 @@ class DriftCollector:
             rel = diff / max(abs(committed), 1.0)
             self.failures.append(
                 f"  {label}: committed={committed:.4f}, fresh={fresh:.4f}, "
-                f"abs={diff:.2f} psi ({rel*100:.2f}% rel; tol="
-                f"max({psi_floor:.0f}, {rtol*100:.1f}%)={delta:.2f})"
+                f"abs={diff:.2f} psi ({rel * 100:.2f}% rel; tol="
+                f"max({psi_floor:.0f}, {rtol * 100:.1f}%)={delta:.2f})"
             )
 
     def assert_variance_close(
@@ -154,9 +154,9 @@ class DriftCollector:
             rel = diff / max(abs(committed), 1.0)
             self.failures.append(
                 f"  {label}: committed={committed:.4f}, fresh={fresh:.4f}, "
-                f"abs={diff:.2f} psi^2 ({rel*100:.2f}% rel; tol="
+                f"abs={diff:.2f} psi^2 ({rel * 100:.2f}% rel; tol="
                 f"max({VARIANCE_PSI2_FLOOR:.0f}, "
-                f"{VARIANCE_RTOL*100:.1f}%)={delta:.2f})"
+                f"{VARIANCE_RTOL * 100:.1f}%)={delta:.2f})"
             )
 
 

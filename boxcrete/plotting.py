@@ -188,8 +188,8 @@ def compute_loo_cv(
     L = psd_safe_cholesky(K)
     residuals = (train_Y - prior_dist.mean).unsqueeze(-1)
     K_inv_res = torch.cholesky_solve(residuals, L)
-    I = torch.eye(n, dtype=L.dtype, device=L.device)
-    L_inv = torch.linalg.solve_triangular(L, I, upper=False)
+    eye_n = torch.eye(n, dtype=L.dtype, device=L.device)
+    L_inv = torch.linalg.solve_triangular(L, eye_n, upper=False)
     K_inv_diag = (L_inv**2).sum(dim=-2)
     loo_var = (1.0 / K_inv_diag).unsqueeze(-1)
     loo_mean = train_Y.unsqueeze(-1) - K_inv_res * loo_var
