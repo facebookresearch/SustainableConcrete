@@ -5,7 +5,7 @@
 The committed ``docs/model/mix_analyses.json`` was authored by Claude
 Opus with full domain context (specific psi values, dataset
 comparisons, qualitative assessments like "among the top performers in
-the Source A mortar series"). This script's output is a deterministic
+the Set 1 mortar series"). This script's output is a deterministic
 template-based fallback that produces *objectively less detailed*
 descriptions ("A blended binder system with 47% cement replacement by
 SCMs.") and does NOT reproduce the LLM-authored content.
@@ -236,12 +236,20 @@ def generate_description(idx, comp):
             "studies."
         )
 
-    # Material source
+    # Material source (3-class v5 labelling — see
+    # ``docs/materials_background.md``).
     if mat_source == 1:
         parts.append(
-            "Uses **Material Source B** \u2014 a different raw material "
-            "supplier, which may affect reactivity and particle size "
-            "distribution."
+            "Uses **Set 2 materials** (Heidelberg cement, Class C fly ash, "
+            "limestone coarse aggregate, Chryso ADVA Cast 593 HRWR) — "
+            "different raw-material chemistry from Set 1 (mortar) and Set 3."
+        )
+    elif mat_source == 2:
+        parts.append(
+            "Uses **Set 3 materials** (Amrize cement, Class F fly ash, "
+            "#6 + #89 gravel coarse aggregate, Sika ViscoCrete 1000 HRWR) — "
+            "chemically distinct from Set 2 (Class F has lower CaO and "
+            "slower pozzolanic kinetics than Class C)."
         )
 
     # Performance

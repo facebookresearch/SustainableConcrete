@@ -76,8 +76,13 @@ for (let i = 0; i < compositions.length; i++) {
       }
     }
   }
-  // Material source for GWP (composition[7] is 0 or 1).
-  const ms = composition[7] >= 0.5 ? 1 : 0;
+  // Material source for GWP. Use the same class-dim lookup as the
+  // explorer's predictGWP path (the pre-v5 `composition[7] >= 0.5 ? 1 : 0`
+  // binary collapse silently maps v5 class 2 -> class 1, producing
+  // wrong GWP values and false-passing the smoke test).
+  const ms = typeof gwpParams.class_dim === "number"
+    ? Math.round(composition[gwpParams.class_dim])
+    : 0;
   const gwp = predictGWP(composition, gwpParams, ms);
   const cost = predictCost(composition, costParams);
   if (!Number.isFinite(gwp.mean) || !Number.isFinite(cost.mean)) {

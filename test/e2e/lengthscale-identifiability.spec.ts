@@ -53,8 +53,22 @@ test("served strength.json has identifiable lengthscales for every feature", asy
   const augNames = [...rawNames, ...engineeredNames];
   const augNamesNoSource = augNames.filter((_, i) => i !== sourceDimRaw);
 
+  // matern_specific subkernel layout depends on the source-kernel topology:
+  //   - legacy_continuous_ard: spans all augmented dims (source is a continuous coord here).
+  //   - hamming/indexkernel/rbf_embedding (product): excludes the source dim
+  //     (the categorical kernel handles source as a separate factor).
+  //   - joint_hamming_matern / joint_embedding_matern (joint topology — current
+  //     production default): excludes the source dim too (the joint kernel handles
+  //     source via the categorical penalty inside the radial basis, not via a
+  //     per-dim ARD lengthscale).
+  // We auto-detect by reading the served lengthscales length.
+  const specificLs = (params.matern_specific as { lengthscales?: number[] })?.lengthscales;
+  const specificNames = specificLs && specificLs.length === augNamesNoSource.length
+    ? augNamesNoSource
+    : augNames;
+
   const subkernels: Array<{ key: "matern_blind" | "matern_specific"; names: string[] }> = [
-    { key: "matern_specific", names: augNames },
+    { key: "matern_specific", names: specificNames },
     { key: "matern_blind", names: augNamesNoSource },
   ];
 

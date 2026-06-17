@@ -34,16 +34,20 @@ echo "==> 2. Augmenting test_vectors with GWP/cost …"
 node experiments/augment_test_vectors_with_gwp_cost.mjs | tail -3
 
 echo ""
-echo "==> 3. Recomputing compositions.json strength_predictions + pareto_mask …"
+echo "==> 3. Recomputing compositions.json gwp_predictions …"
+node experiments/regenerate_compositions_gwp_predictions.mjs | tail -3
+
+echo ""
+echo "==> 4. Recomputing compositions.json strength_predictions + pareto_mask …"
 node experiments/regenerate_compositions_strength_predictions.mjs | tail -5
 
 echo ""
-echo "==> 4. Running freshness tests …"
+echo "==> 5. Running freshness tests …"
 node test/test_data_freshness.mjs
 
 echo ""
 echo "==> 5. Running full JS test suite …"
-for t in test_js_strength_v2.mjs test_js_physical_constraints.mjs test_js_gp.mjs test_js_ui_smoke.mjs test_lengthscales_v2.mjs test_curve_monotonicity.mjs; do
+for t in test_js_strength_v2.mjs test_js_physical_constraints.mjs test_js_gp.mjs test_js_ui_smoke.mjs test_catalog_consistency.mjs test_lengthscales_v2.mjs test_curve_monotonicity.mjs; do
   echo "  -- $t --"
   node "test/$t" | tail -3
 done

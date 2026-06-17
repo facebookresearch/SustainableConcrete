@@ -1,0 +1,147 @@
+legacy_int_name,canonical_name,material_class,source_evidence
+Mix_1,M1,0,row-FP: M1
+Mix_2,M2,0,row-FP: M2
+Mix_3,M3,0,row-FP: M3
+Mix_4,M4,0,row-FP: M4
+Mix_5,M5,0,row-FP: M5
+Mix_6,M6,0,row-FP: M6
+Mix_7,M7,0,row-FP: M7
+Mix_8,M8,0,row-FP: M8
+Mix_9,M9,0,row-FP: M9
+Mix_10,M10,0,row-FP: M10
+Mix_11,M11,0,row-FP: M11
+Mix_12,M12,0,row-FP: M12
+Mix_13,M13,0,row-FP: M13
+Mix_14,M14,0,row-FP: M14
+Mix_15,M15,0,row-FP: M15
+Mix_16,M16,0,row-FP: M16
+Mix_17,M17,0,row-FP: M17
+Mix_18,M18,0,row-FP: M18
+Mix_19,M19,0,row-FP: M19
+Mix_20,M20,0,row-FP: M20
+Mix_21,M21,0,row-FP: M21
+Mix_22,M22,0,row-FP: M22
+Mix_23,M23,0,row-FP: M23
+Mix_24,M24,0,row-FP: M24
+Mix_25,M25,0,row-FP: M25
+Mix_26,M26,0,row-FP: M26
+Mix_27,M27,0,row-FP: M27
+Mix_28,M28,0,row-FP: M28
+Mix_29,M29,0,row-FP: M29
+Mix_30,M30,0,row-FP: M30
+Mix_31,M31,0,row-FP: M31
+Mix_32,M32,0,row-FP: M32
+Mix_33,M33,0,row-FP: M33
+Mix_34,M34,0,row-FP: M34
+Mix_35,M35,0,row-FP: M35
+Mix_36,M36,0,row-FP: M36
+Mix_37,M37,0,row-FP: M37
+Mix_38,M38,0,row-FP: M38
+Mix_39,M39,0,row-FP: M39
+Mix_40,M40,0,row-FP: M40
+Mix_41,M41,0,row-FP: M41
+Mix_42,M42,0,row-FP: M42
+Mix_43,M43,0,row-FP: M43
+Mix_44,M44,0,row-FP: M44
+Mix_45,M45,0,row-FP: M45
+Mix_46,M46,0,row-FP: M46
+Mix_47,M47,0,row-FP: M47
+Mix_48,M48,0,row-FP: M48
+Mix_49,M49,0,row-FP: M49
+Mix_50,M50,0,row-FP: M50
+Mix_51,M51,0,row-FP: M51
+Mix_52,M52,0,row-FP: M52
+Mix_53,M53,0,row-FP: M53
+Mix_54,M54,0,row-FP: M54
+Mix_55,M55,0,row-FP: M55
+Mix_56,M56,0,row-FP: M56
+Mix_57,M57,0,row-FP: M57
+Mix_78,M58,0,row-FP: M78
+Mix_79,M59,0,row-FP: M79
+Mix_80,M60,0,"ambig ['M80', 'M81'] -> M80"
+Mix_81,M61,0,"ambig ['M80', 'M81'] -> M81 (others used)"
+Mix_82,M62,0,row-FP: M82
+Mix_83,C1,1,row-FP: M83
+Mix_84,C2,1,row-FP: M84
+Mix_85,C3,1,row-FP: M85
+Mix_86,C4,1,row-FP: M86
+Mix_87,C5,1,row-FP: M87
+Mix_88,C6,1,row-FP: M88
+Mix_89,C7,1,row-FP: M89
+Mix_90,C8,1,row-FP: M90
+Mix_91,C9,1,row-FP: M91
+Mix_92,C10,1,row-FP: M92
+Mix_93,C11,1,row-FP: M93
+Mix_94,C12,1,row-FP: M94
+Mix_95,C13,1,row-FP: M95
+Mix_96,C14,1,row-FP: M96
+Mix_97,C15,1,row-FP: M97
+Mix_98,C16,1,row-FP: M98
+Mix_99,C17,1,row-FP: M99
+Mix_100,C18,1,row-FP: M100
+Mix_101,C19,1,row-FP: M101
+Mix_102,C20,1,row-FP: M102
+Mix_103,C21,1,row-FP: M103
+Mix_104,C22,1,row-FP: M104
+Mix_105,C23,1,row-FP: M105
+Mix_106,C24,1,row-FP: M106
+Mix_107,C25,1,row-FP: M107
+Mix_108,C26,1,row-FP: M108
+Mix_109,C27,1,row-FP: M109
+Mix_110,C28,1,row-FP: M110
+Mix_111,C29,1,row-FP: M111
+Mix_112,C30,1,row-FP: M112
+Mix_120,C31,2,row-FP: M120
+Mix_121,C32,2,row-FP: M121
+Mix_122,C33,2,row-FP: M122
+Mix_123,C34,2,row-FP: M123
+Mix_124,C35,2,row-FP: M124
+Mix_125,C36,2,row-FP: M125
+Mix_126_split0,C37,2,row-FP: M126
+Mix_127_split0,C38,2,row-FP: M127
+Mix_128_split0,C39,2,row-FP: M128
+Mix_129_split0,C40,2,row-FP: M129
+Mix_129_T1,C41,2,"ambig ['M129 T1', 'M129 T2'] -> M129 T1"
+Mix_129_T2,C42,2,"ambig ['M129 T1', 'M129 T2'] -> M129 T2 (others used)"
+Mix_129_C,C43,2,row-FP: M129C
+Mix_130_split0,C44,2,row-FP: M130
+Mix_131_split0,C45,2,row-FP: M131
+Mix_132_split0,C46,2,row-FP: M132
+Mix_133_split0,C47,2,row-FP: M133
+Mix_134_split0,C48,2,row-FP: M134
+Mix_135_split0,C49,2,row-FP: M135
+Mix_136_split0,C50,2,row-FP: M136
+Mix_137_split0,C51,2,row-FP: M137
+Mix_126_split1,C52,2,row-FP: Mix 126
+Mix_127_split1,C53,2,row-FP: Mix 127
+Mix_128_split1,C54,2,row-FP: Mix 128
+Mix_129_split1,C55,2,row-FP: Mix 129
+Mix_130_split1,C56,2,row-FP: Mix 130
+Mix_131_split1,C57,2,row-FP: Mix 131
+Mix_132_split1,C58,2,row-FP: Mix 132
+Mix_133_split1,C59,2,row-FP: Mix 133
+Mix_134_split1,C60,2,row-FP: Mix 134
+Mix_135_split1,C61,2,row-FP: Mix 135
+Mix_136_split1,C62,2,row-FP: Mix 136
+Mix_137_split1,C63,2,row-FP: Mix 137
+Mix_138,C64,2,row-FP: Mix 138
+Mix_139,C65,2,row-FP: Mix 139
+Mix_140,C66,2,row-FP: Mix 140
+Mix_141,C67,2,row-FP: Mix 141
+Mix_142,C68,2,row-FP: Mix 142
+Mix_143,C69,2,row-FP: Mix 143
+Mix_144,C70,2,row-FP: Mix 144
+Mix_145,C71,2,row-FP: Mix 145
+Mix_146,C72,2,row-FP: Mix 146
+Mix_147,C73,2,row-FP: Mix 147
+Mix_148,C74,2,row-FP: Mix 148
+Mix_149,C75,2,row-FP: Mix 149
+Mix_150,C76,2,row-FP: Mix 150
+Mix_151,C77,2,row-FP: Mix 151
+Mix_152,C78,2,row-FP: Mix 152
+Mix_153,C79,2,row-FP: Mix 153
+Mix_154,C80,2,row-FP: Mix 154
+Mix_155,C81,2,row-FP: Mix 155
+Mix_156,C82,2,row-FP: Mix 156
+Mix_157,C83,2,row-FP: Mix 157
+Mix_158,C84,2,row-FP: Mix 158

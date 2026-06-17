@@ -25,9 +25,12 @@ test.describe("preview curve composition sync", () => {
     await page.waitForFunction(() => typeof (window as any).__test !== "undefined");
 
     const toggleButtons = page.locator(".material-source-group .toggle-btn");
-    expect(await toggleButtons.count(), "expected two toggle buttons").toBe(2);
+    const nButtons = await toggleButtons.count();
+    expect(nButtons, "expected at least two toggle buttons").toBeGreaterThanOrEqual(2);
 
-    for (const idx of [1, 0, 1]) {
+    // Click through the available source classes: 1 -> 0 -> last (back to non-default).
+    const sequence = nButtons >= 3 ? [1, 0, 2] : [1, 0, 1];
+    for (const idx of sequence) {
       await toggleButtons.nth(idx).click();
       // Curve transition is 350ms; wait it out before sampling state.
       await page.waitForTimeout(450);

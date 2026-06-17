@@ -38,9 +38,17 @@ from torch import Tensor
 from boxcrete.utils import DEFAULT_X_COLUMNS
 
 # Time gate constant: h(t) = 1 - exp(-t / GATE_TAU).
-# tau=0.05 (post-input-transform time units) was found to be optimal in
-# the τ-sweep; see §4.5 of the benchmark.
-GATE_TAU = 0.05
+# tau=0.10 (post-input-transform time units) is the v5 production
+# default. The v5 + joint_hamming_matern kernel exhibits non-monotonic
+# strength curves in the t < 1 day extrapolation region for ~30% of
+# catalog compositions when tau=0.05; the gate's monotonic ramp
+# saturates by t_norm=0.3 (raw t ~ 1 d) and stops dampening kernel
+# oscillations earlier than that. tau=0.10 lengthens the gate envelope
+# into the oscillation region and reduces the affected fraction to
+# ~22% (a relative ~32% reduction) at zero cost in LOO/bLOO RMSE
+# (~0.6 psi IMPROVEMENT vs tau=0.05). See
+# experiments/ABLATION_GATE_TAU.md for the full sweep.
+GATE_TAU = 0.10
 
 
 # Default feature set for the V2 strength GP. See STRENGTH_GP_BENCHMARK.md

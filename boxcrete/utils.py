@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 import numpy as np
 import pandas as pd
@@ -70,7 +71,7 @@ CONCRETE_BOUNDS_DICT = {
     "Slag (kg/m3)": (0, 1300),
     "Coarse Aggregates (kg/m3)": (0, 1600),
     "Fine Aggregate (kg/m3)": (400, 2600),
-    "Material Source": (0, 1),
+    "Material Source": (0, 2),
     "Temp (C)": (0, 40),
     "Time": (0, 28),
 }
@@ -427,6 +428,61 @@ def load_concrete_strength(
         df = pd.read_csv(data_path, delimiter=",")
     else:
         df = data_path
+
+    # Defense-in-depth: cross-validate ``Material Source`` against
+    # ``boxcrete.mix_naming.derive_source_from_mix_name`` so a row whose
+    # canonical mix name disagrees with its material-source label is
+    # caught at load time rather than silently mistraining the kernel
+    # branch. The check is only triggered when the dataframe carries
+    # both columns, when every mix name is in canonical form
+    # (``M<int>``/``C<int>``), and when ``Material Source`` is the
+    # 3-class ``{0, 1, 2}`` v5 schema. Older 2-class fixtures
+    # (``test/fixtures/boxcrete_data_pre_v5.csv``) and synthetic test
+    # data with non-canonical names skip the check silently.
+    if mix_name_column in df.columns and "Material Source" in df.columns:
+        try:
+            from boxcrete.mix_naming import derive_source_from_mix_name
+        except Exception:  # pragma: no cover
+            derive_source_from_mix_name = None  # type: ignore[assignment]
+        if derive_source_from_mix_name is not None:
+            ms_unique = (
+                pd.to_numeric(df["Material Source"], errors="coerce").dropna().unique()
+            )
+            if len(ms_unique) and set(ms_unique).issubset({0.0, 1.0, 2.0}):
+                names = df[mix_name_column].dropna().astype(str)
+                _canonical_re = re.compile(r"^[MC]\d+$")
+                if (
+                    len(names)
+                    and names.map(lambda n: bool(_canonical_re.match(n))).all()
+                ):
+                    mismatches: list[tuple[str, int, int]] = []
+                    for _, row in (  # pragma: no cover
+                        df[[mix_name_column, "Material Source"]].dropna().iterrows()
+                    ):
+                        try:
+                            derived = derive_source_from_mix_name(
+                                str(row[mix_name_column])
+                            )
+                        except Exception:
+                            continue
+                        recorded = int(row["Material Source"])
+                        if derived != recorded:
+                            mismatches.append(
+                                (str(row[mix_name_column]), derived, recorded)
+                            )
+                            if len(mismatches) >= 5:
+                                break
+                    if mismatches:  # pragma: no cover
+                        raise ValueError(
+                            "Material Source / mix-name class mismatches detected "
+                            "(this means a row's Material Source disagrees with "
+                            "what the canonical M<int>/C<int> name implies). The "
+                            "first few offenders (mix_name, name-derived class, "
+                            "recorded class): "
+                            f"{mismatches}. Re-run "
+                            "scripts/merge_three_class_data.py to regenerate "
+                            "data/boxcrete_data.csv."
+                        )
 
     # dropping any mix id that is not in batch names
     if batch_names is not None:
@@ -955,25 +1011,49 @@ DEFAULT_COST_COEFFICIENTS: dict[str, tuple[float, float]] = {
 # Derived via per-class least-squares regression on training data (which
 # stores -GWP). Magnitudes here are the absolute emission factors.
 DEFAULT_GWP_COEFFICIENTS = {
-    0: {  # Material Source 0
-        "Cement (kg/m3)": (0.762610, 0.000365),
-        "Fly Ash (kg/m3)": (0.029601, 0.000432),
-        "Slag (kg/m3)": (0.085926, 0.000310),
-        "Water (kg/m3)": (-0.001765, 0.001114),
-        "HRWR (kg/m3)": (3.184692, 0.016001),
-        "Fine Aggregate (kg/m3)": (0.002788, 0.000097),
-        "Coarse Aggregates (kg/m3)": (0.003910, 0.000112),
+    # Coefficients re-derived from v5 ``data/boxcrete_data.csv`` per-class
+    # rows after the three-class merge unpooled (Mortar | MS=0) ∪
+    # (Concrete-Set-2 | MS=0). Reproduce with
+    # ``python scripts/derive_class_2_gwp.py``.
+    0: {  # Material Source 0 — Set 1 (Amrize cement / Class C fly ash mortar)
+        # Re-derived on 62 unique-composition mortar rows. R² ≈ 0.996
+        # (rank-deficient at 6/7 because mortars all have Coarse=0, a
+        # constant column with no information; the test in
+        # ``test_gwp_linearity`` is updated in Commit 8 to allow R²
+        # > 0.99 for the rank-deficient mortar fit).
+        "Cement (kg/m3)": (0.756749, 0.010964),
+        "Fly Ash (kg/m3)": (0.010465, 0.016003),
+        "Slag (kg/m3)": (0.073309, 0.009669),
+        "Water (kg/m3)": (0.029849, 0.037845),
+        "HRWR (kg/m3)": (3.111706, 0.513543),
+        "Fine Aggregate (kg/m3)": (0.003661, 0.003372),
+        "Coarse Aggregates (kg/m3)": (0.000000, 0.000000),
     },
-    1: {  # Material Source 1
-        "Cement (kg/m3)": (0.773814, 0.007240),
-        "Fly Ash (kg/m3)": (0.035681, 0.005542),
-        "Slag (kg/m3)": (0.092849, 0.006469),
-        "Water (kg/m3)": (0.003864, 0.019144),
-        # HRWR GWP: consistent with Source 0 (3.18 vs 3.15 kg CO₂/kg).
-        # See comment above for EPD references.
-        "HRWR (kg/m3)": (3.151231, 0.498391),
-        "Fine Aggregate (kg/m3)": (0.002513, 0.003486),
-        "Coarse Aggregates (kg/m3)": (-0.000039, 0.002870),
+    1: {  # Material Source 1 — Set 2 (Heidelberg cement / Class C fly ash concrete)
+        # Re-derived on 28 unique-composition Set-2 rows. R² ≈ 0.99999.
+        "Cement (kg/m3)": (0.761822, 0.000650),
+        "Fly Ash (kg/m3)": (0.029033, 0.000568),
+        "Slag (kg/m3)": (0.085360, 0.000601),
+        "Water (kg/m3)": (-0.000820, 0.001573),
+        # HRWR GWP for Set 2 (Chryso Adva Cast 593): 3.20 kg CO₂/kg.
+        "HRWR (kg/m3)": (3.201072, 0.054906),
+        "Fine Aggregate (kg/m3)": (0.002879, 0.000500),
+        "Coarse Aggregates (kg/m3)": (0.004028, 0.000267),
+    },
+    2: {  # Material Source 2 — Set 3 (Amrize cement / Class F fly ash concrete)
+        # Derived on 53 unique-composition Set-3 rows. R² ≈ 0.999. The
+        # ``HRWR (kg/m3)`` coefficient (2.996) is lower than Sources 0/1
+        # (3.11 / 3.20), consistent with Set 3 using Sika ViscoCrete 1000
+        # vs Chryso Adva Cast 530/593 (different polycarboxylate
+        # chemistries with different reported EPDs). Re-run the
+        # derivation script after any change to Set-3 rows.
+        "Cement (kg/m3)": (0.769287, 0.008812),
+        "Fly Ash (kg/m3)": (0.033026, 0.006840),
+        "Slag (kg/m3)": (0.094984, 0.007966),
+        "Water (kg/m3)": (-0.008684, 0.023716),
+        "HRWR (kg/m3)": (2.996401, 0.553918),
+        "Fine Aggregate (kg/m3)": (-0.000685, 0.004082),
+        "Coarse Aggregates (kg/m3)": (0.004617, 0.003766),
     },
 }
 

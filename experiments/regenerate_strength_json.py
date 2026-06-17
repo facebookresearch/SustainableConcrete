@@ -174,7 +174,7 @@ def main() -> None:
 
     # --- Extract kernel hyperparameters ---
     # The champion's covar_module is _TimeGatedKernel wrapping a sum:
-    # blind_matern + source-specific_matern + rbf(t).
+    # blind_matern + categorical_source_branch + rbf(t).
     gated = model.covar_module  # _TimeGatedKernel
     base = gated.base_kernel  # AdditiveKernel: blind + specific + rbf
     # Iterate base.kernels — should be 3 components.
@@ -187,11 +187,82 @@ def main() -> None:
     )
     blind_outputscale = float(blind_kernel.outputscale.detach())
     blind_active_dims = blind_kernel.base_kernel.active_dims.tolist()
-    specific_lengthscales = (
-        specific_kernel.base_kernel.lengthscale.detach().squeeze().tolist()
-    )
+
+    # The "specific" branch in v5 is one of:
+    #   ScaleKernel(ProductKernel(<categorical>, MaternKernel))   for
+    #     indexkernel_r{1,2,3} / hamming / rbf_embedding_d{1,2,3}
+    #   ScaleKernel(MaternKernel)                                  for
+    #     onehot_ard (no categorical kernel; source one-hot upstream)
+    #   ScaleKernel(JointHammingMaternKernel)                      for
+    #     joint_hamming_matern (production default in v5)
+    # Detect which by introspecting the inner base_kernel.
+    inner = specific_kernel.base_kernel
+    from boxcrete.kernels import JointHammingMaternKernel as _JointHammingMaternKernel
+
+    if isinstance(inner, _JointHammingMaternKernel):
+        source_kernel_kind = "joint_hamming_matern"
+        # Per-feature ARD lengthscales (excludes source dim).
+        specific_lengthscales = inner.lengthscale.detach().squeeze().tolist()
+        # The "active_dims" for the joint kernel includes both
+        # feature dims and the source dim, but the lengthscales only
+        # cover the feature dims (the source dim is handled via the
+        # Hamming alpha penalty, not ARD).
+        # ``inner.feature_dims`` is the list of absolute feature dim
+        # indices the kernel reads from the input tensor.
+        specific_active_dims = list(inner.feature_dims)
+        # alpha: the scalar categorical penalty. For c_i != c_j, the
+        # joint distance picks up sqrt(alpha) on top of the
+        # feature-ARD distance.
+        alpha = float(inner.alpha.detach().squeeze())
+        specific_extras = {
+            "source_kernel_kind": source_kernel_kind,
+            "source_dim": int(inner.source_dim),
+            "alpha": alpha,
+            "nu": float(inner.nu),
+            "categorical_mode": str(inner.categorical_mode),
+        }
+    elif hasattr(inner, "kernels") and len(list(inner.kernels)) == 2:
+        cat_inner, matern_inner = list(inner.kernels)
+        # Identify the categorical kind.
+        from gpytorch.kernels import IndexKernel as _IndexKernel
+        from botorch.models.kernels import CategoricalKernel as _CategoricalKernel
+
+        if isinstance(cat_inner, _IndexKernel):
+            source_kernel_kind = "indexkernel"
+            # IndexKernel exposes the precomputed task-covar via
+            # ._eval_covar_matrix() = B @ B^T + diag(v).
+            with torch.no_grad():
+                task_covar = cat_inner._eval_covar_matrix()
+            specific_extras = {
+                "source_kernel_kind": source_kernel_kind,
+                "source_kernel_rank": int(cat_inner.covar_factor.shape[-1]),
+                "task_covar": task_covar.detach().tolist(),
+            }
+        elif isinstance(cat_inner, _CategoricalKernel):
+            source_kernel_kind = "hamming"
+            ell = float(cat_inner.lengthscale.detach().squeeze())
+            specific_extras = {
+                "source_kernel_kind": source_kernel_kind,
+                "source_kernel_lengthscale": ell,
+                # k(s_i, s_j) = exp(-delta(s_i, s_j) / ell);
+                # for s_i != s_j: rho = exp(-1 / ell).
+                "source_correlation": float(torch.exp(torch.tensor(-1.0 / ell))),
+            }
+        else:
+            raise ValueError(
+                f"Unsupported inner categorical kernel type: {type(cat_inner).__name__}"
+            )
+        specific_lengthscales = matern_inner.lengthscale.detach().squeeze().tolist()
+        specific_active_dims = matern_inner.active_dims.tolist()
+    else:
+        # onehot_ard or pre-v5 layout: ScaleKernel(MaternKernel) directly.
+        source_kernel_kind = "onehot"
+        specific_extras = {
+            "source_kernel_kind": source_kernel_kind,
+        }
+        specific_lengthscales = inner.lengthscale.detach().squeeze().tolist()
+        specific_active_dims = inner.active_dims.tolist()
     specific_outputscale = float(specific_kernel.outputscale.detach())
-    specific_active_dims = specific_kernel.base_kernel.active_dims.tolist()
     rbf_lengthscale = float(time_kernel.base_kernel.lengthscale.detach().squeeze())
     rbf_outputscale = float(time_kernel.outputscale.detach())
     rbf_active_dims = time_kernel.base_kernel.active_dims.tolist()
@@ -201,7 +272,8 @@ def main() -> None:
         f"len(lengthscales)={len(blind_lengthscales)}"
     )
     print(
-        f"[regenerate]   specific: outputscale={specific_outputscale:.4f} "
+        f"[regenerate]   specific: source_kernel_kind={source_kernel_kind} "
+        f"outputscale={specific_outputscale:.4f} "
         f"active_dims={specific_active_dims} "
         f"len(lengthscales)={len(specific_lengthscales)}"
     )
@@ -252,15 +324,17 @@ def main() -> None:
 
     # --- Assemble output JSON ---
     out = {
-        "schema_version": 2,
+        "schema_version": 3,
         "model_name": CHAMPION_NAME,
         "comment": (
-            "V2 strength GP. Architecture: gated multi-Matern + 7 engineered "
-            "features + Y/y_max scaling + ZeroMean + block-LOO HP refinement. "
-            "Block-LOO RMSE 665 psi at full data, phantom-anchor RMSE = 0 by "
-            "construction. See experiments/STRENGTH_GP_BENCHMARK.md for the "
-            "full study."
+            "V2 strength GP with v5 3-class material source. "
+            "Architecture: gated multi-Matern + categorical source kernel + "
+            "7 engineered features + Y/y_max scaling + ZeroMean + "
+            "block-LOO HP refinement. The categorical source branch "
+            "replaces the pre-v5 continuous-ARD source coordinate; "
+            "see experiments/THREE_CLASS_AND_PRIOR_BENCHMARK.md."
         ),
+        "num_source_classes": 3,
         # Dataset metadata
         "n_train": n_real,
         "n_real": n_real,
@@ -298,6 +372,7 @@ def main() -> None:
             "active_dims": specific_active_dims,
             "lengthscales": specific_lengthscales,
             "outputscale": specific_outputscale,
+            **specific_extras,
         },
         "rbf_time": {
             "active_dims": rbf_active_dims,

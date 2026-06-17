@@ -123,7 +123,7 @@ class GatedGaussianLikelihood(_GaussianLikelihoodBase):
     def __init__(
         self,
         time_idx: int = 9,
-        gate_tau: float = 0.05,
+        gate_tau: float = 0.10,
         noise_constraint=None,
         noise_prior=None,
         **kwargs,

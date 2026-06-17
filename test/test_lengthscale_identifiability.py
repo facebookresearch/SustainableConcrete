@@ -52,6 +52,7 @@ import torch
 
 from boxcrete import compute_loo_cv, fit_strength_gp
 from boxcrete.priors import (
+    ComposedLengthscalePrior,
     WithinGroupShrinkagePrior,
     _AGGREGATE_LENGTHSCALE_GROUP,
     _BINDER_LENGTHSCALE_GROUP,
@@ -239,19 +240,28 @@ class TestStrengthLengthscaleIdentifiability(unittest.TestCase):
         params = _load_strength_params()
         aug_names = _augmented_feature_names(params)
 
-        # ``matern_specific`` covers all d_aug = 17 augmented dims.
         # ``matern_blind`` excludes the source dim (index 7), so it has
-        # 16 lengthscales — assert with the source feature dropped.
+        # ``len(aug_names) - 1`` lengthscales.
+        # ``matern_specific`` (production: joint_hamming_matern) also
+        # excludes the source dim — the source enters via the Hamming
+        # penalty α inside the joint distance, not via a per-dim ARD
+        # lengthscale.
         no_source_aug_names = [n for i, n in enumerate(aug_names) if i != _SOURCE_DIM]
-        self.assertEqual(len(specific_ls), len(aug_names))
+        self.assertEqual(
+            len(specific_ls),
+            len(no_source_aug_names),
+            f"matern_specific has {len(specific_ls)} lengthscales; "
+            f"expected {len(no_source_aug_names)} (joint kernel layout).",
+        )
         self.assertEqual(len(blind_ls), len(no_source_aug_names))
         # Number of raw dims (composition + time, before engineered
-        # features are appended). matern_blind drops the source dim, so
-        # its raw count is one less.
-        n_raw_specific = len(params["raw_feature_names"])
-        n_raw_blind = n_raw_specific - 1
+        # features are appended). matern_blind and matern_specific both
+        # drop the source dim under the joint kernel.
+        n_raw_specific = len(params["raw_feature_names"]) - 1
+        specific_names = no_source_aug_names
+        n_raw_blind = len(params["raw_feature_names"]) - 1
         for ls, names, label, n_raw in [
-            (specific_ls, aug_names, "matern_specific", n_raw_specific),
+            (specific_ls, specific_names, "matern_specific", n_raw_specific),
             (blind_ls, no_source_aug_names, "matern_blind", n_raw_blind),
         ]:
             self._assert_no_violations(
@@ -549,29 +559,51 @@ class TestStrengthLengthscaleIdentifiability(unittest.TestCase):
     # The default prior is actually being installed by fit_strength_gp.
     # ------------------------------------------------------------------
     def test_fit_strength_gp_installs_default_prior(self):
-        """Catch a regression where the default kwarg gets accidentally
-        flipped to None, silently disabling the prior. V2's production fit
-        installs the ``WithinGroupShrinkagePrior`` independently on
-        BOTH ``matern_blind`` AND ``matern_specific`` (see
-        ``_build_b_double_prime_kernel_for_aug_dim`` in
-        ``boxcrete/strength_model.py``)."""
+        """fit_strength_gp installs a within-group shrinkage prior on
+        BOTH the blind Matern and the source-specific kernel. Guards
+        against the prior being silently disabled or installed on only
+        one branch."""
         gp, *_ = _fit_default_strength_gp()
         # Navigate the V2 kernel:
         # _TimeGatedKernel(AdditiveKernel(
-        #   ScaleKernel(matern_blind), ScaleKernel(matern_specific),
+        #   ScaleKernel(matern_blind), ScaleKernel(specific),
         #   ScaleKernel(rbf_time)
         # ))
         additive = gp.covar_module.base_kernel
-        for label, idx in [("matern_blind", 0), ("matern_specific", 1)]:
-            matern = additive.kernels[idx].base_kernel
+        accepted_prior_types = (
+            WithinGroupShrinkagePrior,
+            ComposedLengthscalePrior,  # v5+ default wraps the within-group
+            # penalty alongside the LogNormal
+            # ARD-Matern baseline.
+        )
+        for label, idx in [("matern_blind", 0), ("specific", 1)]:
+            sub = additive.kernels[idx].base_kernel
+            # Two possible layouts:
+            # (a) standard MaternKernel with .lengthscale_prior attr
+            #     (blind branch).
+            # (b) JointHammingMaternKernel where the prior is installed
+            #     as a named prior on the custom raw_feat_lengthscale
+            #     parameter (specific branch in production).
+            prior_obj = getattr(sub, "lengthscale_prior", None)
+            if prior_obj is None:
+                # Walk named_priors() for the joint-kernel case.
+                # named_priors() yields (name, parent_module, prior,
+                # closure) tuples; we want the prior object.
+                for tup in sub.named_priors():
+                    candidate = tup[2] if len(tup) >= 3 else None
+                    if isinstance(candidate, accepted_prior_types):
+                        prior_obj = candidate
+                        break
             self.assertIsInstance(
-                matern.lengthscale_prior,
-                WithinGroupShrinkagePrior,
+                prior_obj,
+                accepted_prior_types,
                 msg=(
-                    f"fit_strength_gp did not install the default "
-                    f"WithinGroupShrinkagePrior on {label}. "
-                    "Check the lengthscale_prior kwarg default in "
-                    "_build_b_double_prime_kernel_for_aug_dim."
+                    f"fit_strength_gp did not install a within-group "
+                    f"shrinkage prior (WithinGroupShrinkagePrior or "
+                    f"ComposedLengthscalePrior) on {label}. "
+                    "Check the lengthscale_prior kwarg in "
+                    "_build_b_double_prime_kernel_for_aug_dim (blind) "
+                    "and in _categorical_source_branch (specific)."
                 ),
             )
 

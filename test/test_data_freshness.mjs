@@ -98,9 +98,15 @@ function check(cond, msg) {
   const TOL = 1e-6;
   let maxGwpDelta = 0;
   let maxCostDelta = 0;
+  const classDim = gwpParams.class_dim;
   for (let i = 0; i < compositions.compositions.length; i++) {
     const comp = compositions.compositions[i];
-    const ms = comp[7] >= 0.5 ? 1 : 0;
+    // Use the same class-dim lookup as the explorer's predictGWP path.
+    // The pre-v5 freshness test used `comp[7] >= 0.5 ? 1 : 0` which
+    // collapsed v5's class 2 to class 1 — wrong since v5 has 3 classes.
+    const ms = typeof classDim === "number"
+      ? Math.round(comp[classDim])
+      : 0;
     const liveGwp = predictGWP(comp, gwpParams, ms).mean;
     const storedGwp = compositions.gwp_predictions[i];
     if (typeof storedGwp === "number") {

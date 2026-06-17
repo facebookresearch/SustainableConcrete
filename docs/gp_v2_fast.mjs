@@ -37,6 +37,42 @@ export function predictStrengthCurveV2(
   const specificActiveDims = params.matern_specific.active_dims;
   const specificLS = params.matern_specific.lengthscales;
   const specificOS = params.matern_specific.outputscale;
+  // Source-aware specific-branch dispatch. The v5 default
+  // ``joint_hamming_matern`` adds an α·1[c_i ≠ c_j] term inside the
+  // Matern_3/2 distance; ``onehot`` (and the schema-v2 path) use
+  // Matern_5/2 over the active dims. See ``docs/gp.mjs::kernel`` and
+  // ``boxcrete/kernels.py::JointHammingMaternKernel``.
+  const specificKind =
+    params.matern_specific.source_kernel_kind || "onehot";
+  const specificSourceDim = params.matern_specific.source_dim;
+  const specificAlpha = params.matern_specific.alpha;
+  const specificNu = params.matern_specific.nu;
+  if (
+    specificKind === "joint_hamming_matern" &&
+    !(specificNu === 0.5 || specificNu === 1.5 || specificNu === 2.5)
+  ) {
+    throw new Error(
+      `predictStrengthCurveV2: joint_hamming_matern requires ` +
+      `nu in {0.5, 1.5, 2.5}; got ${specificNu}.`,
+    );
+  }
+  if (
+    specificKind !== "joint_hamming_matern" &&
+    specificKind !== "onehot"
+  ) {
+    throw new Error(
+      `predictStrengthCurveV2: source_kernel_kind=${JSON.stringify(specificKind)} ` +
+      `is not implemented in the batched fast path. ` +
+      `Supported: "joint_hamming_matern", "onehot".`,
+    );
+  }
+  // Precomputed constants for Matern radial bases (avoid Math.sqrt(3)/5
+  // inside the hot loop).
+  const SQRT3 = 1.7320508075688772;
+  const isJoint = specificKind === "joint_hamming_matern";
+  const isMatern32 = isJoint && specificNu === 1.5;
+  const isMatern52Specific = !isJoint || specificNu === 2.5;
+  const isMatern12 = isJoint && specificNu === 0.5;
   const rbfTimeIdx = params.rbf_time.active_dims[0];
   const rbfLS = params.rbf_time.lengthscale;
   const rbfOS = params.rbf_time.outputscale;
@@ -144,16 +180,36 @@ export function predictStrengthCurveV2(
       let s5r = SQRT5 * r;
       const kBlind = blindOS * (1 + s5r + (5 * r2) / 3) * Math.exp(-s5r);
 
-      // M_specific
+      // M_specific — joint_hamming_matern (default v5) or matern52 (onehot).
       r2 = 0;
       for (let k = 0; k < nSpecificDims; k++) {
         const dim = specificActiveDims[k];
         const dd = (testX[xOff + dim] - X_flat[rowOff + dim]) / specificLS[k];
         r2 += dd * dd;
       }
-      r = Math.sqrt(r2);
-      s5r = SQRT5 * r;
-      const kSpecific = specificOS * (1 + s5r + (5 * r2) / 3) * Math.exp(-s5r);
+      let kSpecific;
+      if (isJoint) {
+        // Add Hamming categorical penalty: alpha if the source-dim
+        // class differs. Source dim is identity-normalized so values
+        // are integer-valued in {0, 1, ..., C-1}.
+        const c_test = Math.round(testX[xOff + specificSourceDim]);
+        const c_train = Math.round(X_flat[rowOff + specificSourceDim]);
+        if (c_test !== c_train) r2 += specificAlpha;
+        r = Math.sqrt(r2);
+        if (isMatern32) {
+          const s3r = SQRT3 * r;
+          kSpecific = specificOS * (1 + s3r) * Math.exp(-s3r);
+        } else if (isMatern52Specific) {
+          s5r = SQRT5 * r;
+          kSpecific = specificOS * (1 + s5r + (5 * r2) / 3) * Math.exp(-s5r);
+        } else { // isMatern12
+          kSpecific = specificOS * Math.exp(-r);
+        }
+      } else {
+        r = Math.sqrt(r2);
+        s5r = SQRT5 * r;
+        kSpecific = specificOS * (1 + s5r + (5 * r2) / 3) * Math.exp(-s5r);
+      }
 
       // RBF on time
       const dt = (testX[xOff + rbfTimeIdx] - X_flat[rowOff + rbfTimeIdx]) / rbfLS;

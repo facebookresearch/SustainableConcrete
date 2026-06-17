@@ -103,6 +103,57 @@ function matern52ActiveDims(x1, x2, activeDims, lengthscales, outputscale) {
 }
 
 /**
+ * Joint Hamming Matern kernel — the v5 production source-aware branch.
+ *
+ * Combines per-feature ARD over continuous dims with a Hamming-style
+ * categorical penalty on a single integer-valued source dim, ALL
+ * inside one Matern radial basis:
+ *
+ *   d²(x1, x2) = Σ_f ((x1[f] - x2[f]) / ell_f)²   +   α · 1[c1 ≠ c2]
+ *   K(x1, x2)  = outputscale · M_{nu}(sqrt(d²))
+ *
+ * where:
+ *   activeDims     — continuous feature dim indices (excludes sourceDim)
+ *   lengthscales   — per-feature ARD lengthscales (length matches activeDims)
+ *   sourceDim      — index of the categorical class dim in x
+ *   alpha          — scalar categorical penalty (the "α" in d²)
+ *   nu             — Matern smoothness (1.5 = Matern_3/2; 2.5 = Matern_5/2)
+ *   outputscale    — kernel outputscale
+ *
+ * Supports nu ∈ {0.5, 1.5, 2.5}. Default v5 production is nu = 1.5.
+ */
+function jointHammingMatern(
+  x1, x2, activeDims, lengthscales, sourceDim, alpha, nu, outputscale,
+) {
+  let r2 = 0;
+  for (let k = 0; k < activeDims.length; k++) {
+    const i = activeDims[k];
+    const d = (x1[i] - x2[i]) / lengthscales[k];
+    r2 += d * d;
+  }
+  // Categorical (Hamming) penalty: alpha if classes differ, else 0.
+  // Source dim is NOT normalized (normalize_lower=0, normalize_upper=1
+  // for the source slot gives identity); class labels are integers
+  // {0, 1, 2}. Round-and-compare handles any FP slop.
+  const c1 = Math.round(x1[sourceDim]);
+  const c2 = Math.round(x2[sourceDim]);
+  if (c1 !== c2) r2 += alpha;
+  const r = Math.sqrt(r2);
+  if (nu === 1.5) {
+    const sqrt3r = Math.sqrt(3) * r;
+    return outputscale * (1 + sqrt3r) * Math.exp(-sqrt3r);
+  }
+  if (nu === 2.5) {
+    const sqrt5r = Math.sqrt(5) * r;
+    return outputscale * (1 + sqrt5r + (5 * r2) / 3) * Math.exp(-sqrt5r);
+  }
+  if (nu === 0.5) {
+    return outputscale * Math.exp(-r);
+  }
+  throw new Error(`jointHammingMatern: unsupported nu=${nu}; expected 0.5, 1.5, or 2.5.`);
+}
+
+/**
  * Time gate: h(t) = 1 - exp(-t / tau).
  * Applied multiplicatively to the kernel: K_gated(x1, x2) = h(t1) * K(x1, x2) * h(t2).
  * This makes the prior covariance vanish at t = 0, structurally enforcing the
@@ -120,13 +171,22 @@ function gateFunction(t, tau) {
  * Combined kernel.
  *
  * Schema v1 (legacy): ScaleKernel(Matérn5/2) + ScaleKernel(RBF on time).
- * Schema v2 (V2 strength GP): time-gated multi-Matern.
- *   K_gated(x1, x2) = h(t1) * (M_blind + M_specific + RBF_time) * h(t2)
- * where:
- *   - M_blind:    matern52 over all dims EXCEPT the source dim
- *   - M_specific: matern52 over ALL dims (including source)
- *   - RBF_time:   rbf on the time dim
- *   - h(t) = 1 - exp(-t / tau) with tau = 0.05
+ * Schema v2: time-gated multi-Matern (blind + specific + RBF on time)
+ *   with the specific branch as ScaleKernel(Matern52) (legacy_continuous_ard).
+ * Schema v3 (v5 production): time-gated multi-Matern where the specific
+ *   branch is one of:
+ *     - "joint_hamming_matern" (v5 production default): a single
+ *       JointHammingMaternKernel — Matern_{nu} over a joint distance
+ *       combining feature ARD with a Hamming-style categorical
+ *       penalty α on the source dim. See `jointHammingMatern` above.
+ *     - "onehot" (pre-v5 path): ScaleKernel(Matern52ActiveDims).
+ *     - (others: hamming, indexkernel — only the v5-production
+ *       joint_hamming_matern and onehot paths are exercised by the JS
+ *       port; the regenerator can emit those but the JS would need
+ *       additional evaluation logic for the categorical-product
+ *       topologies.)
+ *
+ * K_gated(x1, x2) = h(t1) * (M_blind + K_specific + RBF_time) * h(t2)
  */
 function kernel(x1, x2, params) {
   const timeDim = params.time_dim_aug;
@@ -137,9 +197,27 @@ function kernel(x1, x2, params) {
   let kBase = matern52ActiveDims(
     x1, x2, blind.active_dims, blind.lengthscales, blind.outputscale,
   );
-  kBase += matern52ActiveDims(
-    x1, x2, specific.active_dims, specific.lengthscales, specific.outputscale,
-  );
+  // Specific branch: dispatch on source_kernel_kind. Default
+  // (no kind set) is the schema-v2 ScaleKernel(Matern52) path.
+  const specificKind = specific.source_kernel_kind;
+  if (specificKind === "joint_hamming_matern") {
+    kBase += jointHammingMatern(
+      x1, x2,
+      specific.active_dims, specific.lengthscales,
+      specific.source_dim, specific.alpha, specific.nu,
+      specific.outputscale,
+    );
+  } else if (specificKind === "onehot" || specificKind == null) {
+    kBase += matern52ActiveDims(
+      x1, x2, specific.active_dims, specific.lengthscales, specific.outputscale,
+    );
+  } else {
+    throw new Error(
+      `kernel: schema_version=3 with source_kernel_kind=` +
+      `${JSON.stringify(specificKind)} is not implemented in the JS port. ` +
+      `Supported: "joint_hamming_matern", "onehot".`,
+    );
+  }
   // RBF on time dim only
   const tIdx = rbfT.active_dims[0];
   kBase += rbf(x1[tIdx], x2[tIdx], rbfT.lengthscale, rbfT.outputscale);
@@ -265,12 +343,32 @@ function cholesky(A) {
  * @param {object} params - Raw parameters from strength.json.
  */
 export function initStrengthModel(params) {
-  if (params.schema_version !== 2) {
+  if (params.schema_version !== 2 && params.schema_version !== 3) {
     throw new Error(
-      "initStrengthModel: only schema_version=2 is supported. " +
+      "initStrengthModel: only schema_version=2 or 3 is supported. " +
       "The legacy v1 schema was retired in 2026-05-17 — see " +
       "experiments/STRENGTH_GP_BENCHMARK.md §0a."
     );
+  }
+  // schema_version 3 ships the v5 categorical Material Source kernel.
+  // The JS port supports the "joint_hamming_matern" (production) and
+  // "onehot" specific-branch kinds; other categorical-product kinds
+  // (hamming, indexkernel) regenerate fine on the Python side but the
+  // JS evaluation path is intentionally not implemented because v5
+  // production exclusively uses joint_hamming_matern.
+  if (params.schema_version === 3) {
+    const kind = params.matern_specific && params.matern_specific.source_kernel_kind;
+    const supported = ["joint_hamming_matern", "onehot"];
+    if (kind && !supported.includes(kind)) {
+      throw new Error(
+        "initStrengthModel: schema_version=3 with " +
+        `source_kernel_kind=${JSON.stringify(kind)} is not implemented in the JS port. ` +
+        `Supported: ${JSON.stringify(supported)}. To exercise an alternative ` +
+        "source kernel, set the corresponding `source_kernel` parameter in " +
+        "`boxcrete.kernels.make_gated_strength_kernel_builder` and regenerate " +
+        "the JS port's evaluation logic in `docs/gp.mjs::kernel`."
+      );
+    }
   }
   if (!Array.isArray(params.Y_train)) {
     throw new Error(

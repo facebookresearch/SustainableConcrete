@@ -93,8 +93,9 @@ let scatterTransition = null; // {startTime, duration, fromX, fromY, toX, toY, f
 let _curveYMax = null; // smoothly interpolated y-axis max for strength curve
 let _curveYMaxTarget = null; // target y-max (for animation loop convergence check)
 // Material Source curve transition: when the user toggles Material Source, we
-// snapshot the pre-toggle strength curve and blend it linearly with the
-// post-toggle curve over `duration` ms. Because Material Source is binary,
+// snapshot the pre-toggle posterior curve and blend smoothly into the
+// post-toggle curve over `duration` ms. Because Material Source is
+// categorical,
 // composition-level interpolation would feed the GP non-categorical values
 // and yield a noisy intermediate prediction. Curve-level interpolation keeps
 // the visual aesthetic smooth without violating the GP's input domain.
@@ -200,6 +201,21 @@ async function init() {
 }
 
 // --- Sliders ---
+// Material Source class labels — keyed by integer class index.
+// Index order matches the integer-encoded ``Material Source`` column:
+//   0 = Set 1 (mortar, no aggregate)
+//   1 = Set 2 (Heidelberg cement / Class C fly ash concrete)
+//   2 = Set 3 (Amrize cement / Class F fly ash concrete)
+// See ``docs/materials_background.md`` for the chemistry distinctions.
+// Adding a 4th class only requires extending this map plus the
+// ``boxcrete.utils.DEFAULT_X_COLUMNS_BOUNDS`` upper bound — the
+// per-class toggle UI auto-discovers the count from the slider bound.
+const MATERIAL_SOURCE_LABELS = {
+  0: "Set 1",
+  1: "Set 2",
+  2: "Set 3",
+};
+
 // Ingredient descriptions — shown when clicking the ingredient name
 const ingredientInfo = {
   "Cement": "Portland cement (OPC) is the primary binder in concrete. Hydration of its clinker minerals (C₃S, C₂S, C₃A, C₄AF) produces calcium silicate hydrate (C-S-H) gel, which gives concrete its strength. High early strength contribution but the most carbon-intensive ingredient — producing 1 tonne of cement releases ~0.6–0.9 tonnes of CO₂ from calcination and kiln fuel.",
@@ -209,7 +225,7 @@ const ingredientInfo = {
   "HRWR": "High-range water reducer (superplasticizer). A chemical admixture that disperses cement particles via electrostatic or steric repulsion, dramatically improving flowability without adding water. Enables ultra-low W/B ratios (0.20–0.25) that would otherwise be unworkable. Essential for high-performance concrete.",
   "Fine Aggregate": "Sand — provides bulk volume, dimensional stability, and load transfer in the morite matrix. Particle size distribution (gradation) affects packing density and paste demand. Typically river sand or manufactured sand from crushed rock.",
   "Coarse Aggregates": "Gravel or crushed stone (>4.75 mm) — forms the structural skeleton of concrete. The interfacial transition zone (ITZ) between paste and aggregate is often the weakest link. Well-graded aggregates improve packing and reduce paste demand. Typically 60–75% of concrete by volume.",
-  "Material Source": "Identifies the source of raw materials. Different sources have varying mineral compositions, particle size distributions, and reactivity — all of which affect strength development, workability, and durability. Source-specific models account for this variability.",
+  "Material Source": "The dataset has three distinct material-source classes, each with a different cement plant, fly-ash chemistry (Class C vs Class F), aggregate origin, and HRWR brand — producing measurably different strength-development surfaces.<br><br><strong>Set 1 (Mortar)</strong> — Amrize cement + Class C fly ash, zero coarse aggregate.<br><strong>Set 2</strong> — Heidelberg cement + Class C fly ash + limestone coarse aggregate.<br><strong>Set 3</strong> — Amrize cement + <strong>Class F</strong> fly ash + binary gravel coarse aggregate.<br><br> Full sources / plant locations / HRWR brands in <code>docs/materials_background.md</code>.",
   "Temperature": "Curing temperature significantly affects hydration kinetics. Higher temperatures accelerate early hydration (faster early strength) but can reduce ultimate strength due to non-uniform hydrate distribution. Low temperatures slow hydration but can improve long-term microstructure. The Arrhenius-based maturity concept links time and temperature to strength development.",
 };
 
@@ -228,7 +244,11 @@ function buildSliders() {
   for (let i = 0; i < colNames.length; i++) {
     const col = colNames[i];
 
-    // Material Source gets a toggle instead of a slider
+    // Material Source gets per-class toggle buttons instead of a slider.
+    // The number of classes is read from the slider bound's range
+    // (``max + 1``) so adding a 4th class only requires re-deriving the
+    // bound — no code change. Labels are taken from
+    // ``MATERIAL_SOURCE_LABELS`` (defined below).
     if (col === "Material Source") {
       const group = document.createElement("div");
       // `material-source-group` lets mobile CSS hide the redundant value-span
@@ -246,42 +266,42 @@ function buildSliders() {
       });
       const valueSpan = document.createElement("span");
       valueSpan.id = `val-${i}`;
-      valueSpan.textContent = currentComposition[i] === 0 ? "Source A" : "Source B";
+      const numClasses = Math.round(bounds[col].max - bounds[col].min) + 1;
+      const labelFor = (cls) =>
+        MATERIAL_SOURCE_LABELS[cls] || `Source ${cls}`;
+      valueSpan.textContent = labelFor(Math.round(currentComposition[i]));
       label.append(nameSpan, valueSpan);
 
       const toggle = document.createElement("div");
       toggle.className = "toggle-row";
-      const btn0 = document.createElement("button");
-      btn0.textContent = "Source A";
-      btn0.className = currentComposition[i] === 0 ? "toggle-btn active" : "toggle-btn";
-      btn0.addEventListener("click", () => {
-        // Smooth curve-level transition (see `triggerMaterialSourceTransition`).
-        // Updates `currentComposition[i]` and `displayPreviewComp[i]` internally.
-        triggerMaterialSourceTransition(i, 0);
-        btn0.className = "toggle-btn active";
-        btn1.className = "toggle-btn";
-        document.getElementById(`val-${i}`).textContent = "Source A";
-        update();
-        // Refresh mix insight: the new composition (median + other MS) is
-        // typically NOT in the training set, so the previous mix's description
-        // would otherwise persist stale. Schedule with the same delay used by
-        // `animateToComposition` so the insight settles after the curve does.
-        scheduleInsightUpdate();
-        checkExtrapolationWarning();
-      });
-      const btn1 = document.createElement("button");
-      btn1.textContent = "Source B";
-      btn1.className = currentComposition[i] === 1 ? "toggle-btn active" : "toggle-btn";
-      btn1.addEventListener("click", () => {
-        triggerMaterialSourceTransition(i, 1);
-        btn0.className = "toggle-btn";
-        btn1.className = "toggle-btn active";
-        document.getElementById(`val-${i}`).textContent = "Source B";
-        update();
-        scheduleInsightUpdate();
-        checkExtrapolationWarning();
-      });
-      toggle.append(btn0, btn1);
+      const buttons = [];
+      for (let cls = 0; cls < numClasses; cls++) {
+        const btn = document.createElement("button");
+        btn.textContent = labelFor(cls);
+        btn.className =
+          Math.round(currentComposition[i]) === cls
+            ? "toggle-btn active"
+            : "toggle-btn";
+        btn.addEventListener("click", () => {
+          // Smooth curve-level transition (see `triggerMaterialSourceTransition`).
+          // Updates `currentComposition[i]` and `displayPreviewComp[i]` internally.
+          triggerMaterialSourceTransition(i, cls);
+          buttons.forEach((b, j) => {
+            b.className = j === cls ? "toggle-btn active" : "toggle-btn";
+          });
+          document.getElementById(`val-${i}`).textContent = labelFor(cls);
+          update();
+          // Refresh mix insight: the new composition (median + other MS)
+          // is typically NOT in the training set, so the previous mix's
+          // description would otherwise persist stale. Schedule with the
+          // same delay used by `animateToComposition` so the insight
+          // settles after the curve does.
+          scheduleInsightUpdate();
+          checkExtrapolationWarning();
+        });
+        buttons.push(btn);
+        toggle.appendChild(btn);
+      }
 
       group.append(label, toggle);
       container.appendChild(group);
@@ -583,8 +603,8 @@ function animateToComposition(targetComp) {
 }
 
 // --- Material Source curve-level transition ---
-// Material Source is a binary categorical input; feeding the GP fractional
-// values (0.5) gives a noisy intermediate prediction outside the training
+// Material Source is a categorical input; feeding the GP fractional
+// values (e.g. 0.5 between classes 0 and 1) gives a noisy intermediate
 // distribution. Instead, snapshot the pre-toggle posterior curve, commit the
 // new MS value to `currentComposition`, and let `drawStrengthCurve` blend
 // the cached `from` curve with each frame's freshly computed `to` curve over
@@ -687,12 +707,13 @@ function setComposition(comp) {
   if (msIdx >= 0) {
     const msVal = Math.round(comp[msIdx]);
     const msEl = document.getElementById(`val-${msIdx}`);
-    if (msEl) msEl.textContent = msVal === 0 ? "Source A" : "Source B";
+    const labelFor = (cls) =>
+      MATERIAL_SOURCE_LABELS[cls] || `Source ${cls}`;
+    if (msEl) msEl.textContent = labelFor(msVal);
     const buttons = document.querySelectorAll(".toggle-btn");
-    if (buttons.length >= 2) {
-      buttons[0].className = msVal === 0 ? "toggle-btn active" : "toggle-btn";
-      buttons[1].className = msVal === 1 ? "toggle-btn active" : "toggle-btn";
-    }
+    buttons.forEach((btn, j) => {
+      btn.className = j === msVal ? "toggle-btn active" : "toggle-btn";
+    });
   }
   update();
 }

@@ -79,18 +79,42 @@ class TestKernelLayout(unittest.TestCase):
 
     def test_each_sub_kernel_is_a_scale_kernel_with_lengthscale(self):
         """Each ``base.kernels[i]`` is a ``ScaleKernel`` whose
-        ``.base_kernel.lengthscale`` is a tensor — the path used by
+        ``.base_kernel`` exposes a categorical-aware Matern with
+        lengthscale tensor(s) — the path used by
         ``regenerate_strength_json.py`` and downstream diagnostic
-        tooling."""
+        tooling.
+
+        Production source kernel (``joint_hamming_matern``) layout:
+        ``ScaleKernel(JointHammingMaternKernel)`` whose
+        ``.base_kernel.lengthscale`` is the property-aliased
+        ``raw_feat_lengthscale`` (a tensor of per-feature ARD
+        lengthscales).
+        """
         base = self.model.covar_module.base_kernel
         for i, sub in enumerate(base.kernels):
             self.assertTrue(
                 hasattr(sub, "base_kernel"),
                 f"sub-kernel {i} should expose .base_kernel (ScaleKernel)",
             )
-            ls = sub.base_kernel.lengthscale
+            inner = sub.base_kernel
+            # Either inner.lengthscale is a Tensor directly, or inner is
+            # a ProductKernel whose Matern half (inner.kernels[1]) has
+            # the lengthscale Tensor.
+            ls = inner.lengthscale
+            if ls is None:
+                # ProductKernel path: walk to the Matern half.
+                self.assertTrue(
+                    hasattr(inner, "kernels"),
+                    f"sub-kernel {i}.base_kernel has no lengthscale and "
+                    "is not a ProductKernel — unknown layout",
+                )
+                matern_half = list(inner.kernels)[-1]
+                ls = matern_half.lengthscale
             self.assertIsInstance(
-                ls, torch.Tensor, f"sub-kernel {i}.base_kernel.lengthscale not a Tensor"
+                ls,
+                torch.Tensor,
+                f"sub-kernel {i}.base_kernel.lengthscale not a Tensor "
+                "(neither direct nor via ProductKernel.kernels[-1])",
             )
 
     def test_canonical_introspection_path_yields_three_lengthscale_tensors(self):
@@ -101,19 +125,37 @@ class TestKernelLayout(unittest.TestCase):
         # Order: [blind_matern, specific_matern, rbf_time] —
         # asserted by ``test_lengthscale_identifiability.py`` and used by
         # the canonical writer at ``experiments/regenerate_strength_json.py``.
-        blind_ls = base.kernels[0].base_kernel.lengthscale.flatten()
-        specific_ls = base.kernels[1].base_kernel.lengthscale.flatten()
-        rbf_ls = base.kernels[2].base_kernel.lengthscale.flatten()
+
+        def _walk_to_lengthscale(scale_kernel):
+            """Return the ARD lengthscale Tensor on this ScaleKernel's
+            inner kernel, walking through ProductKernel if needed.
+            Used by ``regenerate_strength_json.py``."""
+            inner = scale_kernel.base_kernel
+            ls = inner.lengthscale
+            if ls is None:
+                # ProductKernel path (categorical * Matern); the Matern
+                # half is the last child.
+                ls = list(inner.kernels)[-1].lengthscale
+            return ls
+
+        blind_ls = _walk_to_lengthscale(base.kernels[0]).flatten()
+        specific_ls = _walk_to_lengthscale(base.kernels[1]).flatten()
+        rbf_ls = _walk_to_lengthscale(base.kernels[2]).flatten()
         # Derive expected ARD dim counts from the same constants the
         # production fit uses, so adding a feature to ``F5_ALLLOG_FEATURES``
         # or a column to ``DEFAULT_X_COLUMNS`` doesn't fire this test
         # opaquely — the test failure (if any) will then come from a
         # legitimate kernel-structure change, not a stale hardcoded constant.
         d_aug = len(DEFAULT_X_COLUMNS) + len(F5_ALLLOG_FEATURES)
-        # blind matern excludes the time dim; specific spans all aug dims;
-        # rbf time is a single-dim kernel on time only.
+        # blind matern excludes the time dim; specific spans all
+        # non-source-non-time dims (the categorical branch's Matern half
+        # operates on the same active_dims as blind); rbf time is a
+        # single-dim kernel on time only.
         self.assertEqual(blind_ls.numel(), d_aug - 1)
-        self.assertEqual(specific_ls.numel(), d_aug)
+        # In production, source_kernel = joint_hamming_matern: the
+        # joint kernel's per-feature lengthscales span d_aug - 1 dims
+        # (excluding the Material Source dim, handled via alpha).
+        self.assertEqual(specific_ls.numel(), d_aug - 1)
         self.assertEqual(rbf_ls.numel(), 1)
 
     def test_short_path_through_covar_module_kernels_does_not_exist(self):

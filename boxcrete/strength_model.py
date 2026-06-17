@@ -155,12 +155,24 @@ def _get_v2_input_transform(
     )
     log = Log10(indices=time_index)
 
-    # Step 4: Normalize on non-time dims only (BoTorch's Normalize
-    # supports `indices=` to scope which columns it touches).
-    non_time_dims = [i for i in range(d_aug) if i not in time_index]
+    # Step 4: Normalize on non-time AND non-source dims (BoTorch's
+    # Normalize supports `indices=` to scope which columns it touches).
+    # The time column intentionally bypasses Normalize (see step 4 docs
+    # above). The source column ALSO bypasses Normalize: under the v5
+    # categorical source kernel (IndexKernel / CategoricalKernel),
+    # ``X[:, _SOURCE_DIM]`` is consumed as integer task indices in
+    # ``{0, 1, 2}``; truncating Normalize'd float values to integers
+    # would silently break the kernel evaluation. The ``onehot_ard``
+    # path is exempt because its source dim is one-hot-expanded
+    # upstream into 3 binary cols (those don't need normalisation
+    # since they're already in ``{0, 1}``).
+    source_dim = IDX["source"]
+    non_time_non_source_dims = [
+        i for i in range(d_aug) if i not in time_index and i != source_dim
+    ]
     tf_normalize = Normalize(
         d_aug,
-        indices=torch.tensor(non_time_dims),
+        indices=torch.tensor(non_time_non_source_dims),
         bounds=augmented,
     )
     return ChainedInputTransform(
