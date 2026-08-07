@@ -21,6 +21,7 @@ import { dirname, resolve } from "node:path";
 import {
   initStrengthModel,
   initWASM,
+  predictGWP,
   predictStrengthCurve,
 } from "../docs/gp.mjs";
 
@@ -79,6 +80,18 @@ console.log(
 
 // Write back, preserving everything else.
 compositions.strength_predictions = newPreds;
+
+// Regenerate gwp_predictions from the current (3-class) gwp.json so the
+// Pareto x-axis + freshness checks stay in sync. Material source is the
+// raw class at column 7 (0/1/2); predictGWP indexes coefficients by it.
+const gwpParams = JSON.parse(
+  readFileSync(resolve(docsRoot, "model/gwp.json"), "utf-8"),
+);
+compositions.gwp_predictions = compositions.compositions.map((comp) => {
+  const ms = Math.round(comp[7]);
+  return predictGWP(comp, gwpParams, ms).mean;
+});
+console.log(`  regenerated gwp_predictions for ${compositions.gwp_predictions.length} compositions.`);
 
 // Recompute the pareto_mask if present. It depends on strength_predictions
 // (used for the y-axis) and gwp_predictions (x-axis), so a stale

@@ -715,12 +715,12 @@ class TestDataRegressions(unittest.TestCase):
         cls.dataset = load_concrete_strength(data_path=DATA_PATH)
 
     def test_default_data_size(self):
-        self.assertEqual(self.dataset.X.shape[0], 647)
+        self.assertEqual(self.dataset.X.shape[0], 670)
         self.assertEqual(self.dataset.X.shape[1], len(DEFAULT_X_COLUMNS))
 
     def test_gwp_data_count(self):
         X_gwp, _, _, _ = self.dataset.gwp_data
-        self.assertEqual(X_gwp.shape[0], 144)
+        self.assertEqual(X_gwp.shape[0], 149)
 
     def test_slump_data_count(self):
         # setUpClass loads with DEFAULT_Y_COLUMNS (no slump column), so we
@@ -730,13 +730,13 @@ class TestDataRegressions(unittest.TestCase):
             Y_columns=SLUMP_Y_COLUMNS,
         )
         # Slump data unchanged even with SLUMP_Y_COLUMNS
-        self.assertEqual(dataset.X.shape[0], 647)
+        self.assertEqual(dataset.X.shape[0], 670)
         X_sl, _, _, _ = dataset.slump_data
-        self.assertEqual(X_sl.shape[0], 64)
+        self.assertEqual(X_sl.shape[0], 61)
 
     def test_strength_28d_count(self):
         X_str, _, _ = self.dataset.strength_data_by_time(28.0)
-        self.assertEqual(X_str.shape[0], 137)
+        self.assertEqual(X_str.shape[0], 147)
 
     def test_gwp_linearity(self):
         """GWP should be a near-perfect linear function of composition.
@@ -856,6 +856,23 @@ class TestGetReferencePointWithCost(unittest.TestCase):
             get_reference_point("morter")
         with self.assertRaisesRegex(ValueError, "must be 'concrete' or 'mortar'"):
             get_reference_point("invalid", include_cost=True)
+
+
+class TestLoadValidation(unittest.TestCase):
+    def test_material_source_mismatch_raises(self):
+        # M1 is canonically class 0 (mortar); recording it as class 1 must
+        # trip the load-time consistency guard.
+        df = pd.DataFrame({"Mix Name": ["M1"], "Material Source": [1]})
+        with self.assertRaises(ValueError):
+            load_concrete_strength(data_path=df)
+
+    def test_material_source_mismatch_break_after_five(self):
+        # >=5 mismatches exercises the early-break path in the guard.
+        df = pd.DataFrame(
+            {"Mix Name": [f"M{i}" for i in range(1, 8)], "Material Source": [1] * 7}
+        )
+        with self.assertRaises(ValueError):
+            load_concrete_strength(data_path=df)
 
 
 if __name__ == "__main__":

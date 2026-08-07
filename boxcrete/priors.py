@@ -5,16 +5,26 @@
 
 """Lengthscale priors for the V2 strength GP.
 
-Hosts the within-group shrinkage prior used to soft-tie ARD lengthscales
-of materials playing interchangeable physical roles (cementitious binders
-and aggregates). The prior lives alongside the group-index constants it
-depends on so users searching for "where is the lengthscale prior?"
-land in one obvious place.
+Hosts:
+
+  * :class:`WithinGroupShrinkagePrior` — the original soft-tying prior
+    on cementitious-binder and aggregate ARD lengthscales (within a
+    single Matern's lengthscale tensor).
+  * :class:`ComposedLengthscalePrior` — the v5 default (introduced in
+    the materials-classes-and-lengthscale-prior stack): the within-group
+    quadratic penalty AND a per-element LogNormal baseline mirroring
+    BoTorch's ARD-Matern default. Adding the LogNormal baseline pulls
+    the previously-unprior'd lengthscales (Water, HRWR, Source, Temp,
+    Time, and the engineered features) toward √d-scale and prevents the
+    drift past the rail-detection threshold that produced the most
+    recent CI flake (``Time: ℓ = 288.13 > cap 100``).
 
 Public re-exports go through :mod:`boxcrete` for ergonomics.
 """
 
 from __future__ import annotations
+
+import math
 
 import torch
 from gpytorch.priors import LogNormalPrior
@@ -145,6 +155,106 @@ class WithinGroupShrinkagePrior(LogNormalPrior):
         return total / x.numel() * torch.ones_like(x)
 
 
+def _lognormal_baseline_loc(dim: int) -> float:
+    """BoTorch's standard ARD-Matern default ``loc`` for the LogNormal
+    lengthscale prior: ``sqrt(2) + 0.5 * ln(dim)``. Centred so the mode
+    of the LogNormal is at ``sqrt(dim)`` (the unit-cube ARD scale).
+    """
+    return math.sqrt(2.0) + 0.5 * math.log(max(int(dim), 1))
+
+
+_LOGNORMAL_BASELINE_SCALE = math.sqrt(3.0)
+"""BoTorch's standard ARD-Matern default ``scale`` for the LogNormal
+lengthscale prior. Wide enough to admit lengthscales from ~0.05·√d to
+~20·√d as roughly equally probable a priori; narrow enough to suppress
+the rail-detection-threshold drift past ``ℓ > 100``."""
+
+
+class ComposedLengthscalePrior(LogNormalPrior):
+    """Composition of :class:`WithinGroupShrinkagePrior` and the
+    BoTorch-default LogNormal ARD-Matern baseline.
+
+    Per-element ``log_prob(ℓ)`` returns
+
+        log p(ℓ_i) = log LogNormal(ℓ_i; loc, scale) + W_total / d
+
+    where:
+      * ``log LogNormal(ℓ_i; loc, scale)`` is the standard LogNormal
+        log-density at element ``i`` with shape parameters
+        ``loc = sqrt(2) + 0.5·ln(d)`` and ``scale = sqrt(3)``.
+      * ``W_total`` is the WithinGroupShrinkagePrior's total
+        (group-summed) penalty across the same ``ℓ`` vector.
+      * ``d`` is ``ℓ.numel()``.
+
+    GPyTorch wraps prior-augmented marginal-likelihoods via
+    ``prior.log_prob(ℓ).sum()``. The element-wise sum re-aggregates the
+    LogNormal log-density (full) and re-aggregates ``W_total / d * 1`` to
+    exactly ``W_total``. Combined: ``Σ_i log LogNormal_i + W_total``.
+
+    Args:
+        groups_with_sigma: ``[(group, sigma), ...]`` — the within-group
+            shrinkage groups (binder, aggregate). Same format as
+            :class:`WithinGroupShrinkagePrior`.
+        dim: lengthscale dimensionality.
+        lognormal_loc: optional override for the per-element LogNormal
+            ``loc``; defaults to BoTorch's ``sqrt(2) + 0.5·ln(dim)``.
+        lognormal_scale: optional override for the per-element LogNormal
+            ``scale``; defaults to BoTorch's ``sqrt(3)``.
+    """
+
+    def __init__(
+        self,
+        groups_with_sigma: list[tuple[tuple[int, ...], float]],
+        dim: int,
+        lognormal_loc: float | None = None,
+        lognormal_scale: float = _LOGNORMAL_BASELINE_SCALE,
+    ):
+        loc = (
+            _lognormal_baseline_loc(dim)
+            if lognormal_loc is None
+            else float(lognormal_loc)
+        )
+        # See WithinGroupShrinkagePrior.__init__ for the rationale on
+        # passing fully-shaped contiguous (1, dim) float64 tensors instead
+        # of scalar loc/scale (PyTorch 2.12+ aliased-storage error).
+        super().__init__(
+            loc=torch.full((1, dim), float(loc), dtype=torch.float64),
+            scale=torch.full((1, dim), float(lognormal_scale), dtype=torch.float64),
+        )
+        self._groups_with_sigma = groups_with_sigma
+        self._dim = dim
+        self._lognormal_loc = float(loc)
+        self._lognormal_scale = float(lognormal_scale)
+
+    def _within_group_total(self, x: torch.Tensor) -> torch.Tensor:
+        """Compute the WithinGroupShrinkagePrior's scalar total penalty
+        on ``x``.
+        """
+        log_x = x.log().flatten()
+        total = torch.zeros((), dtype=x.dtype, device=x.device)
+        for grp, sigma in self._groups_with_sigma:
+            if len(grp) < 2:
+                continue
+            grp_log = log_x[list(grp)]
+            sq_dev = ((grp_log - grp_log.mean()) ** 2).sum()
+            total = total - 0.5 * sq_dev / (sigma**2)
+        return total
+
+    def log_prob(self, x):
+        """Per-element log-density: LogNormal baseline + spread
+        within-group penalty.
+        """
+        # LogNormal baseline (per-element). Reuse the parent class's
+        # implementation, which already produces a per-element tensor of
+        # the same shape as x.
+        lognormal = super().log_prob(x)
+        within_total = self._within_group_total(x)
+        return lognormal + (within_total / x.numel()) * torch.ones_like(x)
+
+
+# --- Factory ----------------------------------------------------------------
+
+
 def _default_lengthscale_prior(d_in: int) -> WithinGroupShrinkagePrior | None:
     """Returns the production within-group shrinkage prior, or None if the
     input dimensionality doesn't match the production schema (in which case
@@ -169,9 +279,11 @@ def within_group_prior(
     source_dim: int | None = None,
     num_extras: int = 0,
     sigma: float = _LENGTHSCALE_SHRINKAGE_SIGMA,
-) -> WithinGroupShrinkagePrior:
-    """Within-group shrinkage prior over Cement/FlyAsh/Slag and
-    Fine/Coarse aggregate groups.
+    include_lognormal_baseline: bool = True,
+):
+    """Returns either :class:`WithinGroupShrinkagePrior` (legacy) or
+    :class:`ComposedLengthscalePrior` (default for v5+) on the production
+    Cement/FlyAsh/Slag and Fine/Coarse aggregate groups.
 
     Args:
         d_in: input dim of the kernel BEFORE excluding ``source_dim``.
@@ -187,6 +299,16 @@ def within_group_prior(
         sigma: shrinkage strength (smaller = harder tying). Default
             ``_LENGTHSCALE_SHRINKAGE_SIGMA`` makes the prior essentially
             a hard tying constraint.
+        include_lognormal_baseline: if True (default), wrap the
+            within-group penalty inside a
+            :class:`ComposedLengthscalePrior` that also adds the
+            BoTorch-default LogNormal ARD-Matern baseline on EVERY
+            element (so the 11 currently-unprior'd lengthscales — Water,
+            HRWR, Source, Temp, Time, and the 7 engineered features —
+            stop drifting past the rail-detection threshold). Set to
+            False to recover the pre-v5 :class:`WithinGroupShrinkagePrior`
+            behaviour (binder/aggregate penalty only) for backward
+            compatibility with sub-dim test fits and ablation studies.
     """
     if source_dim is None:
         binder = _BINDER_LENGTHSCALE_GROUP
@@ -198,13 +320,20 @@ def within_group_prior(
         binder = tuple(remap[d] for d in _BINDER_LENGTHSCALE_GROUP if d in remap)
         aggregate = tuple(remap[d] for d in _AGGREGATE_LENGTHSCALE_GROUP if d in remap)
         dim = len(no_source_dims) + num_extras
+    groups_with_sigma = [(binder, sigma), (aggregate, sigma)]
+    if include_lognormal_baseline:
+        return ComposedLengthscalePrior(
+            groups_with_sigma=groups_with_sigma,
+            dim=dim,
+        )
     return WithinGroupShrinkagePrior(
-        groups_with_sigma=[(binder, sigma), (aggregate, sigma)],
+        groups_with_sigma=groups_with_sigma,
         dim=dim,
     )
 
 
 __all__ = [
+    "ComposedLengthscalePrior",
     "WithinGroupShrinkagePrior",
     "within_group_prior",
 ]

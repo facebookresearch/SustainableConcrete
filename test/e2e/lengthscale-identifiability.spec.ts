@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * Block landing if the served strength.json has any feature lengthscale at
+ * Block landing if the served strength.json has any RAW feature lengthscale at
  * the optimiser's upper constraint bound. This mirrors
  * test/test_lengthscale_identifiability.py at the WEBSITE artifact level: the
  * Python test guards what the model script will produce; this test guards what
@@ -13,13 +13,21 @@ import { test, expect } from "@playwright/test";
  * the visual tests can't catch.
  *
  * The V2 schema (the deployed V2 strength GP) emits per-subkernel lengthscales:
- *   matern_blind.lengthscales    — over the no-source augmented dims
- *   matern_specific.lengthscales — over all augmented dims
- * Both must stay clear of the cap. The cap (1e3) is hard-coded to mirror the
- * `LogTransformedInterval(1e-2, 1e3, ...)` constraint applied in
- * `boxcrete/strength_model.py::_ard_matern_with_within_group_prior`. Feature
- * names and the dim layout are read directly from the served JSON; missing
- * fields fail loudly so we don't silently fall back to stale local copies.
+ *   matern_blind.lengthscales    — source-blind Matern branch
+ *   matern_specific.lengthscales — source-aware Matern branch
+ * Since the v5 three-class migration, Material Source is a categorical class
+ * handled by a separate Hamming/CategoricalKernel factor, so it is excluded
+ * from BOTH Matern branches. Each branch therefore carries lengthscales over
+ * its own `active_dims` (the augmented dims it actually spans, excluding the
+ * source dim). We read `active_dims` straight from the served JSON and map each
+ * lengthscale back to its augmented feature name, so this test stays correct
+ * even if the dim layout changes again. Missing fields fail loudly so we don't
+ * silently fall back to stale assumptions.
+ *
+ * Rail-cap enforcement is limited to RAW (user-facing) features. Engineered
+ * features (W/B, SCM frac, log(HRWR/binder), …) are derived from raw columns,
+ * aren't directly slider-controllable, and may legitimately rail on some BLAS
+ * backends (a valid "this ratio is redundant with the raw inputs" GP outcome).
  *
  * The artifact is emitted by `experiments/regenerate_strength_json.py`.
  */
@@ -35,7 +43,6 @@ test("served strength.json has identifiable lengthscales for every feature", asy
 
   const rawNames = params.raw_feature_names as string[];
   const engineeredNames = params.engineered_feature_names as string[];
-  const sourceDimRaw = params.source_dim_raw as number;
 
   expect(
     Array.isArray(rawNames) && rawNames.length > 0,
@@ -45,49 +52,36 @@ test("served strength.json has identifiable lengthscales for every feature", asy
     Array.isArray(engineeredNames) && engineeredNames.length > 0,
     `served model is missing 'engineered_feature_names'. Re-run experiments/regenerate_strength_json.py and commit docs/model/strength.json.`,
   ).toBeTruthy();
-  expect(
-    typeof sourceDimRaw === "number" && Number.isFinite(sourceDimRaw),
-    `served model is missing 'source_dim_raw'. Re-run experiments/regenerate_strength_json.py and commit docs/model/strength.json.`,
-  ).toBeTruthy();
 
+  // Augmented feature names, indexed by augmented dim: raw dims first
+  // (indices [0, nRaw)), then engineered features. `active_dims` indexes into
+  // this list. Raw dims are the user-facing sliders subject to the rail cap.
   const augNames = [...rawNames, ...engineeredNames];
-  const augNamesNoSource = augNames.filter((_, i) => i !== sourceDimRaw);
+  const nRaw = rawNames.length;
 
-  const subkernels: Array<{ key: "matern_blind" | "matern_specific"; names: string[] }> = [
-    { key: "matern_specific", names: augNames },
-    { key: "matern_blind", names: augNamesNoSource },
-  ];
-
-  for (const { key, names } of subkernels) {
-    const sub = params[key] as { lengthscales?: number[] };
+  for (const key of ["matern_blind", "matern_specific"] as const) {
+    const sub = params[key] as { lengthscales?: number[]; active_dims?: number[] };
     expect(
       sub && Array.isArray(sub.lengthscales),
       `served model is missing '${key}.lengthscales'. Re-run experiments/regenerate_strength_json.py and commit docs/model/strength.json.`,
     ).toBeTruthy();
-    const ls = sub.lengthscales as number[];
     expect(
-      ls.length === names.length,
-      `${key}: expected ${names.length} lengthscales, got ${ls.length}`,
+      sub && Array.isArray(sub.active_dims),
+      `served model is missing '${key}.active_dims'. Re-run experiments/regenerate_strength_json.py and commit docs/model/strength.json.`,
+    ).toBeTruthy();
+    const ls = sub.lengthscales as number[];
+    const dims = sub.active_dims as number[];
+    expect(
+      ls.length === dims.length,
+      `${key}: expected one lengthscale per active dim (${dims.length}), got ${ls.length}`,
     ).toBeTruthy();
 
     const violations: string[] = [];
-    // Number of raw dims for this subkernel (matern_blind drops the
-    // source dim, so its raw count is one less). Cap-rail check is only
-    // enforced for RAW features — engineered features (W/B, SCM frac,
-    // log(HRWR/binder), etc.) are derived from raw composition columns
-    // and aren't directly user-controllable in the slider UI; if their
-    // lengthscale rails, the kernel is saying "this engineered ratio
-    // is redundant with the raw inputs", which is a valid GP fit
-    // outcome (and one that empirically lands in different basins on
-    // different BLAS implementations).
-    const isBlind = key === "matern_blind";
-    const nRawForThisSubkernel = rawNames.length - (isBlind ? 1 : 0);
-    for (let i = 0; i < names.length; i++) {
-      if (i >= nRawForThisSubkernel) {
-        continue; // engineered feature — no rail-check
-      }
-      if (ls[i] >= 0.99 * LENGTHSCALE_CAP) {
-        violations.push(`${names[i]} (idx ${i}): ${ls[i].toFixed(2)}`);
+    for (let p = 0; p < dims.length; p++) {
+      const augDim = dims[p];
+      if (augDim >= nRaw) continue; // engineered feature — no rail-check
+      if (ls[p] >= 0.99 * LENGTHSCALE_CAP) {
+        violations.push(`${augNames[augDim]} (aug dim ${augDim}): ${ls[p].toFixed(2)}`);
       }
     }
     expect(

@@ -60,3 +60,51 @@ test.describe("scatter filter rows", () => {
     await check(maxInput);
   });
 });
+
+test.describe("categorical filter rows", () => {
+  // Material Source is an unordered class axis, so a numeric min/max range is
+  // meaningless for it ("between Source A and Source B" says nothing). Its
+  // filter row must render one toggle per class instead.
+  test("Material Source filters by class, not by min/max", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "filter UI is desktop-only — hidden on mobile");
+    await page.goto("/");
+
+    const msIdx = await page.evaluate(async () => {
+      const j = await (await fetch("model/compositions.json")).json();
+      return j.column_names.indexOf("Material Source");
+    });
+    expect(msIdx, "Material Source column not found").toBeGreaterThanOrEqual(0);
+
+    await page.locator("#filter-add").click();
+    const row = page.locator(".filter-row").first();
+
+    // A numeric column keeps the min/max inputs.
+    await expect(row.locator(".filter-min")).toBeVisible();
+    expect(await row.locator(".filter-cat-btn").count()).toBe(0);
+
+    // Selecting Material Source swaps them for per-class toggles.
+    await row.locator(".filter-col").selectOption(String(msIdx));
+    const catBtns = row.locator(".filter-cat-btn");
+    await expect(catBtns.first()).toBeVisible();
+    const nCat = await catBtns.count();
+    expect(nCat, "expected one toggle per material class").toBeGreaterThan(1);
+    expect(
+      await row.locator(".filter-min").count(),
+      "min/max inputs must not be shown for a categorical column",
+    ).toBe(0);
+
+    // All classes start active, so adding the row is a no-op — the same
+    // default as empty min/max meaning "unbounded".
+    expect(await row.locator(".filter-cat-btn.active").count()).toBe(nCat);
+
+    // Toggling a class off narrows the filter and greys out its points.
+    await catBtns.first().click();
+    expect(await row.locator(".filter-cat-btn.active").count()).toBe(nCat - 1);
+    await expect(catBtns.first()).toHaveAttribute("aria-pressed", "false");
+
+    // Switching back to a numeric column restores the min/max inputs.
+    await row.locator(".filter-col").selectOption("0");
+    await expect(row.locator(".filter-min")).toBeVisible();
+    expect(await row.locator(".filter-cat-btn").count()).toBe(0);
+  });
+});

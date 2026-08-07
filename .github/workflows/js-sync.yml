@@ -94,3 +94,9 @@ jobs:
 
       - name: Data-freshness (compositions.json vs live JS GP)
         run: node test/test_data_freshness.mjs
+
+      - name: Preview-composition stepper (categorical dim is never lerped)
+        run: node test/test_js_preview_state.mjs
+
+      - name: Categorical source kernel is not interpolable
+        run: node test/test_js_categorical_source.mjs

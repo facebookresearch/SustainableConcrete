@@ -8,7 +8,7 @@
 Public extension surface for users / variant authors:
 
   * :data:`F5_ALLLOG_FEATURES` — the deployed V2 strength GP's 7-feature set.
-  * :data:`GATE_TAU` — the production time-gate timescale (0.05).
+  * :data:`GATE_TAU` — the production time-gate timescale (0.10).
   * :data:`IDX` — column-name → integer-index map for the 10 raw input
     dims (Cement, Fly Ash, Slag, Water, HRWR, Fine, Coarse, Source,
     Temperature, Time).
@@ -38,13 +38,25 @@ from torch import Tensor
 from boxcrete.utils import DEFAULT_X_COLUMNS
 
 # Time gate constant: h(t) = 1 - exp(-t / GATE_TAU).
-# tau=0.05 (post-input-transform time units) was found to be optimal in
-# the τ-sweep; see §4.5 of the benchmark.
-GATE_TAU = 0.05
+# tau=0.10 (post-input-transform time units). Chosen from a τ-sweep over
+# {0.05, 0.10, 0.15, 0.20} as the best point that keeps EXACT JS↔Python
+# parity. Raising τ reduces the early-time (t<1 day) negative overshoot in
+# the data-free window before the first (t=1 day) measurement — the min
+# predicted strength there improves from −1957 psi (τ=0.05) to −1302 psi
+# (τ=0.10), −975 (0.15), −809 (0.2) — but it also grows the fitted
+# outputscale and worsens the training-kernel conditioning, which makes the
+# in-browser JS posterior drift from the Python posterior. That drift stays
+# within the tight JS-port test (test/test_js_gp.mjs, rtol=1e-4/atol=1e-2)
+# only for τ ≤ 0.10; τ ≥ 0.15 breaks it (mean/variance drift up to ~0.5 psi
+# at 0.15, ~3.5 psi at 0.2). Held-out block-LOO loss is flat across the
+# sweep (−1.6509 at 0.10 vs −1.6529 best at 0.15, within noise), so τ=0.10
+# captures ~1/3 of the achievable overshoot reduction at zero parity cost.
+# Revisit (with a parity fix) if more early-window damping is needed.
+GATE_TAU = 0.1
 
 
-# Default feature set for the V2 strength GP. See STRENGTH_GP_BENCHMARK.md
-# §4.3 for the per-feature ablation showing all 5 log-transforms help.
+# Default feature set for the V2 strength GP. The per-feature ablation
+# found that all 5 log-transforms help.
 F5_ALLLOG_FEATURES = (
     "wb_ratio",
     "scm_frac",

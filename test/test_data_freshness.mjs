@@ -100,7 +100,7 @@ function check(cond, msg) {
   let maxCostDelta = 0;
   for (let i = 0; i < compositions.compositions.length; i++) {
     const comp = compositions.compositions[i];
-    const ms = comp[7] >= 0.5 ? 1 : 0;
+    const ms = Math.round(comp[7]);
     const liveGwp = predictGWP(comp, gwpParams, ms).mean;
     const storedGwp = compositions.gwp_predictions[i];
     if (typeof storedGwp === "number") {

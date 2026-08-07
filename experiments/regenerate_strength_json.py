@@ -7,7 +7,7 @@
 """Regenerate ``docs/model/strength.json`` AND ``docs/model/test_vectors.json``.
 
 Production model: ``B''+F5_alllog+gated_t+gated_noise+maxscale_zeromean``
-(see ``STRENGTH_GP_BENCHMARK.md`` §6.12 and Appendix A "Anchors study").
+with the v5 3-class categorical source kernel.
 
 This script:
 1. Loads the public 647-row strength dataset.
@@ -106,9 +106,26 @@ def main() -> None:
     print("[regenerate] Fitting V2 strength GP via boxcrete.fit_strength_gp…")
     from boxcrete import fit_strength_gp
 
-    model = fit_strength_gp(X=X, Y=Y, Yvar=Yvar, X_bounds=bounds, seed=0)
-    n_real_out = X.shape[0]
-    assert n_real_out == n_real
+    # Build the model architecture at initialisation (no MLL warm-up),
+    # then train its hyperparameters directly on the block-LOO
+    # predictive-log-likelihood objective — the metric the model is
+    # deployed on. Block-LOO training *from scratch* gave the best and
+    # most stable held-out RMSE in the design-exploration benchmark
+    # (better mean + lower variance than MLL, and than MLL+bLOO-refine,
+    # which can get trapped in a poor MLL basin). This changes only the
+    # fitted hyperparameters, not the kernel structure, so the serialized
+    # schema and the JS consumer are unaffected.
+    model = fit_strength_gp(
+        X=X, Y=Y, Yvar=Yvar, X_bounds=bounds, seed=0, max_optimizer_iter=0
+    )
+    from boxcrete.block_loo import train_block_loo
+
+    print(
+        "[regenerate] Training hyperparameters on the block-LOO objective "
+        "(from scratch)…"
+    )
+    final_bloo = train_block_loo(model, n_real, max_iter=150, lr=0.1)
+    print(f"[regenerate]   block-LOO training done; final bLOO loss = {final_bloo:.4f}")
     model.eval()
     print(f"[regenerate]   fit complete; y_max = {float(model._study_y_std):.2f}")
 
@@ -174,7 +191,7 @@ def main() -> None:
 
     # --- Extract kernel hyperparameters ---
     # The champion's covar_module is _TimeGatedKernel wrapping a sum:
-    # blind_matern + source-specific_matern + rbf(t).
+    # blind_matern + categorical_source_branch + rbf(t).
     gated = model.covar_module  # _TimeGatedKernel
     base = gated.base_kernel  # AdditiveKernel: blind + specific + rbf
     # Iterate base.kernels — should be 3 components.
@@ -187,11 +204,24 @@ def main() -> None:
     )
     blind_outputscale = float(blind_kernel.outputscale.detach())
     blind_active_dims = blind_kernel.base_kernel.active_dims.tolist()
-    specific_lengthscales = (
-        specific_kernel.base_kernel.lengthscale.detach().squeeze().tolist()
-    )
+
+    # The "specific" branch is always
+    # ScaleKernel(ProductKernel(CategoricalKernel, MaternKernel)) -- see
+    # boxcrete.kernels._categorical_source_branch, which builds no other
+    # topology.
+    inner = specific_kernel.base_kernel
+    cat_inner, matern_inner = list(inner.kernels)
+    ell = float(cat_inner.lengthscale.detach().squeeze())
+    specific_extras = {
+        "source_kernel_kind": "hamming",
+        "source_kernel_lengthscale": ell,
+        # k(s_i, s_j) = exp(-delta(s_i, s_j) / ell);
+        # for s_i != s_j: rho = exp(-1 / ell).
+        "source_correlation": float(torch.exp(torch.tensor(-1.0 / ell))),
+    }
+    specific_lengthscales = matern_inner.lengthscale.detach().squeeze().tolist()
+    specific_active_dims = matern_inner.active_dims.tolist()
     specific_outputscale = float(specific_kernel.outputscale.detach())
-    specific_active_dims = specific_kernel.base_kernel.active_dims.tolist()
     rbf_lengthscale = float(time_kernel.base_kernel.lengthscale.detach().squeeze())
     rbf_outputscale = float(time_kernel.outputscale.detach())
     rbf_active_dims = time_kernel.base_kernel.active_dims.tolist()
@@ -201,7 +231,8 @@ def main() -> None:
         f"len(lengthscales)={len(blind_lengthscales)}"
     )
     print(
-        f"[regenerate]   specific: outputscale={specific_outputscale:.4f} "
+        f"[regenerate]   specific: source_kernel_kind=hamming "
+        f"outputscale={specific_outputscale:.4f} "
         f"active_dims={specific_active_dims} "
         f"len(lengthscales)={len(specific_lengthscales)}"
     )
@@ -252,15 +283,17 @@ def main() -> None:
 
     # --- Assemble output JSON ---
     out = {
-        "schema_version": 2,
+        "schema_version": 3,
         "model_name": CHAMPION_NAME,
         "comment": (
-            "V2 strength GP. Architecture: gated multi-Matern + 7 engineered "
-            "features + Y/y_max scaling + ZeroMean + block-LOO HP refinement. "
-            "Block-LOO RMSE 665 psi at full data, phantom-anchor RMSE = 0 by "
-            "construction. See experiments/STRENGTH_GP_BENCHMARK.md for the "
-            "full study."
+            "V2 strength GP with v5 3-class material source. "
+            "Architecture: gated multi-Matern + categorical source kernel + "
+            "7 engineered features + Y/y_max scaling + ZeroMean + "
+            "combined block-LOO + MLL training. The categorical source "
+            "branch replaces the pre-v5 continuous-ARD source coordinate; "
+            "see docs/materials_background.md for the material classes."
         ),
+        "num_source_classes": 3,
         # Dataset metadata
         "n_train": n_real,
         "n_real": n_real,
@@ -298,6 +331,7 @@ def main() -> None:
             "active_dims": specific_active_dims,
             "lengthscales": specific_lengthscales,
             "outputscale": specific_outputscale,
+            **specific_extras,
         },
         "rbf_time": {
             "active_dims": rbf_active_dims,

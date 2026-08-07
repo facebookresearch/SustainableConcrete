@@ -14,9 +14,15 @@ The V2 strength GP has a specific nested kernel structure:
               .kernels
               = [
                   ScaleKernel(matern_blind).base_kernel.lengthscale,
-                  ScaleKernel(matern_specific).base_kernel.lengthscale,
+                  ScaleKernel(ProductKernel(CategoricalKernel, matern_specific)),
                   ScaleKernel(rbf_time).base_kernel.lengthscale,
               ]
+
+The production source kernel is ``hamming`` (``CategoricalKernel x Matern``),
+so the "specific" branch's ``.base_kernel`` is a ``ProductKernel`` whose
+Matern factor carries the continuous ARD lengthscales (over every dim
+EXCEPT the source column) and whose ``CategoricalKernel`` factor carries a
+single source lengthscale.
 
 Code that introspects fitted models for diagnostics — e.g.,
 ``experiments/regenerate_strength_json.py`` (the canonical writer of
@@ -40,6 +46,27 @@ from boxcrete import fit_strength_gp, load_concrete_strength
 from boxcrete.features import F5_ALLLOG_FEATURES
 from boxcrete.kernels import TimeGatedKernel
 from boxcrete.utils import DEFAULT_X_COLUMNS
+
+
+def _matern_lengthscale_of(scale_kernel):
+    """Return the continuous ARD lengthscale tensor of a sub-kernel.
+
+    For blind / rbf_time the ScaleKernel wraps the Matern/RBF directly. For
+    the hamming ``specific`` branch it wraps ``ProductKernel(Categorical,
+    Matern)``; return the Matern factor's lengthscale (the factor that has a
+    multi-dim lengthscale).
+    """
+    inner = scale_kernel.base_kernel
+    ls = getattr(inner, "lengthscale", None)
+    if ls is not None:
+        return ls
+    # ProductKernel: pick the factor whose lengthscale spans the most dims.
+    best = None
+    for factor in inner.kernels:
+        fls = getattr(factor, "lengthscale", None)
+        if fls is not None and (best is None or fls.numel() > best.numel()):
+            best = fls
+    return best
 
 
 class TestKernelLayout(unittest.TestCase):
@@ -78,19 +105,20 @@ class TestKernelLayout(unittest.TestCase):
         )
 
     def test_each_sub_kernel_is_a_scale_kernel_with_lengthscale(self):
-        """Each ``base.kernels[i]`` is a ``ScaleKernel`` whose
-        ``.base_kernel.lengthscale`` is a tensor — the path used by
-        ``regenerate_strength_json.py`` and downstream diagnostic
-        tooling."""
+        """Each ``base.kernels[i]`` is a ``ScaleKernel``. blind and rbf_time
+        expose ``.base_kernel.lengthscale`` directly; the ``hamming``
+        specific branch's ``.base_kernel`` is a ``ProductKernel`` whose
+        Matern factor carries the ARD lengthscale — the path used by
+        ``regenerate_strength_json.py`` and downstream tooling."""
         base = self.model.covar_module.base_kernel
         for i, sub in enumerate(base.kernels):
             self.assertTrue(
                 hasattr(sub, "base_kernel"),
                 f"sub-kernel {i} should expose .base_kernel (ScaleKernel)",
             )
-            ls = sub.base_kernel.lengthscale
+            ls = _matern_lengthscale_of(sub)
             self.assertIsInstance(
-                ls, torch.Tensor, f"sub-kernel {i}.base_kernel.lengthscale not a Tensor"
+                ls, torch.Tensor, f"sub-kernel {i} has no Matern/RBF lengthscale tensor"
             )
 
     def test_canonical_introspection_path_yields_three_lengthscale_tensors(self):
@@ -98,22 +126,23 @@ class TestKernelLayout(unittest.TestCase):
         non-empty per-sub-kernel lengthscales of the right number of
         dimensions (matching the production model)."""
         base = self.model.covar_module.base_kernel
-        # Order: [blind_matern, specific_matern, rbf_time] —
-        # asserted by ``test_lengthscale_identifiability.py`` and used by
-        # the canonical writer at ``experiments/regenerate_strength_json.py``.
-        blind_ls = base.kernels[0].base_kernel.lengthscale.flatten()
-        specific_ls = base.kernels[1].base_kernel.lengthscale.flatten()
-        rbf_ls = base.kernels[2].base_kernel.lengthscale.flatten()
+        # Order: [blind_matern, specific(=Product(Categorical, Matern)),
+        # rbf_time] — used by the canonical writer at
+        # ``experiments/regenerate_strength_json.py``.
+        blind_ls = _matern_lengthscale_of(base.kernels[0]).flatten()
+        specific_ls = _matern_lengthscale_of(base.kernels[1]).flatten()
+        rbf_ls = _matern_lengthscale_of(base.kernels[2]).flatten()
         # Derive expected ARD dim counts from the same constants the
         # production fit uses, so adding a feature to ``F5_ALLLOG_FEATURES``
         # or a column to ``DEFAULT_X_COLUMNS`` doesn't fire this test
         # opaquely — the test failure (if any) will then come from a
         # legitimate kernel-structure change, not a stale hardcoded constant.
         d_aug = len(DEFAULT_X_COLUMNS) + len(F5_ALLLOG_FEATURES)
-        # blind matern excludes the time dim; specific spans all aug dims;
+        # Both blind and specific Matern span all aug dims EXCEPT the source
+        # column (the hamming CategoricalKernel factor handles source);
         # rbf time is a single-dim kernel on time only.
         self.assertEqual(blind_ls.numel(), d_aug - 1)
-        self.assertEqual(specific_ls.numel(), d_aug)
+        self.assertEqual(specific_ls.numel(), d_aug - 1)
         self.assertEqual(rbf_ls.numel(), 1)
 
     def test_short_path_through_covar_module_kernels_does_not_exist(self):

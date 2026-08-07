@@ -22,8 +22,12 @@ COMP_PATH = os.path.join(REPO_DIR, "docs", "model", "compositions.json")
 
 # Expected number of rows in the public compositions list (derived from the
 # canonical CSV ``data/boxcrete_data.csv``). Update only when the source
-# CSV changes intentionally.
-EXPECTED_N_PUBLIC_COMPOSITIONS = 144
+# CSV changes intentionally. The 3 legacy Temp=-20°C candidates were removed
+# because the 3-class BOxCrete_All dataset does not cover -20°C (training
+# Temp range is [4.5, 22]); shipping predictions there would be extrapolation.
+# The catalog spans all three Material Source classes (0/1/2), with unique
+# composition counts {0: 69, 1: 27, 2: 53}.
+EXPECTED_N_PUBLIC_COMPOSITIONS = 149
 
 
 class TestCompositionsArtifact(unittest.TestCase):

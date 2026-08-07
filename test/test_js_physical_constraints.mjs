@@ -14,8 +14,7 @@
  *
  * Regression guard for the gated-kernel JS port: any change that breaks
  * the structural f(x, t=0) = 0 invariant on the JS side will fail this
- * test. See `docs/model/README.md` for the schema and
- * `experiments/STRENGTH_GP_BENCHMARK.md` for the architecture writeup.
+ * test. See `docs/model/README.md` for the schema.
  *
  * Run: node test/test_js_physical_constraints.mjs
  */
@@ -97,7 +96,6 @@ if (failed > 0) {
     `\nThe JS GP's gating mechanism is broken — a non-zero variance at ` +
       `t=0 means h(0) is not exactly 0 in docs/gp.mjs, or the kernel-side ` +
       `multiplicative gate isn't being applied. See:\n` +
-      `  - experiments/STRENGTH_GP_BENCHMARK.md (architecture)\n` +
       `  - docs/gp.mjs::gateFunction (the ∟ implementation)\n`
   );
   process.exit(1);

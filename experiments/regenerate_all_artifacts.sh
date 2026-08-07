@@ -15,9 +15,17 @@
 #      both files must come from the same fit).
 #   2. Augment test_vectors.json with GWP/cost columns (computed via the
 #      JS predictors so the QA harness captures JS-side math too).
-#   3. Recompute docs/model/compositions.json::strength_predictions from
-#      the fresh strength.json.
-#   4. Run the freshness check + full JS test suite.
+#   3. Rebuild docs/model/compositions.json (candidate catalog) from the
+#      current 3-class data — refreshes compositions/cost/observations/
+#      slider_bounds; leaves strength/gwp/pareto as placeholders.
+#   4. Recompute docs/model/compositions.json::strength_predictions,
+#      gwp_predictions, and pareto_mask from the fresh JS model.
+#   5. Run the freshness check + full JS test suite.
+#
+# Deliberately NOT included: docs/generate_mix_analyses.py. The shipped
+# docs/model/mix_analyses.json is hand-authored prose; that script only
+# emits templated fallback text and would overwrite it. See its module
+# docstring.
 #
 # Usage: bash experiments/regenerate_all_artifacts.sh
 
@@ -34,15 +42,19 @@ echo "==> 2. Augmenting test_vectors with GWP/cost …"
 node experiments/augment_test_vectors_with_gwp_cost.mjs | tail -3
 
 echo ""
-echo "==> 3. Recomputing compositions.json strength_predictions + pareto_mask …"
+echo "==> 3. Rebuilding compositions.json candidate catalog from current data …"
+python -u experiments/regenerate_compositions.py | tail -3
+
+echo ""
+echo "==> 4. Recomputing compositions.json strength_predictions + gwp + pareto_mask …"
 node experiments/regenerate_compositions_strength_predictions.mjs | tail -5
 
 echo ""
-echo "==> 4. Running freshness tests …"
+echo "==> 5. Running freshness tests …"
 node test/test_data_freshness.mjs
 
 echo ""
-echo "==> 5. Running full JS test suite …"
+echo "==> 6. Running full JS test suite …"
 for t in test_js_strength_v2.mjs test_js_physical_constraints.mjs test_js_gp.mjs test_js_ui_smoke.mjs test_lengthscales_v2.mjs test_curve_monotonicity.mjs; do
   echo "  -- $t --"
   node "test/$t" | tail -3
