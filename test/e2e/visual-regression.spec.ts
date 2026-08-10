@@ -2,21 +2,26 @@ import { test, expect } from "@playwright/test";
 
 /**
  * Visual regression — full-page screenshots compared against committed
- * baselines. SKIPPED BY DEFAULT until you commit Linux baselines.
+ * Linux baselines in `visual-regression.spec.ts-snapshots/`.
  *
- * To enable:
- *   1. Generate baselines on Ubuntu (Docker or GitHub Actions). See
- *      test/e2e/README.md for the exact docker command.
- *   2. Commit the produced files under test/e2e/__snapshots__/.
- *   3. Remove the `test.skip(...)` line below.
+ * These are ACTIVE on Linux (which is what CI runs) and skipped elsewhere.
+ * Font rendering, anti-aliasing and emoji glyphs differ across platforms, so a
+ * macOS-rendered screenshot always diffs against a Linux baseline. Rather than
+ * disable the suite outright — it sat unconditionally skipped and therefore
+ * never ran at all — we gate on platform so it protects CI while staying green
+ * for local development on a Mac.
  *
- * Why OS-specific: font rendering, anti-aliasing, and emoji glyphs
- * differ across macOS/Linux/Windows. CI runs on ubuntu-latest, so
- * macOS-rendered screenshots will diff against it and fail.
+ * To regenerate after an intentional UI change, run the docker command in
+ * test/e2e/README.md (use the image tag matching the Playwright version in
+ * package-lock.json) and commit the updated PNGs.
  */
 test.describe("@visual full-page snapshots", () => {
-  // Remove this line once Linux baselines are committed
-  test.skip(true, "visual baselines not yet committed — see test/e2e/README.md");
+  // Baselines are Linux-rendered; comparing them on another OS is guaranteed
+  // to fail for reasons unrelated to the change under test.
+  test.skip(
+    process.platform !== "linux",
+    `visual baselines are Linux-rendered; skipping on ${process.platform}`,
+  );
 
   test("home page", async ({ page }, testInfo) => {
     await page.goto("/");

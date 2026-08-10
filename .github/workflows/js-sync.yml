@@ -100,3 +100,6 @@ jobs:
 
       - name: Categorical source kernel is not interpolable
         run: node test/test_js_categorical_source.mjs
+
+      - name: Scatter filter predicate + derived quantities
+        run: node test/test_js_filters.mjs

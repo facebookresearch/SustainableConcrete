@@ -44,6 +44,9 @@ test.describe("mix insight refreshes on Material Source toggle", () => {
   test("does not retain previous mix's description after toggle", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "mix insight only visible on desktop");
     await page.goto("/");
+    // The insight panel is populated after the strength model resolves (now
+    // off-thread in a worker), so wait for the app to finish wiring first.
+    await expect(page.locator("#sliders .slider-group").first()).toBeVisible({ timeout: 15000 });
     const insightText = page.locator("#mix-insight-text");
     await expect(insightText).toBeVisible();
 

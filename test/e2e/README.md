@@ -63,7 +63,9 @@ property on a PR, add a spec for it before merging.
 | `mobile-value-fit.spec.ts`    | Imperial values fit (worst-case mass conversion)                          | mobile |
 | `mobile-value-fit.spec.ts`    | Imperial max-bound values fit                                             | mobile |
 | `mobile-value-fit.spec.ts`    | Narrow viewport (320 px): values fit at all unit/value combinations       | mobile |
-| `visual-regression.spec.ts`   | Full-page screenshot matches committed baseline (skipped by default)      | desktop+mobile |
+| `visual-regression.spec.ts`   | Full-page screenshot matches committed Linux baseline (active on Linux)   | desktop+mobile |
+| `touch-targets.spec.ts`       | Slider hit area meets WCAG 2.2 AA (24 px) / Apple HIG (44 px mobile)      | desktop+mobile |
+| `mobile-behavior.spec.ts`     | Material Source tap commits an integral class; curve transition runs and clears; click-to-edit commits; curve non-blank | mobile |
 
 ## Running
 
@@ -94,19 +96,27 @@ Visual regression snapshots are **OS-specific** — fonts and anti-aliasing
 differ between macOS, Linux, and Windows. CI runs on Ubuntu, so the
 snapshots committed must be Linux-rendered.
 
-To regenerate baselines:
+Baselines live in `visual-regression.spec.ts-snapshots/`. The specs run on
+Linux (what CI uses) and skip automatically elsewhere, so a local macOS run
+stays green instead of diffing against a renderer it can never match.
 
-1. **Locally (recommended)** — run in the official Playwright Docker image:
+To regenerate after an intentional UI change:
+
+1. **Locally (recommended)** — run in the official Playwright Docker image.
+   The tag MUST match the Playwright version in `package-lock.json`, or the
+   browser build differs and the baselines will not match CI:
    ```bash
+   node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version"
+
    docker run --rm --network host -v $(pwd):/work -w /work \
-     mcr.microsoft.com/playwright:v1.48.0-jammy \
-     bash -c "npm ci && npm run test:e2e:update -- --grep @visual"
+     mcr.microsoft.com/playwright:v1.59.1-noble \
+     bash -lc "npx --yes playwright@1.59.1 test --grep @visual --update-snapshots"
    ```
 2. **Via GitHub Actions** — manually dispatch the `e2e` workflow with
    `update_snapshots: true` and commit the resulting artifact.
 
-Visual specs are tagged `@visual` and skipped by default. Enable them
-once you have committed Linux baselines.
+Visual specs are tagged `@visual`. Verify a regeneration by re-running
+**without** `--update-snapshots`: it must pass by comparison, not by writing.
 
 ## Adding a new invariant
 

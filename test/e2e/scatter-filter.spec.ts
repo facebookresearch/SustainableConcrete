@@ -20,6 +20,10 @@ test.describe("scatter filter rows", () => {
   test("filter min/max placeholders fit fully inside the input box", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "filter UI is desktop-only — hidden on mobile");
     await page.goto("/");
+    // The filter controls are wired by setupEventListeners(), which runs after
+    // the strength model resolves (now off-thread in a worker). Wait on a
+    // rendered slider rather than clicking straight into an unwired button.
+    await expect(page.locator("#sliders .slider-group").first()).toBeVisible({ timeout: 15000 });
     // Add a filter row by clicking the "+" button
     await page.locator("#filter-add").click();
     const minInput = page.locator(".filter-min").first();
@@ -68,6 +72,9 @@ test.describe("categorical filter rows", () => {
   test("Material Source filters by class, not by min/max", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "filter UI is desktop-only — hidden on mobile");
     await page.goto("/");
+    // Same readiness wait as above: the filter UI is wired after the model
+    // resolves in the worker.
+    await expect(page.locator("#sliders .slider-group").first()).toBeVisible({ timeout: 15000 });
 
     const msIdx = await page.evaluate(async () => {
       const j = await (await fetch("model/compositions.json")).json();
