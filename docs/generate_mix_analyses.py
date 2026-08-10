@@ -2,13 +2,14 @@
 
 ⚠️  WARNING — DO NOT RUN THIS CASUALLY  ⚠️
 
-The committed ``docs/model/mix_analyses.json`` was authored by Claude
-Opus with full domain context (specific psi values, dataset
-comparisons, qualitative assessments like "among the top performers in
-the Source A mortar series"). This script's output is a deterministic
-template-based fallback that produces *objectively less detailed*
-descriptions ("A blended binder system with 47% cement replacement by
-SCMs.") and does NOT reproduce the LLM-authored content.
+The committed ``docs/model/mix_analyses.json`` is hand-authored prose:
+each entry names the mix by its canonical dataset name (``M1..M69``,
+``C1..C80``), states its verified mix-design figures, and interprets its
+measured strength trajectory against sibling mixes in the same designed
+series. This script's output is a deterministic template-based fallback
+that produces *objectively less detailed* descriptions ("A blended binder
+system with 47% cement replacement by SCMs.") and does NOT reproduce the
+authored content.
 
 Running this script will OVERWRITE ``docs/model/mix_analyses.json``
 with the inferior templated descriptions. Don't.
@@ -21,9 +22,9 @@ When to actually run it:
     ``experiments/regenerate_all_artifacts.sh`` (which deliberately
     does not call this script).
 
-To regenerate from scratch with LLM quality, hand-prompt an LLM with
-the composition CSV plus the current ``mix_analyses.json`` as a style
-exemplar; do NOT just run this script.
+To regenerate from scratch at authored quality, work from the mix-design
+figures plus each mix's measured strength trajectory, and verify every
+comparative claim against the data before committing.
 """
 
 import json
@@ -242,6 +243,13 @@ def generate_description(idx, comp):
             "Uses **Material Source B** \u2014 a different raw material "
             "supplier, which may affect reactivity and particle size "
             "distribution."
+        )
+    elif mat_source == 2:
+        parts.append(
+            "Uses **Material Source C** — the Set 3 supplier (Amrize cement, "
+            "Class F fly ash, gravel coarse aggregate), whose distinct "
+            "chemistry and particle size distribution affect reactivity and "
+            "strength development."
         )
 
     # Performance

@@ -36,10 +36,12 @@ from __future__ import annotations
 import math
 
 import torch
+from botorch.models.kernels import CategoricalKernel
 from botorch.utils.constraints import LogTransformedInterval
 from gpytorch.kernels import (
     Kernel,
     MaternKernel,
+    ProductKernel,
     RBFKernel,
     ScaleKernel,
 )
@@ -53,6 +55,74 @@ from boxcrete.utils import DEFAULT_X_COLUMNS
 
 _SOURCE_DIM = IDX["source"]
 _N_RAW_DIMS = len(DEFAULT_X_COLUMNS)
+NUM_MATERIAL_CLASSES = 3
+"""3-class Material Source dimensionality. Synced with
+:data:`boxcrete.mix_naming.NUM_MATERIAL_CLASSES`."""
+
+SOURCE_KERNEL = "hamming"
+"""The categorical source-kernel topology used by
+:func:`build_strength_kernel_for_aug_dim`. Hamming was selected as the v5
+production kernel by the leave-one-class-out + prior-decomposition
+ablation:
+
+  * Hamming has 1 free task-covar param (``rho`` shared across all
+    distinct-class pairs); IndexKernel has 6-12 task-covar params,
+    over-parameterised for v5's ~95 in-class compositions.
+  * Hamming is fully deterministic under the seed (zero seed std
+    across LOCO experiments). IndexKernel's ``covar_factor[unseen, :]``
+    stays at its random init when the corresponding class has no
+    training data; cross-correlations with seen tasks are
+    half-trained / half-random, giving seed std up to 2000+ psi for
+    Class-0 holdout.
+  * Hamming wins on (a) in-data bLOO RMSE (704 vs IndexKernel-r2's
+    764 on v5), (b) bLOO Sets-1+2 RMSE (822 vs 906), (c) the
+    worst-case held-out class (Class-0 mortar holdout: 2707 vs
+    4850 +/- 1948 for IndexKernel-r2).
+  * Hamming does NOT need rail-prevention priors — its max blind
+    lengthscale on v5 is 40 (well below the 100 cap), unlike
+    IndexKernel which rails to 194+.
+"""
+
+
+def _categorical_source_branch(
+    d_aug: int,
+    lengthscale_lower: float,
+) -> ScaleKernel:
+    """Construct the source-aware sub-kernel of the strength GP.
+
+    Returns ``ScaleKernel(CategoricalKernel(source) * MaternKernel(rest))``
+    where ``rest`` is ``no_source + extras``,
+    a Bonilla et al. (2008) intrinsic-coregionalization-model factorisation:
+    the Matern shape is shared across all 3 material classes; the Hamming
+    ``CategoricalKernel`` factor (1 free param — the cross-class correlation
+    ``rho = exp(-1/ell)``) modulates inter-class amplitude and correlation.
+
+    The Matern half spans the non-source raw dims and the appended
+    engineered features; the source dim is handled by the categorical
+    factor.
+    """
+    no_source_dims = [i for i in range(_N_RAW_DIMS) if i != _SOURCE_DIM]
+    extra_dims = list(range(_N_RAW_DIMS, d_aug))
+
+    matern = ard_matern_with_within_group_prior(
+        ard_num_dims=len(no_source_dims) + len(extra_dims),
+        active_dims=torch.tensor(no_source_dims + extra_dims),
+        prior=within_group_prior(
+            d_in=_N_RAW_DIMS,
+            source_dim=_SOURCE_DIM,
+            num_extras=len(extra_dims),
+        ),
+        initial_outputscale=1.0,
+        lengthscale_lower=lengthscale_lower,
+    )
+    cat = CategoricalKernel(
+        ard_num_dims=1,
+        active_dims=torch.tensor([_SOURCE_DIM]),
+    )
+    return ScaleKernel(
+        ProductKernel(cat, matern.base_kernel),
+        outputscale_constraint=matern.raw_outputscale_constraint,
+    )
 
 
 def additive_time_kernel(d_in: int) -> ScaleKernel:
@@ -100,15 +170,21 @@ class TimeGatedKernel(Kernel):
     With ``h(0) = 0``, this **structurally enforces** ``f(x, 0) = 0`` (in
     expectation AND in posterior, with prior variance 0 at t=0). No
     day-zero anchor pseudo-observations are needed; the constraint is
-    built into the prior. For ``t ≥ 1`` (post-input-transform value
-    ≥ ~0.21), ``h(t) ≈ 1``, so the gated kernel is essentially the
-    base kernel and real-data fit is preserved.
+    built into the prior. The gate then opens smoothly with time so the
+    real-data fit at the measured ages (t ≥ 1 day) is preserved.
 
     The transition function ``h(s) = 1 - exp(-s / tau)`` (where ``s`` is
     the post-input-transform time) gives ``h(0) = 0`` exactly and
-    saturates as ``s ≫ tau``. A small ``tau`` (e.g. 0.05) makes the
-    gate near-1 at t=1 (post-transform ~0.21 with Normalize, ~0.30
-    without), so training data is essentially unaffected.
+    saturates as ``s ≫ tau``. The production ``tau = 0.10`` opens the gate
+    gradually — at t=1 day (post-transform ~0.21) ``h ≈ 0.88``, rising to
+    ``h ≈ 0.99`` by the late ages — which keeps the prior variance small
+    through the *data-free* early window (t < 1 day) and thereby limits
+    the smooth-kernel negative overshoot there, while the fitted
+    outputscale compensates for the modest damping at t=1. (Larger tau
+    damps more and further cuts the early overshoot, but past ~0.10 it
+    worsens the training-kernel conditioning enough that the JS in-browser
+    port drifts from Python beyond the tight parity test — see
+    ``boxcrete/features.py::GATE_TAU`` for the sweep.)
 
     Args:
         base_kernel: any GPyTorch kernel.
@@ -120,9 +196,6 @@ class TimeGatedKernel(Kernel):
             produced no measurable block-LOO RMSE improvement and
             destabilised L-BFGS-B; the buffer path is the only one
             we ship.
-
-    See markdown ``STRENGTH_GP_ANCHORS_STUDY.md`` §5 (Tier 3 idea 8)
-    for the design rationale.
     """
 
     has_lengthscale = False  # delegates to base_kernel
@@ -131,7 +204,7 @@ class TimeGatedKernel(Kernel):
         self,
         base_kernel: Kernel,
         time_idx: int,
-        gate_tau: float = 0.05,
+        gate_tau: float = 0.1,
     ):
         # No ``**kwargs`` passthrough: TimeGatedKernel does not need any
         # of GPyTorch's generic Kernel kwargs (``ard_num_dims``,
@@ -192,28 +265,37 @@ def build_strength_kernel_for_aug_dim(
     Returns an additive composition of three subkernels::
 
         blind_matern(no_source_dims + extras)
-            + source_specific_matern(all_orig_dims + extras)
+            + categorical_source_branch(source_dim, no_source_dims + extras)
             + additive_rbf_time(time_only)
 
+    The source-aware sub-kernel is a categorical-times-Matern product:
+
+        ScaleKernel(CategoricalKernel(source) * MaternKernel(rest))
+
+    where the Hamming ``CategoricalKernel`` contributes one learned
+    cross-class correlation ``rho = exp(-1/ell)`` — a Bonilla et al.
+    (2008) intrinsic-coregionalization factorisation.
+
+    Pre-v5 (the earlier deployed model) treated Material Source as a
+    continuous ARD coordinate of the source-specific Matern. The move to
+    a categorical kernel reflects that the dataset truly has three
+    discrete material classes with distinct chemistries; one ARD
+    coordinate trying to span both (Set 1 ↔ Set 2) and (Set 1+2 ↔ Set 3)
+    variation is ill-defined.
+
     The within-group prior (Cement/FA/Slag tied, Fine/Coarse Aggregate
-    tied) is installed on BOTH Matern subkernels but operates only on
-    the original (raw) feature dims (everything in
-    ``boxcrete.utils.DEFAULT_X_COLUMNS`` except ``IDX["source"]``) — the
-    appended engineered features get free lengthscales (the prior
-    doesn't apply to engineered ratios).
+    tied) is installed on the ``blind`` Matern's lengthscales and on
+    the categorical branch's Matern half (operating only on the
+    original raw feature dims; the appended engineered features get
+    free lengthscales).
 
-    The ``source_specific`` Matern sees all ``len(DEFAULT_X_COLUMNS)``
-    raw dims including Material Source (``IDX["source"]``) so it can
-    learn per-source corrections; the ``blind`` Matern excludes Material
-    Source so it captures the source-agnostic part of the response surface.
-
-    ``lengthscale_lower`` (default 1e-2) controls the lengthscale
-    lower constraint. The HRWR/binder ablation found that some
-    engineered features rail at this bound under the default; pass
-    ``1e-4`` to give the optimiser more room.
+    Args:
+        d_aug: post-feature-append input dim.
+        lengthscale_lower: ARD lengthscale lower constraint. Some
+            engineered features rail at the 1e-2 default; pass ``1e-4``
+            to give the optimiser more room.
     """
     no_source_dims = [i for i in range(_N_RAW_DIMS) if i != _SOURCE_DIM]
-    all_orig_dims = list(range(_N_RAW_DIMS))
     extra_dims = list(range(_N_RAW_DIMS, d_aug))  # appended feature indices
 
     blind = ard_matern_with_within_group_prior(
@@ -227,24 +309,24 @@ def build_strength_kernel_for_aug_dim(
         initial_outputscale=1.0,
         lengthscale_lower=lengthscale_lower,
     )
-    specific = ard_matern_with_within_group_prior(
-        ard_num_dims=_N_RAW_DIMS + len(extra_dims),
-        active_dims=torch.tensor(all_orig_dims + extra_dims),
-        prior=within_group_prior(d_in=_N_RAW_DIMS, num_extras=len(extra_dims)),
-        initial_outputscale=0.5,
+    specific = _categorical_source_branch(
+        d_aug=d_aug,
         lengthscale_lower=lengthscale_lower,
     )
-    return blind + specific + additive_time_kernel(_N_RAW_DIMS)
+    time_branch = additive_time_kernel(_N_RAW_DIMS)
+
+    return blind + specific + time_branch
 
 
-def make_gated_strength_kernel_builder(
-    gate_tau: float = 0.05,
-):
+def make_gated_strength_kernel_builder(gate_tau: float = 0.1):
     """Returns a `(d_aug) -> Kernel` builder that produces the V2
     strength kernel (see :func:`build_strength_kernel_for_aug_dim`)
     wrapped in a :class:`TimeGatedKernel`. The gate makes the prior
     variance at t=0 exactly zero, structurally enforcing f(x, 0) = 0
     without the need for day-zero anchor pseudo-observations.
+
+    Args:
+        gate_tau: time-gate timescale; see :class:`TimeGatedKernel`.
 
     The `time_idx` for the gate is the time dim (``IDX["time"]``), which is
     where the time column sits in the post-input-transform vector. After
@@ -264,6 +346,8 @@ def make_gated_strength_kernel_builder(
 
 
 __all__ = [
+    "NUM_MATERIAL_CLASSES",
+    "SOURCE_KERNEL",
     "TimeGatedKernel",
     "additive_time_kernel",
     "ard_matern_with_within_group_prior",

@@ -113,8 +113,8 @@ class GatedGaussianLikelihood(_GaussianLikelihoodBase):
     standard non-gated Gaussian likelihood would yield; we only change
     the predictive distribution at *small unseen t*.
 
-    Implementation pattern mirrors ``_PerSourceGaussianLikelihood``:
-    use a non-batched placeholder ``HomoskedasticNoise`` so SingleTaskGP
+    Implementation pattern: use a non-batched placeholder
+    ``HomoskedasticNoise`` so SingleTaskGP
     sees a scalar-noise model, and override ``_shaped_noise_covar`` to
     return ``diag(h(t_i)² σ²_global)``. ``train_times`` are stashed for
     the MLL path (where GPyTorch doesn't pass X to the likelihood).
@@ -123,7 +123,7 @@ class GatedGaussianLikelihood(_GaussianLikelihoodBase):
     def __init__(
         self,
         time_idx: int = 9,
-        gate_tau: float = 0.05,
+        gate_tau: float = 0.1,
         noise_constraint=None,
         noise_prior=None,
         **kwargs,
@@ -131,7 +131,7 @@ class GatedGaussianLikelihood(_GaussianLikelihoodBase):
         if noise_constraint is None:
             # ``pragma: no cover`` -- production callers always pass
             # an explicit ``noise_constraint`` via
-            # ``build_strength_kernel_for_aug_dim``; this default-
+            # ``fit_strength_gp``; this default-
             # fallback path is research-only.
             noise_constraint = LogTransformedInterval(  # pragma: no cover
                 1e-6,
@@ -180,7 +180,7 @@ class GatedGaussianLikelihood(_GaussianLikelihoodBase):
         stores raw inputs in ``train_inputs`` and applies the input
         transform at ``forward()`` time, so even the second call passes
         in *raw* days, not log10(t+1) values. For the strength dataset
-        (raw t ≥ 1 day, gate_tau = 0.05), ``h(raw_t / 0.05)`` saturates
+        (raw t ≥ 1 day, gate_tau = 0.10), ``h(raw_t / 0.10)`` saturates
         to ≈1.0, so the gated noise diagonal is empirically equivalent
         to bare ``σ²`` at training. The kernel-side gate
         ``h(t1) k(x1, x2) h(t2)`` is unaffected; it sees post-transform

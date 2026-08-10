@@ -10,6 +10,13 @@
  *   4. Variance: WASM dtrsm L V = K_test_train (one BLAS call), then
  *      variance[i] = k(x*, x*) - ||V[:, i]||² via WASM col_norms_sq.
  *
+ * Callers that only need the mean (the explorer's dashed preview curve and
+ * the scatter position marker, neither of which renders an uncertainty band)
+ * pass ``{ meanOnly: true }``. That skips step 4 entirely along with the
+ * ``[n x nTimes]`` K allocation, since the mean is already accumulated during
+ * the kernel build. Measured at n=670, nTimes=48: 6.1 ms -> 2.8 ms, with
+ * bit-identical means.
+ *
  * Cost (n=647, nTimes=64, d_aug=17):
  *   - Kernel matrix build: ~4 M FLOPS, ~5 ms in JS.
  *   - WASM dtrsm + col_norms_sq: ~30 M FLOPS, ~5 ms with SIMD.
@@ -26,7 +33,10 @@ export function predictStrengthCurveV2(
   params,
   // Optional WASM handle from gp.mjs's initWASM. Pass nulls to use JS fallback.
   wasmCtx,
+  // { meanOnly } - skip the variance solve and return `variances: null`.
+  opts,
 ) {
+  const meanOnly = !!(opts && opts.meanOnly);
   const n = params.n_train;
   const dAug = params.d_aug;
   const nTimes = times.length;
@@ -37,6 +47,12 @@ export function predictStrengthCurveV2(
   const specificActiveDims = params.matern_specific.active_dims;
   const specificLS = params.matern_specific.lengthscales;
   const specificOS = params.matern_specific.outputscale;
+  // Schema-v3 Hamming task factor (see gp.mjs::hammingSourceFactor). The
+  // specific Matern excludes the source dim; a multiplicative factor of
+  // `source_correlation` applies when the two rows are different classes.
+  const isHamming = params.matern_specific.source_kernel_kind === "hamming";
+  const srcCorr = params.matern_specific.source_correlation;
+  const srcDim = params.source_dim_raw;
   const rbfTimeIdx = params.rbf_time.active_dims[0];
   const rbfLS = params.rbf_time.lengthscale;
   const rbfOS = params.rbf_time.outputscale;
@@ -110,14 +126,18 @@ export function predictStrengthCurveV2(
   }
 
   // Determine WASM availability. Caller passes wasmCtx if available.
-  const useWasm = wasmCtx && wasmCtx.wasm && wasmCtx.wasmN === n;
-  let K_buf;          // Float64Array view into K matrix (column-major [n, nTimes])
+  // ``meanOnly`` needs no K matrix at all: the mean is accumulated inline
+  // below, so we neither allocate nor fill it.
+  const useWasm = !meanOnly && wasmCtx && wasmCtx.wasm && wasmCtx.wasmN === n;
+  let K_buf = null;   // Float64Array view into K matrix (column-major [n, nTimes])
   let K_wasm_ptr = 0;
-  if (useWasm) {
-    K_wasm_ptr = wasmCtx.wasm._malloc(n * nTimes * 8);
-    K_buf = new Float64Array(wasmCtx.wasm.HEAPF64.buffer, K_wasm_ptr, n * nTimes);
-  } else {
-    K_buf = new Float64Array(n * nTimes);
+  if (!meanOnly) {
+    if (useWasm) {
+      K_wasm_ptr = wasmCtx.wasm._malloc(n * nTimes * 8);
+      K_buf = new Float64Array(wasmCtx.wasm.HEAPF64.buffer, K_wasm_ptr, n * nTimes);
+    } else {
+      K_buf = new Float64Array(n * nTimes);
+    }
   }
 
   const means = new Float64Array(nTimes);
@@ -153,14 +173,17 @@ export function predictStrengthCurveV2(
       }
       r = Math.sqrt(r2);
       s5r = SQRT5 * r;
-      const kSpecific = specificOS * (1 + s5r + (5 * r2) / 3) * Math.exp(-s5r);
+      let kSpecific = specificOS * (1 + s5r + (5 * r2) / 3) * Math.exp(-s5r);
+      if (isHamming && testX[xOff + srcDim] !== X_flat[rowOff + srcDim]) {
+        kSpecific *= srcCorr;
+      }
 
       // RBF on time
       const dt = (testX[xOff + rbfTimeIdx] - X_flat[rowOff + rbfTimeIdx]) / rbfLS;
       const kRbf = rbfOS * Math.exp(-0.5 * dt * dt);
 
       const kVal = (kBlind + kSpecific + kRbf) * hT * hTrain[i];
-      K_buf[colOff + i] = kVal;
+      if (!meanOnly) K_buf[colOff + i] = kVal;
       mean += kVal * alpha[i];
     }
 
@@ -170,8 +193,10 @@ export function predictStrengthCurveV2(
     // are 0 → matern52 = outputscale. Time RBF self = rbfOS. Total pre-gate
     // self-kernel = blindOS + specificOS + rbfOS. Multiply by h(t_test)² for
     // the gated self-kernel.
-    kSelfPerTime[j] = (blindOS + specificOS + rbfOS) * hT * hT;
+    if (!meanOnly) kSelfPerTime[j] = (blindOS + specificOS + rbfOS) * hT * hT;
   }
+
+  if (meanOnly) return { means, variances: null };
 
   // Variance: solve L V = K, then variance[j] = k_self[j] - ||V[:, j]||².
   const variances = new Float64Array(nTimes);

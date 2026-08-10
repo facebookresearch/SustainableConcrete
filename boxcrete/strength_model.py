@@ -13,11 +13,14 @@ architecture::
         + multiplicative time gate h(t)·k(x,x')·h(t')
         + heteroscedastic gated noise σ²(t) = h(t)² · σ²_global
         + Y/y_max scaling + ZeroMean prior
-        + MLL fit with within-group shrinkage prior on lengthscales
+        + combined block-LOO + MLL objective, with a within-group
+          shrinkage prior on lengthscales
 
-Block-LOO RMSE: 680 psi at full data (n=144 compositions). See
-``experiments/STRENGTH_GP_BENCHMARK.md`` for the full architecture
-study and rejected variants.
+Block-LOO RMSE: 680 psi at full data (n=144 compositions).
+
+Hyperparameters are trained by :func:`boxcrete.block_loo.train_block_loo`,
+not by maximising the marginal likelihood alone — see that module for the
+objective and the closed-form block-inverse identity it uses.
 
 Public API:
   * :func:`fit_strength_gp` — fit a fresh V2 model on raw (X, Y) data.
@@ -126,8 +129,7 @@ def _get_v2_input_transform(
          gated kernel ``h(t) = 1 - exp(-t / τ)``, mapping the smallest
          training time ``t = 1`` to post-Normalize ``0`` would trigger
          ``h(0) = 0`` and gate those rows out of the kernel — a
-         multi-hundred-psi block-LOO regression
-         (see ``experiments/STRENGTH_GP_BENCHMARK.md`` §3.6).
+         multi-hundred-psi block-LOO regression.
 
     Composed from BoTorch's ``AffineInputTransform`` (adds offset) +
     ``Log10`` primitives — the V2 strength GP's canonical log-time
@@ -155,12 +157,24 @@ def _get_v2_input_transform(
     )
     log = Log10(indices=time_index)
 
-    # Step 4: Normalize on non-time dims only (BoTorch's Normalize
-    # supports `indices=` to scope which columns it touches).
-    non_time_dims = [i for i in range(d_aug) if i not in time_index]
+    # Step 4: Normalize on non-time AND non-source dims (BoTorch's
+    # Normalize supports `indices=` to scope which columns it touches).
+    # The time column intentionally bypasses Normalize (see step 4 docs
+    # above). The source column ALSO bypasses Normalize: under the v5
+    # categorical source kernel (IndexKernel / CategoricalKernel),
+    # ``X[:, _SOURCE_DIM]`` is consumed as integer task indices in
+    # ``{0, 1, 2}``; truncating Normalize'd float values to integers
+    # would silently break the kernel evaluation. The ``onehot_ard``
+    # path is exempt because its source dim is one-hot-expanded
+    # upstream into 3 binary cols (those don't need normalisation
+    # since they're already in ``{0, 1}``).
+    source_dim = IDX["source"]
+    non_time_non_source_dims = [
+        i for i in range(d_aug) if i not in time_index and i != source_dim
+    ]
     tf_normalize = Normalize(
         d_aug,
-        indices=torch.tensor(non_time_dims),
+        indices=torch.tensor(non_time_non_source_dims),
         bounds=augmented,
     )
     return ChainedInputTransform(
@@ -266,7 +280,7 @@ def _fit_v2_strength_gp(
     # ``train_inputs`` returns RAW inputs (the input_transform is applied
     # at ``forward()`` time), so this pulls raw days, not
     # log10(t+1) values. For the strength dataset (raw t ≥ 1, gate_tau =
-    # 0.05) ``h(raw_t / tau)`` saturates to ≈1.0, so the gated noise
+    # 0.10) ``h(raw_t / tau)`` saturates to ≈1.0, so the gated noise
     # diagonal is empirically equivalent to bare σ² at training. The
     # kernel-side gate ``h(t1) k h(t2)`` is unaffected; it sees
     # post-transform time straight from the augmented input.
@@ -311,8 +325,14 @@ def fit_strength_gp(
     """Fit the V2 strength GP — the deployed production architecture.
 
     Multi-Matern + gated kernel + gated noise + F5_alllog engineered
-    features + Y/y_max scaling + ZeroMean prior + MLL fit. See module
-    docstring and ``experiments/STRENGTH_GP_BENCHMARK.md`` for details.
+    features + Y/y_max scaling + ZeroMean prior. See the module
+    docstring for details.
+
+    Note this fits kernel hyperparameters against the marginal
+    likelihood. The deployed artifact additionally refines them with
+    :func:`boxcrete.block_loo.train_block_loo`; the regeneration script
+    calls this function with ``max_optimizer_iter=0`` and then runs the
+    block-LOO objective.
 
     Args:
         X: ``[n, 10]`` raw input — composition (9 dims) + time (1 dim).

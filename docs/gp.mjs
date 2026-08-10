@@ -117,6 +117,25 @@ function gateFunction(t, tau) {
 }
 
 /**
+ * Hamming task factor for the schema-v3 categorical source kernel.
+ *
+ * Production (source_kernel_kind="hamming"): the "specific" branch is
+ * ScaleKernel(CategoricalKernel × Matern), where the Matern spans every
+ * dim EXCEPT the source column and the CategoricalKernel contributes a
+ * multiplicative factor k(s_i,s_j) = 1 if same class else `source_correlation`
+ * (= exp(-1/ell)). For legacy/onehot schemas the factor is 1.0 (the source
+ * dim is handled inside the specific Matern's continuous ARD distance).
+ *
+ * @returns {number} 1.0 or `source_correlation`.
+ */
+function hammingSourceFactor(x1, x2, params) {
+  const ms = params.matern_specific;
+  if (!ms || ms.source_kernel_kind !== "hamming") return 1.0;
+  const s = params.source_dim_raw;
+  return x1[s] === x2[s] ? 1.0 : ms.source_correlation;
+}
+
+/**
  * Combined kernel.
  *
  * Schema v1 (legacy): ScaleKernel(Matérn5/2) + ScaleKernel(RBF on time).
@@ -139,7 +158,7 @@ function kernel(x1, x2, params) {
   );
   kBase += matern52ActiveDims(
     x1, x2, specific.active_dims, specific.lengthscales, specific.outputscale,
-  );
+  ) * hammingSourceFactor(x1, x2, params);
   // RBF on time dim only
   const tIdx = rbfT.active_dims[0];
   kBase += rbf(x1[tIdx], x2[tIdx], rbfT.lengthscale, rbfT.outputscale);
@@ -265,12 +284,25 @@ function cholesky(A) {
  * @param {object} params - Raw parameters from strength.json.
  */
 export function initStrengthModel(params) {
-  if (params.schema_version !== 2) {
+  if (params.schema_version !== 2 && params.schema_version !== 3) {
     throw new Error(
-      "initStrengthModel: only schema_version=2 is supported. " +
-      "The legacy v1 schema was retired in 2026-05-17 — see " +
-      "experiments/STRENGTH_GP_BENCHMARK.md §0a."
+      "initStrengthModel: only schema_version=2 or 3 is supported. " +
+      "The legacy v1 schema was retired in 2026-05-17."
     );
+  }
+  // Schema v3 categorical source kernels. The Hamming (CategoricalKernel)
+  // production path is implemented below (see `kernel()` — the specific
+  // Matern branch is multiplied by the Hamming task factor). IndexKernel /
+  // learned-embedding source kernels remain unimplemented in the JS port.
+  if (params.schema_version === 3) {
+    const kind = params.matern_specific && params.matern_specific.source_kernel_kind;
+    if (kind && kind !== "onehot" && kind !== "hamming") {
+      throw new Error(
+        "initStrengthModel: schema_version=3 with " +
+        `source_kernel_kind=${JSON.stringify(kind)} is not implemented ` +
+        "in the JS port (only 'onehot' and 'hamming' are supported)."
+      );
+    }
   }
   if (!Array.isArray(params.Y_train)) {
     throw new Error(
@@ -490,16 +522,20 @@ export function predictStrengthCurve(composition, times, params) {
 }
 
 /**
- * Predict strength curve MEAN ONLY (variance discarded). Currently a thin
- * wrapper around the full predictStrengthCurveV2 path that throws away
- * the variance — TODO: route to a dedicated mean-only fast path that
- * skips the Cholesky solve entirely (k_star^T @ alpha is much cheaper).
+ * Predict strength curve MEAN ONLY (no variance computed).
+ *
+ * Routes to the dedicated mean-only path in `predictStrengthCurveV2`, which
+ * skips the Cholesky/dtrsm solve and the [n x nTimes] K allocation entirely.
+ * The mean is accumulated during the kernel build, so it is bit-identical to
+ * the full path -- only the discarded variance work is removed.
+ *
+ * Use for anything that renders no uncertainty band (the dashed preview curve
+ * and the scatter position marker).
  */
 export function predictStrengthMeanOnly(composition, times, params) {
-  // Reuse the full V2 path and discard the variance.
   return predictStrengthCurveV2(composition, times, params, {
     wasm: _wasm, wasmN: _wasmN, ptrL: _ptrL, ptrNorms: _ptrNorms,
-  }).means;
+  }, { meanOnly: true }).means;
 }
 
 /**

@@ -37,9 +37,13 @@ constituent Matern subkernel, softly tying binders {Cement, Fly Ash,
 Slag} and aggregates {Fine, Coarse} within each material group.
 
 V2's per-subkernel layout is reflected in ``docs/model/strength.json``:
-both ``matern_blind`` (16-dim, no source) and ``matern_specific``
-(17-dim, all dims) carry their own ``lengthscales`` / ``outputscale``
-arrays, and the tests assert the tying constraint on each.
+both ``matern_blind`` and ``matern_specific`` carry their own
+``lengthscales`` / ``active_dims`` / ``outputscale`` arrays. Since the v5
+three-class migration, Material Source is a categorical class handled by a
+separate Hamming/CategoricalKernel factor, so it is excluded from BOTH Matern
+branches — each spans 16 no-source augmented dims. The tests map lengthscales
+to feature names via the served ``active_dims`` and assert the tying and
+identifiability constraints on each subkernel.
 """
 
 import json
@@ -52,6 +56,7 @@ import torch
 
 from boxcrete import compute_loo_cv, fit_strength_gp
 from boxcrete.priors import (
+    ComposedLengthscalePrior,
     WithinGroupShrinkagePrior,
     _AGGREGATE_LENGTHSCALE_GROUP,
     _BINDER_LENGTHSCALE_GROUP,
@@ -117,6 +122,44 @@ def _fit_default_strength_gp():
     return gp, X, Y, Yvar, X_bounds
 
 
+@lru_cache(maxsize=1)
+def _fit_bloo_trained_strength_gp():
+    """Build the model at initialisation (no MLL warm-up) and train it on
+    the block-LOO objective *from scratch*, mirroring the deployment
+    pipeline in ``experiments/regenerate_strength_json.py``. The committed
+    ``docs/model/*`` artifacts are produced this way, so the freshness
+    check must reproduce the same procedure. A separate fresh model is
+    built (not the shared MLL fixture, whose tying/identifiability the
+    other tests inspect) since training mutates hyperparameters."""
+    from boxcrete.block_loo import train_block_loo
+
+    torch.manual_seed(0)
+    data = load_concrete_strength()
+    X, Y, Yvar, X_bounds = data.strength_data
+    gp = fit_strength_gp(X=X, Y=Y, Yvar=Yvar, X_bounds=X_bounds, max_optimizer_iter=0)
+    train_block_loo(gp, X.shape[0], max_iter=150, lr=0.1)
+    return gp
+
+
+def _specific_matern(scale_kernel):
+    """Return the ARD Matern sub-kernel of a ScaleKernel branch.
+
+    blind / rbf_time wrap the Matern/RBF directly; the production
+    ``hamming`` specific branch wraps ``ProductKernel(CategoricalKernel,
+    Matern)`` — return the Matern factor (the one carrying a multi-dim
+    continuous ARD lengthscale, over every dim EXCEPT source).
+    """
+    inner = scale_kernel.base_kernel
+    if getattr(inner, "lengthscale", None) is not None:
+        return inner
+    best = None
+    for factor in inner.kernels:
+        fl = getattr(factor, "lengthscale", None)
+        if fl is not None and (best is None or fl.numel() > best.lengthscale.numel()):
+            best = factor
+    return best
+
+
 def _matern_lengthscales(gp) -> list[list[float]]:
     """Extract per-subkernel lengthscales from a V2 fitted strength GP.
 
@@ -149,9 +192,11 @@ def _matern_lengthscales(gp) -> list[list[float]]:
     """
     additive = gp.covar_module.base_kernel  # unwrap _TimeGatedKernel
     blind_scale = additive.kernels[0]  # ScaleKernel(matern_blind)
-    specific_scale = additive.kernels[1]  # ScaleKernel(matern_specific)
-    blind_ls = blind_scale.base_kernel.lengthscale.detach().squeeze().tolist()
-    specific_ls = specific_scale.base_kernel.lengthscale.detach().squeeze().tolist()
+    specific_scale = additive.kernels[1]  # ScaleKernel(Product(Categorical, Matern))
+    blind_ls = _specific_matern(blind_scale).lengthscale.detach().squeeze().tolist()
+    specific_ls = (
+        _specific_matern(specific_scale).lengthscale.detach().squeeze().tolist()
+    )
     return [blind_ls, specific_ls]
 
 
@@ -239,19 +284,18 @@ class TestStrengthLengthscaleIdentifiability(unittest.TestCase):
         params = _load_strength_params()
         aug_names = _augmented_feature_names(params)
 
-        # ``matern_specific`` covers all d_aug = 17 augmented dims.
-        # ``matern_blind`` excludes the source dim (index 7), so it has
-        # 16 lengthscales — assert with the source feature dropped.
+        # With the production ``hamming`` source kernel, BOTH matern_blind
+        # and matern_specific exclude the source dim (index 7) — the
+        # CategoricalKernel factor handles source — so each carries 16
+        # lengthscales over the no-source aug dims.
         no_source_aug_names = [n for i, n in enumerate(aug_names) if i != _SOURCE_DIM]
-        self.assertEqual(len(specific_ls), len(aug_names))
+        self.assertEqual(len(specific_ls), len(no_source_aug_names))
         self.assertEqual(len(blind_ls), len(no_source_aug_names))
         # Number of raw dims (composition + time, before engineered
-        # features are appended). matern_blind drops the source dim, so
-        # its raw count is one less.
-        n_raw_specific = len(params["raw_feature_names"])
-        n_raw_blind = n_raw_specific - 1
+        # features are appended). Both subkernels drop the source dim.
+        n_raw_blind = len(params["raw_feature_names"]) - 1
         for ls, names, label, n_raw in [
-            (specific_ls, aug_names, "matern_specific", n_raw_specific),
+            (specific_ls, no_source_aug_names, "matern_specific", n_raw_blind),
             (blind_ls, no_source_aug_names, "matern_blind", n_raw_blind),
         ]:
             self._assert_no_violations(
@@ -279,16 +323,39 @@ class TestStrengthLengthscaleIdentifiability(unittest.TestCase):
         self.assertIn("engineered_feature_names", params)
 
         aug_names = _augmented_feature_names(params)
-        no_source_aug_names = [n for i, n in enumerate(aug_names) if i != _SOURCE_DIM]
-        n_raw_specific = len(params["raw_feature_names"])
-        n_raw_blind = n_raw_specific - 1
-        for subkernel, names, n_raw in [
-            ("matern_specific", aug_names, n_raw_specific),
-            ("matern_blind", no_source_aug_names, n_raw_blind),
-        ]:
-            ls = params[subkernel]["lengthscales"]
+        n_raw = len(params["raw_feature_names"])
+        # Both subkernels exclude the categorical source dim, so each maps its
+        # lengthscales to feature names via its served ``active_dims`` (indices
+        # into the augmented feature list). Rail-check only RAW dims (aug index
+        # < n_raw); engineered features are exempt (see ``_collect_violations``).
+        for subkernel in ("matern_specific", "matern_blind"):
+            sub = params[subkernel]
+            self.assertIn(
+                "active_dims",
+                sub,
+                msg=(
+                    f"served model is missing '{subkernel}.active_dims'. "
+                    "Re-run `python experiments/regenerate_strength_json.py`."
+                ),
+            )
+            ls = sub["lengthscales"]
+            dims = sub["active_dims"]
+            self.assertEqual(
+                len(ls),
+                len(dims),
+                msg=(
+                    f"{subkernel}: expected one lengthscale per active dim "
+                    f"({len(dims)}), got {len(ls)}. Re-run "
+                    "`python experiments/regenerate_strength_json.py`."
+                ),
+            )
+            violations = [
+                f"{aug_names[d]} (aug dim {d}): {ls[p]:.2f}"
+                for p, d in enumerate(dims)
+                if d < n_raw and ls[p] >= _LENGTHSCALE_CAP
+            ]
             self._assert_no_violations(
-                _collect_violations(ls, names, _LENGTHSCALE_CAP, n_raw),
+                violations,
                 source_label=f"Committed docs/model/strength.json ({subkernel})",
                 remediation=(
                     "Re-run `python experiments/regenerate_strength_json.py` after "
@@ -369,7 +436,7 @@ class TestStrengthLengthscaleIdentifiability(unittest.TestCase):
         if not test_vectors:
             self.skipTest("test_vectors.json contains no test vectors")
 
-        gp, *_ = _fit_default_strength_gp()
+        gp = _fit_bloo_trained_strength_gp()
         gp.eval()
         # The V2 fit factory stores the un-standardisation stats as
         # buffers (``_study_y_mean_buf`` / ``_study_y_std_buf``) so they
@@ -563,17 +630,20 @@ class TestStrengthLengthscaleIdentifiability(unittest.TestCase):
         # ))
         additive = gp.covar_module.base_kernel
         for label, idx in [("matern_blind", 0), ("matern_specific", 1)]:
-            matern = additive.kernels[idx].base_kernel
+            matern = _specific_matern(additive.kernels[idx])
             self.assertIsInstance(
                 matern.lengthscale_prior,
-                WithinGroupShrinkagePrior,
+                ComposedLengthscalePrior,
                 msg=(
                     f"fit_strength_gp did not install the default "
-                    f"WithinGroupShrinkagePrior on {label}. "
+                    f"ComposedLengthscalePrior on {label}. "
                     "Check the lengthscale_prior kwarg default in "
                     "_build_b_double_prime_kernel_for_aug_dim."
                 ),
             )
+            # ComposedLengthscalePrior composes the WithinGroupShrinkagePrior
+            # (binder/aggregate tying) with the LogNormal ARD baseline; the
+            # tying itself is verified by the freshly_fit_*_tied tests.
 
 
 class TestWithinGroupShrinkagePrior(unittest.TestCase):
@@ -628,6 +698,13 @@ class TestWithinGroupShrinkagePrior(unittest.TestCase):
         # Singleton group {0} contributes 0; group {1, 2} is also tied here.
         x = torch.tensor([[2.0, 3.0, 3.0]], dtype=torch.float64)
         self.assertTrue(torch.allclose(prior.log_prob(x), torch.zeros_like(x)))
+
+    def test_composed_prior_handles_singleton_group(self):
+        prior = ComposedLengthscalePrior(
+            groups_with_sigma=[((0,), 0.5), ((1, 2), 0.5)], dim=3
+        )
+        lp = prior.log_prob(torch.ones(1, 3, dtype=torch.float64))
+        self.assertEqual(lp.shape, (1, 3))
 
     def test_default_prior_is_installed_for_d_in_10_only(self):
         """``_default_lengthscale_prior`` returns the production prior at

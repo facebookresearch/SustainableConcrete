@@ -76,8 +76,8 @@ for (let i = 0; i < compositions.length; i++) {
       }
     }
   }
-  // Material source for GWP (composition[7] is 0 or 1).
-  const ms = composition[7] >= 0.5 ? 1 : 0;
+  // Material source class for GWP (composition[7] is 0, 1, or 2).
+  const ms = Math.round(composition[7]);
   const gwp = predictGWP(composition, gwpParams, ms);
   const cost = predictCost(composition, costParams);
   if (!Number.isFinite(gwp.mean) || !Number.isFinite(cost.mean)) {

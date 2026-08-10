@@ -84,8 +84,29 @@ test-py:
 # --- JS GP sync test ------------------------------------------------
 # Mirrors .github/workflows/js-sync.yml. Verifies docs/gp.mjs predicts
 # the same values as the Python reference for the committed model.
+# Every JS test CI runs (.github/workflows/js-sync.yml). Kept in lockstep
+# with that workflow: `make test-js` green must imply the js-sync job is
+# green, otherwise local runs give false confidence.
+JS_TESTS = \
+  test/test_js_gp.mjs \
+  test/test_js_feature_parity.mjs \
+  test/test_js_strength_v2.mjs \
+  test/test_js_predictor_parity.mjs \
+  test/test_js_physical_constraints.mjs \
+  test/test_js_ui_smoke.mjs \
+  test/test_js_units.mjs \
+  test/test_lengthscales_v2.mjs \
+  test/test_curve_monotonicity.mjs \
+  test/test_data_freshness.mjs \
+  test/test_js_preview_state.mjs \
+  test/test_js_categorical_source.mjs
+
 test-js:
-	node test/test_js_gp.mjs
+	@for t in $(JS_TESTS); do \
+	  printf '  -- %s --\n' "$$t"; \
+	  node "$$t" > /dev/null || { echo "FAILED: $$t"; node "$$t"; exit 1; }; \
+	done
+	@echo "All $(words $(JS_TESTS)) JS tests passed."
 
 # --- Notebook format validation ------------------------------------
 # Mirrors .github/workflows/notebooks.yml :notebook-lint. Just validates

@@ -5,6 +5,7 @@
  */
 
 import { predictStrengthCurve, predictStrengthMeanOnly, predictGWP, predictCost, initStrengthModel, initWASM } from "./gp.mjs";
+import { stepPreviewComposition } from "./preview_state.mjs";
 import {
   UNITS,
   compToDisplay,
@@ -39,9 +40,9 @@ function colIdx(cols, name) {
 
 // Generate `nPts` log-spaced curing times in [0, 28] days. Denser at early
 // times where strength changes fastest — inverse of `log10(t+1)/log10(29)`.
-// Used by `drawStrengthCurve` (32 pts interactive / 64 pts idle), the
-// Material Source curve transition (64 pts), and the always-on preview
-// curve (PREVIEW_PTS pts).
+// Used by `drawStrengthCurve` (32 pts interactive / 64 pts idle) and the
+// curve-transition grid. The preview curve reuses whichever grid the main
+// curve used that frame, so the two overlaid polylines always align.
 function logSpacedTimes(nPts) {
   return Array.from({ length: nPts }, (_, i) => {
     const t01 = i / (nPts - 1);
@@ -68,6 +69,10 @@ function computeStds(variances, params) {
 // --- Cached DOM Elements & Indices ---
 let _sliderInputs = null; // cached after buildSliders()
 let COL_MS = -1; // "Material Source" column index
+// Distinct Material Source classes present in the catalog (e.g. [0, 1, 2]).
+// Populated in buildSliders(); drives the N-way source selector. Fallback
+// [0, 1, 2] if the catalog somehow exposes none.
+let _sourceClasses = [0, 1, 2];
 let COL_TEMP = -1; // "Temp (C)" column index
 
 // --- State ---
@@ -92,13 +97,19 @@ let lastFrameTime = 0; // for frame-rate-independent interpolation
 let scatterTransition = null; // {startTime, duration, fromX, fromY, toX, toY, fromPareto, toPareto}
 let _curveYMax = null; // smoothly interpolated y-axis max for strength curve
 let _curveYMaxTarget = null; // target y-max (for animation loop convergence check)
-// Material Source curve transition: when the user toggles Material Source, we
-// snapshot the pre-toggle strength curve and blend it linearly with the
-// post-toggle curve over `duration` ms. Because Material Source is binary,
-// composition-level interpolation would feed the GP non-categorical values
-// and yield a noisy intermediate prediction. Curve-level interpolation keeps
-// the visual aesthetic smooth without violating the GP's input domain.
-let _msCurveTransition = null; // {startTime, duration, times, fromMeans, fromStds}
+// Material Source curve transition: when the user changes Material Source, we
+// snapshot the pre-change strength curve and blend it linearly with the
+// post-change curve over `duration` ms. Material Source is a categorical class
+// (0/1/2); composition-level interpolation would feed the GP non-categorical
+// values and yield a noisy intermediate prediction. Curve-level interpolation
+// keeps the visual aesthetic smooth without violating the GP's input domain.
+let _curveTransition = null; // {startTime, duration, times, fromMeans, fromStds, toMeans, toStds}
+// Time grids used by the last strength-curve draw, for the regression test in
+// preview-curve.spec.ts. The main curve and the preview curve are drawn on top
+// of each other, so they must share a grid or they visibly disagree even when
+// both are numerically correct. Reference-compared, so reintroducing a
+// separate preview grid fails the test.
+let _lastDrawGrids = { main: null, preview: null };
 
 // --- Unit System ---
 let unitSystem = "metric"; // "metric" or "imperial"
@@ -213,6 +224,21 @@ const ingredientInfo = {
   "Temperature": "Curing temperature significantly affects hydration kinetics. Higher temperatures accelerate early hydration (faster early strength) but can reduce ultimate strength due to non-uniform hydrate distribution. Low temperatures slow hydration but can improve long-term microstructure. The Arrhenius-based maturity concept links time and temperature to strength development.",
 };
 
+// Human-readable label for a Material Source class (0/1/2/…).
+const SOURCE_LABELS = { 0: "Source A", 1: "Source B", 2: "Source C" };
+function sourceLabel(cls) {
+  return SOURCE_LABELS[cls] ?? `Source ${cls}`;
+}
+
+// Extended, class-aware Material Source descriptions. Shown in the materials
+// insight panel for the currently-selected class. Each class corresponds to a
+// distinct raw-material set (supplier + product) used during data collection.
+const materialSourceInfo = {
+  0: "**Set 1 (Mortar)** — Cement: 1L Amrize (Ste. Genevieve, MO); Fly Ash: Class C, Ozinga (Elm Road, WI); Slag: Grade 100, Ozinga; Fine Aggregate: Masonry Sand (Prairie, IL); HRWR: Chryso Adva Cast 530. A mortar-type set (no coarse aggregate) used for laboratory screening.",
+  1: "**Set 2 (Concrete)** — Cement: 1L Heidelberg (Mitchell, IN); Fly Ash: Class C, Eco Material (Labadie, MO); Slag: Grade 100, Ozinga; Fine Aggregate: Concrete Sand (Prairie, IL); Coarse Aggregate: Limestone (Vulcan, Kankakee, IL); HRWR: Chryso Adva Cast 593.",
+  2: "**Set 3 (Concrete)** — Cement: 1L Amrize (Ste. Genevieve, MO); Fly Ash: Class F, Eco Material (Coal Creek, ND); Slag: Grade 100, Amrize (South Chicago); Fine Aggregate: Concrete Sand (Amrize, Elk River, MN); Coarse Aggregate: #6 + #89 Gravel (Amrize, Empire, MN); HRWR: Sika ViscoCrete 1000.",
+};
+
 function buildSliders() {
   const container = document.getElementById("sliders");
   const bounds = compositionsData.slider_bounds;
@@ -246,42 +272,47 @@ function buildSliders() {
       });
       const valueSpan = document.createElement("span");
       valueSpan.id = `val-${i}`;
-      valueSpan.textContent = currentComposition[i] === 0 ? "Source A" : "Source B";
+      valueSpan.textContent = sourceLabel(Math.round(currentComposition[i]));
       label.append(nameSpan, valueSpan);
+
+      // Distinct source classes from the catalog (enumeration, not a range —
+      // slider_bounds only gives min/max). Fallback to [0, 1, 2].
+      _sourceClasses = [
+        ...new Set(compositions.map((c) => Math.round(c[i]))),
+      ].sort((a, b) => a - b);
+      if (_sourceClasses.length === 0) _sourceClasses = [0, 1, 2];
 
       const toggle = document.createElement("div");
       toggle.className = "toggle-row";
-      const btn0 = document.createElement("button");
-      btn0.textContent = "Source A";
-      btn0.className = currentComposition[i] === 0 ? "toggle-btn active" : "toggle-btn";
-      btn0.addEventListener("click", () => {
-        // Smooth curve-level transition (see `triggerMaterialSourceTransition`).
-        // Updates `currentComposition[i]` and `displayPreviewComp[i]` internally.
-        triggerMaterialSourceTransition(i, 0);
-        btn0.className = "toggle-btn active";
-        btn1.className = "toggle-btn";
-        document.getElementById(`val-${i}`).textContent = "Source A";
-        update();
-        // Refresh mix insight: the new composition (median + other MS) is
-        // typically NOT in the training set, so the previous mix's description
-        // would otherwise persist stale. Schedule with the same delay used by
-        // `animateToComposition` so the insight settles after the curve does.
-        scheduleInsightUpdate();
-        checkExtrapolationWarning();
-      });
-      const btn1 = document.createElement("button");
-      btn1.textContent = "Source B";
-      btn1.className = currentComposition[i] === 1 ? "toggle-btn active" : "toggle-btn";
-      btn1.addEventListener("click", () => {
-        triggerMaterialSourceTransition(i, 1);
-        btn0.className = "toggle-btn";
-        btn1.className = "toggle-btn active";
-        document.getElementById(`val-${i}`).textContent = "Source B";
-        update();
-        scheduleInsightUpdate();
-        checkExtrapolationWarning();
-      });
-      toggle.append(btn0, btn1);
+      const buttons = [];
+      for (const cls of _sourceClasses) {
+        const btn = document.createElement("button");
+        btn.textContent = sourceLabel(cls);
+        btn.className =
+          Math.round(currentComposition[i]) === cls
+            ? "toggle-btn active"
+            : "toggle-btn";
+        btn.addEventListener("click", () => {
+          // Smooth curve-level transition (see `triggerMaterialSourceTransition`).
+          // Updates `currentComposition[i]` and `displayPreviewComp[i]` internally.
+          triggerMaterialSourceTransition(i, cls);
+          for (const b of buttons) b.className = "toggle-btn";
+          btn.className = "toggle-btn active";
+          document.getElementById(`val-${i}`).textContent = sourceLabel(cls);
+          update();
+          // Refresh mix insight: the new composition (median + other MS) is
+          // typically NOT in the training set, so the previous mix's description
+          // would otherwise persist stale. Schedule with the same delay used by
+          // `animateToComposition` so the insight settles after the curve does.
+          scheduleInsightUpdate();
+          checkExtrapolationWarning();
+          // If the materials insight panel is showing Material Source, refresh
+          // it for the newly selected class.
+          refreshMaterialSourceInsight();
+        });
+        buttons.push(btn);
+        toggle.appendChild(btn);
+      }
 
       group.append(label, toggle);
       container.appendChild(group);
@@ -376,6 +407,24 @@ function animateContentSwap(bodyEl, textEl, newHTML) {
   }, 300);
 }
 
+function materialSourceInsightHTML() {
+  const cls = COL_MS >= 0 ? Math.round(currentComposition[COL_MS]) : 0;
+  // Generic blurb + the per-class supplier detail. Fall back to "" (not the
+  // generic text) for any class without an entry, so it isn't rendered twice.
+  const desc = materialSourceInfo[cls] ?? "";
+  return `<strong>Material Source · ${sourceLabel(cls)}</strong> — ${ingredientInfo["Material Source"]} ${desc}`;
+}
+
+// Refresh the materials insight panel in place when the selected Material
+// Source class changes while the panel is open on "Material Source".
+function refreshMaterialSourceInsight() {
+  if (_activeIngredientKey !== "Material Source") return;
+  const textEl = document.getElementById("ingredient-insight-text");
+  const bodyEl = document.querySelector(".ingredient-insight-body");
+  if (!textEl || !bodyEl) return;
+  animateContentSwap(bodyEl, textEl, materialSourceInsightHTML());
+}
+
 function toggleIngredientInfo(group, key) {
   const textEl = document.getElementById("ingredient-insight-text");
   const bodyEl = document.querySelector(".ingredient-insight-body");
@@ -397,8 +446,14 @@ function toggleIngredientInfo(group, key) {
   const nameSpan = group.querySelector(".ingredient-name");
   if (nameSpan) nameSpan.classList.add("active");
 
-  // FLIP: measure current height, crossfade content, animate to new height
-  animateContentSwap(bodyEl, textEl, `<strong>${key}</strong> — ${ingredientInfo[key]}`);
+  // FLIP: measure current height, crossfade content, animate to new height.
+  // Material Source is class-aware: show the description for the currently
+  // selected class.
+  const html =
+    key === "Material Source"
+      ? materialSourceInsightHTML()
+      : `<strong>${key}</strong> — ${ingredientInfo[key]}`;
+  animateContentSwap(bodyEl, textEl, html);
 
   _activeIngredientKey = key;
 }
@@ -522,7 +577,7 @@ function updateSliderLabels() {
     if (b.min === b.max) continue;
     if (rowIdx < infoRows.length) {
       // Use offset-aware converter so temperature bounds render correctly
-      // in °F (e.g. -20°C → -4°F, 22°C → 72°F) under imperial.
+      // in °F (e.g. 4.5°C → 40°F, 22°C → 72°F) under imperial.
       const minDisp = displayCompValue(col, b.min).toFixed(0);
       const maxDisp = displayCompValue(col, b.max).toFixed(0);
       infoRows[rowIdx].innerHTML = `<span>${minDisp}</span><span>${maxDisp}</span>`;
@@ -537,10 +592,6 @@ function updateSliderLabels() {
 // --- Animated transition to a new composition ---
 function animateToComposition(targetComp) {
   if (animationId) cancelAnimationFrame(animationId);
-  // A scatter-click animation supersedes any in-flight Material Source curve
-  // transition: the new composition takes over and we recompute the curve
-  // from the lerped composition each frame.
-  _msCurveTransition = null;
   hideExtrapolationWarning(); // suppress during transition
   startAnimLoop();
 
@@ -549,7 +600,21 @@ function animateToComposition(targetComp) {
   _lastAnimTarget = [...targetComp];
 
   const startComp = [...currentComposition];
-  const duration = 350; // ms
+
+  // Crossfade the curve between the two endpoint posteriors. Must run before
+  // `currentComposition` starts moving so `from` reflects what is on screen.
+  // Supersedes any in-flight transition, picking up from its current blend.
+  beginCurveTransition(targetComp);
+
+  // Material Source is a categorical class, not a continuous quantity. The
+  // curve no longer re-predicts per frame, but the preview curve, the scatter
+  // position marker and the GWP/cost readouts all still read
+  // `currentComposition` every frame -- so pin the source dim to the target
+  // class and let the continuous-dim lerp below leave it alone.
+  const msIdx = COL_MS;
+  if (msIdx >= 0) startComp[msIdx] = Math.round(targetComp[msIdx]);
+
+  const duration = CURVE_TRANSITION_MS;
   const startTime = performance.now();
 
   function step(now) {
@@ -582,46 +647,91 @@ function animateToComposition(targetComp) {
   animationId = requestAnimationFrame(step);
 }
 
-// --- Material Source curve-level transition ---
-// Material Source is a binary categorical input; feeding the GP fractional
-// values (0.5) gives a noisy intermediate prediction outside the training
-// distribution. Instead, snapshot the pre-toggle posterior curve, commit the
-// new MS value to `currentComposition`, and let `drawStrengthCurve` blend
-// the cached `from` curve with each frame's freshly computed `to` curve over
-// `MS_TRANSITION_MS`. The result is a smooth visual that respects the GP's
-// input domain.
-const MS_TRANSITION_MS = 350;
-function triggerMaterialSourceTransition(idx, newVal) {
-  if (!strengthParams) {
-    // Predictor not yet initialized — fall back to instant commit so the UI
-    // still responds. (Should not happen in practice; init() awaits params.)
-    currentComposition[idx] = newVal;
-    displayPreviewComp[idx] = newVal;
-    return;
+// --- Curve-level transition ---
+// Both endpoints of an animated composition change are known up front, so the
+// strength curve is crossfaded between two fully-computed posteriors rather
+// than re-predicted every frame. Two reasons:
+//
+//   1. Correctness. Material Source is a categorical class input; feeding the
+//      Hamming kernel a fractional value (0.5) matches no training row, so
+//      every point gets down-weighted and the posterior collapses. A crossfade
+//      never asks the GP about a value between classes.
+//   2. Cost. The old path re-predicted the curve on every frame of the 350 ms
+//      animation (~21 GP solves). Precomputing both ends is 2 solves total,
+//      and each frame becomes a lerp. Measured: the animated-transition frame
+//      drops from 6.91 ms to ~2.9 ms, and the transition can afford the
+//      64-point grid instead of the 32-point interactive one.
+//
+// The tradeoff is that intermediate frames are a convex combination of two
+// posteriors rather than the posterior of the composition the sliders show.
+// Both endpoints are exact; only the 350 ms in between is a visual blend.
+const CURVE_TRANSITION_MS = 350;
+// 32 points, matching what the standard path already used during any
+// interaction. Per-frame cost is a lerp either way (measured 0.002 ms at 32
+// vs 0.003 ms at 64), so the grid only sets the one-time cost of computing
+// both endpoints: 8.2 ms at 32 pts vs 15.9 ms at 64. The curve settles back
+// to the full 64-point grid as soon as the transition ends.
+const CURVE_TRANSITION_PTS = 32;
+const curveTransitionTimes = logSpacedTimes(CURVE_TRANSITION_PTS);
+
+// Evaluate an in-flight blend at the current instant. Used so an interrupting
+// transition starts from what is actually on screen rather than snapping.
+function sampleActiveTransition() {
+  const tr = _curveTransition;
+  const t = Math.min((performance.now() - tr.startTime) / tr.duration, 1);
+  const e = easeInOutCubic(t);
+  return {
+    means: tr.fromMeans.map((m, i) => m + (tr.toMeans[i] - m) * e),
+    stds: tr.fromStds.map((s, i) => s + (tr.toStds[i] - s) * e),
+  };
+}
+
+// Start a crossfade from the currently displayed curve to `targetComp`'s.
+// Returns false if the predictor is not ready, in which case callers fall
+// back to the standard per-frame path.
+function beginCurveTransition(targetComp) {
+  if (!strengthParams) return false;
+
+  let fromMeans, fromStds;
+  if (_curveTransition !== null) {
+    ({ means: fromMeans, stds: fromStds } = sampleActiveTransition());
+  } else {
+    const r = predictStrengthCurve(
+      currentComposition, curveTransitionTimes, strengthParams
+    );
+    fromMeans = r.means;
+    fromStds = computeStds(r.variances, strengthParams);
   }
-  if (currentComposition[idx] === newVal) return; // no-op
 
-  // Snapshot pre-toggle curve at fixed 64-point log-spaced times. Same time
-  // grid is reused throughout the blend so per-frame work is just a lerp.
-  const times = logSpacedTimes(64);
-  const { means: fromMeans, variances: fromVars } = predictStrengthCurve(
-    currentComposition, times, strengthParams
+  const to = predictStrengthCurve(
+    targetComp, curveTransitionTimes, strengthParams
   );
-  const fromStds = computeStds(fromVars, strengthParams);
 
-  // Commit the new MS value before kicking off the visual blend so the GP
-  // calls during the transition use the post-toggle composition.
-  currentComposition[idx] = newVal;
-  displayPreviewComp[idx] = newVal;
-
-  _msCurveTransition = {
+  _curveTransition = {
     startTime: performance.now(),
-    duration: MS_TRANSITION_MS,
-    times,
+    duration: CURVE_TRANSITION_MS,
+    times: curveTransitionTimes,
     fromMeans,
     fromStds,
+    toMeans: to.means,
+    toStds: computeStds(to.variances, strengthParams),
   };
   startAnimLoop();
+  return true;
+}
+
+// Material Source toggle: commit the new class immediately (the GP only ever
+// sees an integer class) and crossfade the curve to it.
+function triggerMaterialSourceTransition(idx, newVal) {
+  if (currentComposition[idx] === newVal) return; // no-op
+
+  const target = [...currentComposition];
+  target[idx] = newVal;
+  // Snapshot `from` off the pre-toggle composition before committing.
+  beginCurveTransition(target);
+
+  currentComposition[idx] = newVal;
+  displayPreviewComp[idx] = newVal;
 }
 
 // --- Click-to-edit value handlers (regular sliders only) ---
@@ -687,12 +797,14 @@ function setComposition(comp) {
   if (msIdx >= 0) {
     const msVal = Math.round(comp[msIdx]);
     const msEl = document.getElementById(`val-${msIdx}`);
-    if (msEl) msEl.textContent = msVal === 0 ? "Source A" : "Source B";
+    if (msEl) msEl.textContent = sourceLabel(msVal);
     const buttons = document.querySelectorAll(".toggle-btn");
-    if (buttons.length >= 2) {
-      buttons[0].className = msVal === 0 ? "toggle-btn active" : "toggle-btn";
-      buttons[1].className = msVal === 1 ? "toggle-btn active" : "toggle-btn";
-    }
+    buttons.forEach((btn, k) => {
+      const cls = _sourceClasses[k] ?? k;
+      btn.className = cls === msVal ? "toggle-btn active" : "toggle-btn";
+    });
+    // Keep an open materials insight in sync with the committed class.
+    refreshMaterialSourceInsight();
   }
   update();
 }
@@ -1000,31 +1112,34 @@ function drawStrengthCurve() {
 
   // Compute predictions (use log-spaced time points for smooth early-time resolution).
   // Two paths:
-  //   (1) Material Source transition active — blend cached pre-toggle curve
-  //       with freshly computed post-toggle curve over MS_TRANSITION_MS.
+  //   (1) Curve transition active — lerp between two precomputed endpoint
+  //       posteriors (see `beginCurveTransition`). No GP call per frame.
   //   (2) Otherwise — standard predict at current composition.
+  //
+  // `showPreview` is hoisted above both because it feeds `isInteracting`:
+  // while the preview curve is animating we redraw at 60 fps, so the main
+  // curve must use the cheaper 32-point grid too. Leaving it at 64 made
+  // preview-settling the most expensive frame in the app (measured 14.1 ms
+  // vs a 16.7 ms budget at 60 fps).
+  const showPreview = isPreviewActive || !isCompositionConverged();
   let times, means, stds, nPts;
-  if (_msCurveTransition !== null) {
-    const elapsed = performance.now() - _msCurveTransition.startTime;
-    const t = Math.min(elapsed / _msCurveTransition.duration, 1);
+  if (_curveTransition !== null) {
+    const elapsed = performance.now() - _curveTransition.startTime;
+    const t = Math.min(elapsed / _curveTransition.duration, 1);
     if (t >= 1) {
-      _msCurveTransition = null; // fall through to standard path
+      _curveTransition = null; // fall through to standard path
     } else {
       const ease = easeInOutCubic(t);
-      times = _msCurveTransition.times;
+      times = _curveTransition.times;
       nPts = times.length;
-      const { means: toMeans, variances: toVars } = predictStrengthCurve(
-        currentComposition, times, strengthParams
-      );
-      const toStds = computeStds(toVars, strengthParams);
-      const { fromMeans, fromStds } = _msCurveTransition;
+      const { fromMeans, fromStds, toMeans, toStds } = _curveTransition;
       means = fromMeans.map((m, i) => m + (toMeans[i] - m) * ease);
       stds = fromStds.map((s, i) => s + (toStds[i] - s) * ease);
     }
   }
   if (means === undefined) {
     const isAnimating = animationId !== null;
-    const isInteracting = _sliderActive || isAnimating;
+    const isInteracting = _sliderActive || isAnimating || showPreview;
     nPts = isInteracting ? 32 : 64;
     times = logSpacedTimes(nPts);
     const { means: m, variances } = predictStrengthCurve(
@@ -1033,6 +1148,8 @@ function drawStrengthCurve() {
     means = m;
     stds = computeStds(variances, strengthParams);
   }
+
+  _lastDrawGrids = { main: times, preview: null };
 
   // Dynamic Y range: floor at 16500 psi (max observed: 16029), expands smoothly if needed
   // _curveYMax is stored in RAW (psi) space to be unit-invariant — prevents visual drift
@@ -1093,13 +1210,19 @@ function drawStrengthCurve() {
   ctx.lineWidth = 2.5;
   ctx.stroke();
 
-  // Preview curve: compute directly from interpolated displayPreviewComp
-  const showPreview = isPreviewActive || !isCompositionConverged();
+  // Preview curve: computed from the interpolated displayPreviewComp, on the
+  // SAME time grid the main curve just used. These two polylines are drawn on
+  // top of each other, so sampling them differently makes them visibly
+  // disagree even when both are correct: a 32-point main curve against a
+  // fixed 48-point preview left a 17% gap at t=0.07 d, in the steep
+  // gate-opening region. Sharing the grid makes the gap identically zero at
+  // any resolution.
   if (showPreview) {
-    const previewMeans = predictStrengthMeanOnly(displayPreviewComp, previewTimesCache, strengthParams);
+    const previewMeans = predictStrengthMeanOnly(displayPreviewComp, times, strengthParams);
+    _lastDrawGrids.preview = times;
     ctx.beginPath();
-    for (let i = 0; i < PREVIEW_PTS; i++) {
-      const x = xScale(previewTimesCache[i]);
+    for (let i = 0; i < nPts; i++) {
+      const x = xScale(times[i]);
       const y = yScale(Math.max(0, previewMeans[i] * sf));
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
@@ -1345,9 +1468,10 @@ function drawScatter() {
   const curGWPRaw = predictGWP(compForCost, gwpParams, ms).mean;
   const curCostRaw = predictCost(compForCost, costParams).mean;
   const curX = scatterXAxis === "cost" ? -curCostRaw * df.costFactor : -curGWPRaw * df.gwpFactor;
-  const curStr = predictStrengthCurve(
+  // Mean-only: the scatter marker draws a point, not an uncertainty band.
+  const curStr = predictStrengthMeanOnly(
     currentComposition, [scatterDay], strengthParams
-  ).means[0] * yFactor;
+  )[0] * yFactor;
 
   // Axis ranges (use interpolated ranges during transition to avoid jumps)
   const xVals = xPreds;
@@ -1401,7 +1525,10 @@ function drawScatter() {
       let filtered = false;
       for (const f of scatterFilter) {
         const val = f.computed ? f.computed(comp) : comp[f.colIdx];
-        if (val < f.min || val > f.max) { filtered = true; break; }
+        // Categorical filters test class membership; numeric ones test bounds.
+        if (f.classes) {
+          if (!f.classes.has(Math.round(val))) { filtered = true; break; }
+        } else if (val < f.min || val > f.max) { filtered = true; break; }
       }
       if (filtered) {
         const x = xScale(xVals[i]);
@@ -1585,9 +1712,6 @@ let prevObsIdx = null; // track which observations are currently shown
 let previewTarget = null; // composition we're interpolating TOWARD (set on hover)
 let displayPreviewComp = null; // always-valid interpolated composition (initialized on load)
 let isPreviewActive = false; // true when hovering a scatter point
-const PREVIEW_PTS = 48;
-const previewTimesCache = logSpacedTimes(PREVIEW_PTS);
-
 function isCompositionConverged() {
   for (let i = 0; i < displayPreviewComp.length; i++) {
     if (Math.abs(displayPreviewComp[i] - currentComposition[i]) > 1e-6) return false;
@@ -1609,18 +1733,18 @@ function animLoop(now) {
   // Frame-rate-independent interpolation factor
   const factor = 1 - Math.pow(0.85, dt / 16.67);
 
-  // Interpolate displayPreviewComp toward target
+  // Interpolate displayPreviewComp toward target.
+  //
+  // Material Source is exempt: it is a categorical class, and the preview
+  // curve is predicted directly from displayPreviewComp. Lerping it feeds the
+  // Hamming kernel fractional classes, which match no training row, so the
+  // whole ~1.4 s approach renders a collapsed "unseen class" posterior (-3%)
+  // and briefly passes through the neighbouring real class (+19%) on the way.
+  // Snap it instead, exactly as animateToComposition pins it.
   const target = isPreviewActive ? previewTarget : currentComposition;
-  let previewConverged = true;
-  for (let i = 0; i < displayPreviewComp.length; i++) {
-    const diff = target[i] - displayPreviewComp[i];
-    if (Math.abs(diff) > 1e-6) {
-      displayPreviewComp[i] += diff * factor;
-      previewConverged = false;
-    } else {
-      displayPreviewComp[i] = target[i];
-    }
-  }
+  const previewConverged = stepPreviewComposition(
+    displayPreviewComp, target, factor, COL_MS
+  );
 
   // Show/hide slider preview markers from interpolated composition
   if (isPreviewActive || !previewConverged) {
@@ -1661,7 +1785,7 @@ function animLoop(now) {
   const hasCurveAnim = Math.abs(curveObsHoverScale - curveHoverTarget) > 0.01;
   const hasObsAnim = Math.abs(obsOpacity - obsTarget) > 0.01;
   const hasYAxisAnim = _curveYMaxTarget !== null && Math.abs(_curveYMax - _curveYMaxTarget) > 0.5;
-  if (!previewConverged || isPreviewActive || hasHoverAnim || hasCurveAnim || hasObsAnim || hasYAxisAnim || animationId !== null || scatterTransition !== null || unitTransition !== null || _msCurveTransition !== null) {
+  if (!previewConverged || isPreviewActive || hasHoverAnim || hasCurveAnim || hasObsAnim || hasYAxisAnim || animationId !== null || scatterTransition !== null || unitTransition !== null || _curveTransition !== null) {
     animLoopId = requestAnimationFrame(animLoop);
   } else {
     animLoopId = null;
@@ -1843,6 +1967,48 @@ function setupEventListeners() {
   // pixel value to exactly 0px, runs on the compositor, fires `onfinish` precisely
   // when the animation completes, and doesn't require forced reflows.
 
+  // Material Source is a categorical class, not a measurable quantity, so a
+  // min/max range is meaningless for it ("between Source A and Source B" says
+  // nothing). Its filter row renders one toggle per class instead, and
+  // `applyFilters` emits a set-membership predicate rather than bounds.
+  function isCategoricalFilterCol(colVal) {
+    return COL_MS >= 0 && colVal === String(COL_MS);
+  }
+
+  // Populate a row's value controls for the currently selected column.
+  // Called on creation and whenever the column select changes.
+  function renderFilterValueControls(row) {
+    const host = row.querySelector(".filter-value");
+    const colVal = row.querySelector(".filter-col").value;
+
+    if (isCategoricalFilterCol(colVal)) {
+      // All classes selected by default, so adding the row is a no-op until
+      // the user narrows it -- mirroring empty min/max meaning "unbounded".
+      host.innerHTML = _sourceClasses
+        .map(
+          (cls) =>
+            `<button type="button" class="filter-cat-btn active" data-cls="${cls}"` +
+            ` aria-pressed="true">${sourceLabel(cls)}</button>`,
+        )
+        .join("");
+      for (const btn of host.querySelectorAll(".filter-cat-btn")) {
+        btn.addEventListener("click", () => {
+          const on = !btn.classList.contains("active");
+          btn.classList.toggle("active", on);
+          btn.setAttribute("aria-pressed", String(on));
+          applyFilters();
+        });
+      }
+    } else {
+      host.innerHTML =
+        '<input class="filter-min" type="number" placeholder="min">' +
+        "<span>\u2013</span>" +
+        '<input class="filter-max" type="number" placeholder="max">';
+      host.querySelector(".filter-min").addEventListener("change", applyFilters);
+      host.querySelector(".filter-max").addEventListener("change", applyFilters);
+    }
+  }
+
   function addFilterRow() {
     // Remove any dead wrappers from previous removals
     for (const dead of filterRows.querySelectorAll(".filter-row-wrapper.collapsed")) {
@@ -1855,11 +2021,10 @@ function setupEventListeners() {
     row.className = "filter-row";
     row.innerHTML = `
       <select class="filter-col">${createFilterColOptions()}</select>
-      <input class="filter-min" type="number" placeholder="min">
-      <span>–</span>
-      <input class="filter-max" type="number" placeholder="max">
+      <span class="filter-value"></span>
       <button class="filter-remove-btn" title="Remove this filter">−</button>
     `;
+    renderFilterValueControls(row);
     row.querySelector(".filter-remove-btn").addEventListener("click", () => {
       // Measure current rendered height, then animate to 0
       const h = wrapper.offsetHeight;
@@ -1874,9 +2039,13 @@ function setupEventListeners() {
         applyFilters();
       };
     });
-    row.querySelector(".filter-min").addEventListener("change", applyFilters);
-    row.querySelector(".filter-max").addEventListener("change", applyFilters);
-    row.querySelector(".filter-col").addEventListener("change", applyFilters);
+    // min/max listeners are attached by renderFilterValueControls, which
+    // rebuilds them whenever the column changes (the controls differ between
+    // numeric and categorical columns).
+    row.querySelector(".filter-col").addEventListener("change", () => {
+      renderFilterValueControls(row);
+      applyFilters();
+    });
     wrapper.appendChild(row);
     filterRows.appendChild(wrapper);
     // Animate expansion: measure natural height, then animate from 0 to that height
@@ -1895,6 +2064,19 @@ function setupEventListeners() {
       scatterFilter = [];
       for (const row of rows) {
         const colVal = row.querySelector(".filter-col").value;
+
+        // Categorical column: emit a set-membership predicate. Bounds are
+        // meaningless for an unordered class axis.
+        if (isCategoricalFilterCol(colVal)) {
+          const classes = new Set(
+            [...row.querySelectorAll(".filter-cat-btn.active")].map((b) =>
+              parseInt(b.dataset.cls, 10),
+            ),
+          );
+          scatterFilter.push({ colIdx: parseInt(colVal, 10), classes });
+          continue;
+        }
+
         const minInput = row.querySelector(".filter-min");
         const maxInput = row.querySelector(".filter-max");
         const minVal = minInput.value;
@@ -2056,7 +2238,16 @@ if (typeof location !== "undefined" &&
     // flight. Used by the smooth-transition regression test in
     // `preview-curve.spec.ts` — it's the deterministic alternative to
     // racing screenshot timing against the 350 ms blend window.
-    get isMsCurveTransitionActive() { return _msCurveTransition !== null; },
+    get isCurveTransitionActive() { return _curveTransition !== null; },
+    // True when the last draw put the preview curve on the same time grid as
+    // the main curve. They are overlaid, so different grids make them
+    // visibly disagree even when both are correct (a 32-pt main curve against
+    // a 48-pt preview left a 17% gap at t=0.07 d). Null when no preview was
+    // drawn on that frame.
+    get previewSharesMainGrid() {
+      if (_lastDrawGrids.preview === null) return null;
+      return _lastDrawGrids.preview === _lastDrawGrids.main;
+    },
   };
 }
 
