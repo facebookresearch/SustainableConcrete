@@ -1,0 +1,83 @@
+import { test, expect } from "@playwright/test";
+
+/**
+ * Touch-target sizing.
+ *
+ * The `input[type=range]` element used to BE the visible 6 px bar, so the whole
+ * hit area was 6 px tall (measured 220x6 on the mobile project) — far under the
+ * WCAG 2.2 AA "Target Size (Minimum)" floor of 24x24 CSS px, and further still
+ * under Apple's 44x44 HIG recommendation. All 8 sliders failed.
+ *
+ * The visible bar now lives on the track pseudo-element, freeing the input box
+ * to be a proper target. These tests pin that so the two can't be re-merged.
+ */
+
+const WCAG_MIN = 24;
+const HIG_MIN = 44;
+
+test.describe("slider touch targets", () => {
+  // Sliders are built after the model resolves, which now happens in a worker.
+  // Wait on the element rather than a timeout so the assertion measures a
+  // rendered slider instead of racing an empty panel.
+  async function waitForSliders(page: import("@playwright/test").Page, sel: string) {
+    await expect(page.locator(sel).first()).toBeVisible({ timeout: 15000 });
+  }
+
+  test("mobile sliders meet the Apple HIG 44px target height", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "mobile touch sizing");
+    await page.goto("/");
+    await page.locator("#mobile-show-sliders").click();
+    await expect(page.locator(".mobile-sliders-view")).toBeVisible({ timeout: 2000 });
+    await waitForSliders(page, ".mobile-sliders-view input[type=range]");
+
+    const heights = await page.evaluate(() =>
+      Array.from(document.querySelectorAll(".mobile-sliders-view input[type=range]"))
+        .filter((el) => (el as HTMLElement).offsetParent !== null)
+        .map((el) => +el.getBoundingClientRect().height.toFixed(1)),
+    );
+    expect(heights.length, "expected visible mobile sliders").toBeGreaterThan(0);
+    const tooSmall = heights.filter((h) => h < HIG_MIN);
+    expect(
+      tooSmall.length,
+      `${tooSmall.length}/${heights.length} sliders under ${HIG_MIN}px: ${JSON.stringify(heights)}`,
+    ).toBe(0);
+  });
+
+  test("desktop sliders meet the WCAG 2.2 AA 24px minimum", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "desktop pointer sizing");
+    await page.goto("/");
+    await waitForSliders(page, "#sliders input[type=range]");
+    const heights = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("input[type=range]"))
+        .filter((el) => (el as HTMLElement).offsetParent !== null)
+        .map((el) => +el.getBoundingClientRect().height.toFixed(1)),
+    );
+    expect(heights.length, "expected visible sliders").toBeGreaterThan(0);
+    const tooSmall = heights.filter((h) => h < WCAG_MIN);
+    expect(
+      tooSmall.length,
+      `${tooSmall.length}/${heights.length} sliders under ${WCAG_MIN}px: ${JSON.stringify(heights)}`,
+    ).toBe(0);
+  });
+
+  test("the visible track stays thin while the hit area is tall", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "one project is enough");
+    await page.goto("/");
+    // The bar the user sees must remain the slim 6px line; growing the hit
+    // area must not fatten the visual.
+    const trackHeight = await page.evaluate(() => {
+      for (const sheet of Array.from(document.styleSheets)) {
+        let rules: CSSRuleList;
+        try { rules = (sheet as CSSStyleSheet).cssRules; } catch { continue; }
+        for (const r of Array.from(rules)) {
+          const sel = (r as CSSStyleRule).selectorText || "";
+          if (sel.includes("slider-runnable-track")) {
+            return (r as CSSStyleRule).style.height;
+          }
+        }
+      }
+      return null;
+    });
+    expect(trackHeight, "runnable-track rule not found — visual moved back onto the input?").toBe("6px");
+  });
+});

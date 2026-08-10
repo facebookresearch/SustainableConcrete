@@ -606,16 +606,31 @@ h2 {
   border-color: var(--accent);
   background: rgba(var(--card-bg-rgb), 0.6);
 }
+/* The input is the TOUCH TARGET; the visible 6 px bar is drawn by the track
+   pseudo-elements below. Previously the element itself was the 6 px bar, which
+   meant the whole hit area was 6 px tall -- measured 220x6 on mobile, against a
+   WCAG 2.2 AA minimum of 24x24 and an Apple HIG recommendation of 44x44. All 8
+   sliders failed. Separating hit area from visual lets the target grow without
+   changing anything the user sees. */
 .slider-group input[type=range] {
   width: 100%;
   cursor: pointer;
   accent-color: var(--accent);
   -webkit-appearance: none;
   appearance: none;
+  height: 24px;
+  background: transparent;
+  outline: none;
+}
+.slider-group input[type=range]::-webkit-slider-runnable-track {
   height: 6px;
   background: var(--border);
   border-radius: 3px;
-  outline: none;
+}
+.slider-group input[type=range]::-moz-range-track {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
 }
 .slider-group input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -626,6 +641,9 @@ h2 {
   border: 2px solid rgba(255,255,255,0.9);
   cursor: pointer;
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  /* WebKit aligns the thumb to the top of the runnable track, so pull it up
+     by half the difference to re-center it on the 6 px bar. */
+  margin-top: -6px;
 }
 .slider-group input[type=range]::-moz-range-thumb {
   width: 18px;
@@ -1507,7 +1525,12 @@ a.ref-link {
        small breathing margin from the label above and info-row below. */
     width: min(60vw, 220px);
     display: block;
-    margin: 4px auto;
+    /* 44 px hit area (Apple HIG); the visible bar stays 6 px via the track
+       pseudo-element. Margin drops to 0 so the row grows by less than the
+       full height increase -- the taller target absorbs the gap that used to
+       sit between the label row and the info-row. */
+    height: 44px;
+    margin: 0 auto;
   }
   /* Smaller thumb on mobile reduces the intrinsic thumb-half-width inset
      (was 9 px for the 18 px desktop thumb). 16 px is still a comfortable
@@ -1520,6 +1543,8 @@ a.ref-link {
   .mobile-sliders-view .slider-group input[type=range]::-webkit-slider-thumb {
     width: 16px;
     height: 16px;
+    /* Re-center the smaller mobile thumb on the 6 px track. */
+    margin-top: -5px;
   }
   .mobile-sliders-view .slider-group input[type=range]::-moz-range-thumb {
     width: 16px;

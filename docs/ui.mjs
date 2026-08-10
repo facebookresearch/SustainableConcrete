@@ -6,6 +6,7 @@
 
 import { predictStrengthCurve, predictStrengthMeanOnly, predictGWP, predictCost, initStrengthModel, initWASM } from "./gp.mjs";
 import { stepPreviewComposition } from "./preview_state.mjs";
+import { makeComputedFilters, matchesFilters } from "./filters.mjs";
 import {
   UNITS,
   compToDisplay,
@@ -176,26 +177,91 @@ async function loadJSON(path) {
   return resp.json();
 }
 
+/**
+ * Build the strength model without blocking the main thread.
+ *
+ * `initStrengthModel` is ~70 ms of straight-line arithmetic on desktop and
+ * several hundred on a phone (670x670 kernel rebuild + Cholesky). Doing it
+ * inline freezes first paint and every tap for that window, so we hand it to
+ * a module worker and let the shell render meanwhile.
+ *
+ * Falls back to synchronous init whenever the worker is unavailable or fails
+ * (no `Worker`, blocked module workers, file:// origins), so behaviour is
+ * unchanged in those environments -- just blocking again.
+ */
+async function initStrengthModelAsync(rawParams) {
+  if (typeof Worker === "undefined") {
+    initStrengthModel(rawParams);
+    return rawParams;
+  }
+  try {
+    return await new Promise((resolve, reject) => {
+      const worker = new Worker(
+        new URL("./model_init_worker.mjs", import.meta.url),
+        { type: "module" },
+      );
+      worker.onmessage = (e) => {
+        worker.terminate();
+        if (e.data && e.data.__error) reject(new Error(e.data.__error));
+        else resolve(e.data);
+      };
+      worker.onerror = (err) => {
+        worker.terminate();
+        reject(err instanceof Error ? err : new Error("model worker failed"));
+      };
+      worker.postMessage(rawParams);
+    });
+  } catch (err) {
+    console.warn(
+      "[boxcrete] model worker unavailable; falling back to blocking init:",
+      err,
+    );
+    initStrengthModel(rawParams);
+    return rawParams;
+  }
+}
+
 async function init() {
-  [strengthParams, gwpParams, costParams, compositionsData] = await Promise.all([
+  const [rawStrength, gwp, cost, compositions] = await Promise.all([
     loadJSON("model/strength.json"),
     loadJSON("model/gwp.json"),
     loadJSON("model/cost.json"),
     loadJSON("model/compositions.json"),
   ]);
+  gwpParams = gwp;
+  costParams = cost;
+  compositionsData = compositions;
 
   // Load mix analyses (non-blocking, optional). Warn loudly on failure
   // rather than swallowing silently — a missing or malformed
   // mix_analyses.json should be visible in the console so it can be
   // diagnosed during development.
   loadJSON("model/mix_analyses.json")
-    .then(d => { mixAnalyses = d; updateMixInsight(); })
+    .then(d => {
+      mixAnalyses = d;
+      // The two artifacts are index-aligned: mix_analyses is keyed by
+      // position in compositions.json. A count mismatch means one of them
+      // is stale (they are cached independently), which otherwise shows up
+      // only as a silent "insight not available" on the newest mixes.
+      const nComp = compositionsData && compositionsData.compositions
+        ? compositionsData.compositions.length : null;
+      const nAnalyses = Object.keys(d).length;
+      if (nComp !== null && nAnalyses !== nComp) {
+        console.warn(
+          `[boxcrete] artifact mismatch: mix_analyses.json has ${nAnalyses} ` +
+          `entries but compositions.json has ${nComp} compositions. One of ` +
+          "them is stale (likely a cached copy); mixes beyond the smaller " +
+          "count will show no insight.",
+        );
+      }
+      updateMixInsight();
+    })
     .catch(err => {
       console.warn("[boxcrete] mix_analyses.json failed to load; mix-insight panel will be empty:", err);
     });
 
-  // Compute Cholesky and alpha from training data + kernel params
-  initStrengthModel(strengthParams);
+  // Rebuild the kernel + Cholesky off the main thread where possible.
+  strengthParams = await initStrengthModelAsync(rawStrength);
 
   // Initialize WASM BLAS for accelerated variance (non-blocking, falls back to JS)
   initWASM(strengthParams);
@@ -1522,15 +1588,7 @@ function drawScatter() {
     // Check all filter conditions
     if (scatterFilter && scatterFilter.length > 0) {
       const comp = compositionsData.compositions[i];
-      let filtered = false;
-      for (const f of scatterFilter) {
-        const val = f.computed ? f.computed(comp) : comp[f.colIdx];
-        // Categorical filters test class membership; numeric ones test bounds.
-        if (f.classes) {
-          if (!f.classes.has(Math.round(val))) { filtered = true; break; }
-        } else if (val < f.min || val > f.max) { filtered = true; break; }
-      }
-      if (filtered) {
+      if (!matchesFilters(comp, scatterFilter)) {
         const x = xScale(xVals[i]);
         const y = yScale(yVals[i]);
         ctx.beginPath();
@@ -1904,39 +1962,9 @@ function setupEventListeners() {
   const colNames = compositionsData.column_names;
 
   // Computed filter quantities (derived from composition)
-  const computedFilters = [
-    { id: "wb", label: "W/B Ratio", compute: (comp) => {
-      const c = comp[colIdx(colNames, "Cement (kg/m3)")];
-      const fa = comp[colIdx(colNames, "Fly Ash (kg/m3)")];
-      const s = comp[colIdx(colNames, "Slag (kg/m3)")];
-      const w = comp[colIdx(colNames, "Water (kg/m3)")];
-      const b = c + fa + s;
-      return b > 0 ? w / b : Infinity;
-    }},
-    { id: "binder", label: "Total Binder", compute: (comp) => {
-      const c = comp[colIdx(colNames, "Cement (kg/m3)")];
-      const fa = comp[colIdx(colNames, "Fly Ash (kg/m3)")];
-      const s = comp[colIdx(colNames, "Slag (kg/m3)")];
-      return c + fa + s;
-    }},
-    { id: "scm", label: "SCM Replacement %", compute: (comp) => {
-      const c = comp[colIdx(colNames, "Cement (kg/m3)")];
-      const fa = comp[colIdx(colNames, "Fly Ash (kg/m3)")];
-      const s = comp[colIdx(colNames, "Slag (kg/m3)")];
-      const b = c + fa + s;
-      return b > 0 ? (fa + s) / b * 100 : 0;
-    }},
-    { id: "paste", label: "Paste Fraction", compute: (comp) => {
-      const c = comp[colIdx(colNames, "Cement (kg/m3)")];
-      const fa = comp[colIdx(colNames, "Fly Ash (kg/m3)")];
-      const s = comp[colIdx(colNames, "Slag (kg/m3)")];
-      const w = comp[colIdx(colNames, "Water (kg/m3)")];
-      const ca = comp[colIdx(colNames, "Coarse Aggregates (kg/m3)")];
-      const fna = comp[colIdx(colNames, "Fine Aggregate (kg/m3)")];
-      const total = c + fa + s + w + ca + fna;
-      return total > 0 ? (c + fa + s + w) / total : 0;
-    }},
-  ];
+  // Derived filter quantities live in filters.mjs so they can be unit tested
+  // without a DOM (see test/test_js_filters.mjs).
+  const computedFilters = makeComputedFilters(colNames);
 
   function createFilterColOptions() {
     let html = '<optgroup label="Composition">';

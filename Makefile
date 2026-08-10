@@ -67,9 +67,16 @@ TRACKED_PY := $(shell (sl files 2>/dev/null || git ls-files) | grep -E '\.py$$')
 # untracked working-tree files don't poison the result. Black version
 # is pinned via pyproject.toml's [project.optional-dependencies].dev
 # so the formatter output is bit-for-bit identical to CI.
+# Hard-gate error codes. MUST stay identical to the flake8 --select list in
+# .github/workflows/tests.yml, otherwise `make lint` green does not imply the
+# CI lint job is green. This previously gated only E9,F63,F7,F82 (4 codes)
+# while CI gated 13 -- so E501 (long lines) and F401 (unused imports), the two
+# most common real failures, passed locally and broke CI.
+FLAKE8_SELECT = E9,E202,E226,E251,E402,E501,E741,F401,F63,F7,F811,F82,F841
+
 lint:
 	$(PYTHON) -m black --check --diff $(TRACKED_PY)
-	$(PYTHON) -m flake8 $(TRACKED_PY) --count --select=E9,F63,F7,F82 --show-source --statistics
+	$(PYTHON) -m flake8 $(TRACKED_PY) --count --select=$(FLAKE8_SELECT) --show-source --statistics
 	$(PYTHON) -m flake8 $(TRACKED_PY) --count --exit-zero --statistics
 
 format:
@@ -99,7 +106,8 @@ JS_TESTS = \
   test/test_curve_monotonicity.mjs \
   test/test_data_freshness.mjs \
   test/test_js_preview_state.mjs \
-  test/test_js_categorical_source.mjs
+  test/test_js_categorical_source.mjs \
+  test/test_js_filters.mjs
 
 test-js:
 	@for t in $(JS_TESTS); do \
