@@ -126,9 +126,9 @@
 
   <!-- About Modal Overlay -->
   <div class="about-overlay" id="about-overlay">
-    <div class="about-modal">
+    <div class="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-modal-title">
       <button class="about-close" aria-label="Close" data-modal-close>&times;</button>
-      <h2>About This Explorer</h2>
+      <h2 id="about-modal-title">About This Explorer</h2>
       <p>This tool predicts concrete compressive strength using a Gaussian Process model trained on laboratory mortar and concrete specimens. Predictions reflect controlled lab conditions and <strong>may differ from field performance</strong> due to batching variability, curing environment, and aggregate properties.</p>
       <h3>How to Use</h3>
       <ul>
@@ -147,7 +147,7 @@
 
   <!-- Video Modal Overlay -->
   <div class="video-overlay" id="video-overlay">
-    <div class="video-modal">
+    <div class="video-modal" role="dialog" aria-modal="true" aria-label="BOxCrete video">
       <button class="video-close" aria-label="Close" data-modal-close>&times;</button>
       <div class="video-frame-wrap">
         <iframe id="video-iframe"
@@ -454,15 +454,42 @@
     // Generic modal: handles close button ([data-modal-close]), backdrop click,
     // and Escape key. Optional onOpen/onClose hooks let callers run side effects
     // (e.g. lazy-loading the video iframe).
+    // Focusable descendants, in DOM order. Recomputed per use because the
+    // video modal's iframe is populated lazily on open.
+    const FOCUSABLE =
+      'a[href], button:not([disabled]), iframe, input:not([disabled]), ' +
+      'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    function focusablesIn(root) {
+      return Array.from(root.querySelectorAll(FOCUSABLE))
+        .filter((el) => el.offsetWidth > 0 || el.offsetHeight > 0 || el === document.activeElement);
+    }
+
     function setupModal(overlay, { onOpen, onClose } = {}) {
+      const dialog = overlay.querySelector('[role="dialog"]') || overlay;
+      // Element to hand focus back to on close. Without this, dismissing a
+      // dialog drops the keyboard user back at the top of the document.
+      let lastFocused = null;
+
       const close = () => {
         overlay.classList.remove('visible');
         onClose?.();
+        if (lastFocused && document.contains(lastFocused)) lastFocused.focus();
+        lastFocused = null;
       };
       const open = () => {
+        lastFocused = document.activeElement;
         onOpen?.();
         overlay.classList.add('visible');
+        // Focus must land inside the dialog, or the user is told a dialog
+        // opened while their focus is still behind it. The close button is the
+        // conventional target and is always present.
+        //
+        // Works synchronously because .visible flips visibility with no
+        // transition delay; a visibility:hidden element cannot take focus.
+        const first = dialog.querySelector('[data-modal-close]') || focusablesIn(dialog)[0];
+        first?.focus();
       };
+
       for (const btn of overlay.querySelectorAll('[data-modal-close]')) {
         btn.addEventListener('click', close);
       }
@@ -470,7 +497,23 @@
         if (e.target === overlay) close();
       });
       document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && overlay.classList.contains('visible')) close();
+        if (!overlay.classList.contains('visible')) return;
+        if (e.key === 'Escape') { close(); return; }
+        if (e.key !== 'Tab') return;
+        // Trap: aria-modal hides the background from assistive tech, but it
+        // does not stop Tab walking out into the page behind the dialog.
+        const items = focusablesIn(dialog);
+        if (items.length === 0) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey && (active === first || !dialog.contains(active))) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && (active === last || !dialog.contains(active))) {
+          e.preventDefault();
+          first.focus();
+        }
       });
       return { open, close };
     }

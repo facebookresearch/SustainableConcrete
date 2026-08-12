@@ -667,7 +667,21 @@ function requestRedraw() {
   if (_pendingRedraw !== null) return;
   _pendingRedraw = requestAnimationFrame(() => {
     _pendingRedraw = null;
-    update();
+    // When the animation loop is running it already redraws both canvases
+    // every frame, so calling update() here draws them a second time.
+    // Measured during a sustained drag: 1.68 canvas redraws per animation
+    // frame, i.e. ~40% of the work on the one hot path that none of the
+    // earlier optimisations touched.
+    //
+    // The loop only owns the CANVASES, so the rest of update() still has to
+    // run -- dropping it would freeze the readouts and the screen-reader
+    // summary mid-drag.
+    if (animLoopId !== null) {
+      updateReadouts();
+      scheduleCurveSummary();
+    } else {
+      update();
+    }
     updateMixInsight();
     checkExtrapolationWarning();
   });
