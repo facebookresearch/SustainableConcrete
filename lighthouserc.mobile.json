@@ -1,0 +1,54 @@
+{
+  "ci": {
+    "collect": {
+      "url": ["http://127.0.0.1:4173/"],
+      "startServerCommand": "npx http-server docs -p 4173 -c-1 -a 127.0.0.1",
+      "startServerReadyPattern": "Available on:",
+      "numberOfRuns": 3,
+      "settings": {
+        "formFactor": "mobile",
+        "screenEmulation": {
+          "mobile": true,
+          "width": 412,
+          "height": 823,
+          "deviceScaleFactor": 2.625,
+          "disabled": false
+        },
+        "comment_no_preset": "Deliberately NO 'preset' key. preset 'perf' also forces throttlingMethod 'devtools', which is wall-clock rather than Lantern -- noisier on shared runners, and different from the desktop profile's 'simulate'. That combination made these numbers roughly 2x more flattering (LCP 3.2s vs 11.6s) and incomparable with desktop.",
+        "throttlingMethod": "simulate",
+        "throttling": {
+          "rttMs": 150,
+          "throughputKbps": 1638.4,
+          "cpuSlowdownMultiplier": 4,
+          "requestLatencyMs": 562.5,
+          "downloadThroughputKbps": 1474.56,
+          "uploadThroughputKbps": 675
+        },
+        "onlyCategories": ["performance", "accessibility", "best-practices"],
+        "skipAudits": ["uses-http2", "redirects-http"]
+      }
+    },
+    "assert": {
+      "comment_budget_policy": "ERROR gates are limited to metrics this harness measures representatively: CPU work, accessibility, and layout stability. WARN budgets cover transfer-dominated metrics, which are NOT representative here -- `http-server` serves uncompressed bytes (strength.json 188 KB, ui.mjs 104 KB) while GitHub Pages gzips the same files to 22 KB and 29 KB. Over a simulated 1.5 Mbps link that inflates LCP/TTI by roughly 7x versus production, so those thresholds are calibrated to observed local values and exist to catch relative regressions, not to describe real-world UX. total-blocking-time measured 63 ms after the reduced-motion / first-paint-snap work (1210 ms before it); 300 ms leaves headroom for slower CI runners while still failing long before a regression toward the old behaviour. NOTE: commentary must stay OUT of the `assertions` object below -- LHCI treats every key there as an audit id, so a comment key is recorded as a failed assertion (`\"...\" is not a known audit`) that this version happens not to fail the build on.",
+
+      "assertions": {
+        "categories:accessibility": ["error", { "minScore": 0.9 }],
+        "color-contrast": ["error", { "minScore": 1 }],
+        "target-size": ["error", { "minScore": 1 }],
+
+        "cumulative-layout-shift": ["error", { "maxNumericValue": 0.1 }],
+
+        "total-blocking-time": ["error", { "maxNumericValue": 300 }],
+
+        "categories:performance": ["warn", { "minScore": 0.6 }],
+        "categories:best-practices": ["warn", { "minScore": 0.9 }],
+        "first-contentful-paint": ["warn", { "maxNumericValue": 3500 }],
+        "largest-contentful-paint": ["warn", { "maxNumericValue": 13000 }],
+        "interactive": ["warn", { "maxNumericValue": 13000 }]
+      }
+    },
+    "upload": {
+      "target": "temporary-public-storage"
+    }
+  }
+}

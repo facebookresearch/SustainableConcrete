@@ -15,14 +15,15 @@ import { test, expect } from "@playwright/test";
 async function openSliders(page: import("@playwright/test").Page) {
   await page.goto("/?test=1");
   await page.waitForFunction(() => typeof (window as any).__test !== "undefined");
+  // The shell renders before the GP finishes building in the worker, so wait
+  // for the model itself before asserting on predictions.
+  await page.waitForFunction(
+    () => (window as any).__test.modelReady === true,
+    null,
+    { timeout: 20000 },
+  );
   await page.locator("#mobile-show-sliders").click();
   await expect(page.locator(".mobile-sliders-view")).toBeVisible({ timeout: 2000 });
-  // Let the model finish initializing (it now runs in a worker).
-  await page.waitForFunction(
-    () => (window as any).__test.currentComposition !== null,
-    null,
-    { timeout: 15000 },
-  );
 }
 
 test.describe("mobile behaviour", () => {

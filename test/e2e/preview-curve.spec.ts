@@ -23,6 +23,9 @@ test.describe("preview curve composition sync", () => {
     await page.goto("/?test=1");
     await expect(page.locator("#sliders .slider-group").first()).toBeVisible({ timeout: 5000 });
     await page.waitForFunction(() => typeof (window as any).__test !== "undefined");
+    // The shell renders before the GP finishes building in the worker, so
+    // wait for the model itself before asserting on predictions.
+    await page.waitForFunction(() => (window as any).__test.modelReady === true, null, { timeout: 20000 });
 
     const toggleButtons = page.locator(".material-source-group .toggle-btn");
     expect(await toggleButtons.count(), "expected three toggle buttons").toBe(3);
@@ -106,6 +109,9 @@ test.describe("strength curve transitions smoothly on Material Source toggle", (
     await expect(page.locator("canvas#curve-canvas")).toBeVisible();
     await expect(page.locator(".material-source-group .toggle-btn").first()).toBeVisible({ timeout: 5000 });
     await page.waitForFunction(() => typeof (window as any).__test !== "undefined");
+    // The shell renders before the GP finishes building in the worker, so
+    // wait for the model itself before asserting on predictions.
+    await page.waitForFunction(() => (window as any).__test.modelReady === true, null, { timeout: 20000 });
     await page.waitForTimeout(800); // settle initial fade-ins / WASM init
 
     const curve = page.locator("canvas#curve-canvas");
@@ -154,6 +160,9 @@ test.describe("hover preview aligns with the committed prediction", () => {
     // on one grid makes the gap identically zero at any resolution.
     await page.goto("/?test=1");
     await page.waitForFunction(() => typeof (window as any).__test !== "undefined");
+    // The shell renders before the GP finishes building in the worker, so
+    // wait for the model itself before asserting on predictions.
+    await page.waitForFunction(() => (window as any).__test.modelReady === true, null, { timeout: 20000 });
     await page.waitForTimeout(800);
 
     const canvas = page.locator("canvas#scatter-canvas");
@@ -203,6 +212,9 @@ test.describe("hover preview aligns with the committed prediction", () => {
 
     await page.goto("/?test=1");
     await page.waitForFunction(() => typeof (window as any).__test !== "undefined");
+    // The shell renders before the GP finishes building in the worker, so
+    // wait for the model itself before asserting on predictions.
+    await page.waitForFunction(() => (window as any).__test.modelReady === true, null, { timeout: 20000 });
     await page.waitForTimeout(800);
 
     const idx = msIdx >= 0 ? msIdx : await page.evaluate(async () => {
