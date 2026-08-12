@@ -246,12 +246,19 @@ body {
      the app's own in the heading outline. `visibility` still animates, so the
      fade is preserved. */
   visibility: hidden;
-  transition: opacity 0.25s ease, visibility 0.25s ease;
+  /* Delay the flip to hidden until the fade-out finishes, but flip to visible
+     IMMEDIATELY on open (see .visible). Transitioning visibility symmetrically
+     keeps the overlay non-visible for the whole 250 ms, and a
+     visibility:hidden element cannot take focus -- the focus() call on open is
+     silently rejected. */
+  transition: opacity 0.25s ease, visibility 0s linear 0.25s;
 }
 .about-overlay.visible {
   opacity: 1;
   pointer-events: all;
   visibility: visible;
+  /* No delay in this direction: focusable as soon as the class lands. */
+  transition: opacity 0.25s ease, visibility 0s linear 0s;
 }
 .about-modal {
   background: var(--glass-bg);
@@ -346,12 +353,19 @@ body {
      the app's own in the heading outline. `visibility` still animates, so the
      fade is preserved. */
   visibility: hidden;
-  transition: opacity 0.25s ease, visibility 0.25s ease;
+  /* Delay the flip to hidden until the fade-out finishes, but flip to visible
+     IMMEDIATELY on open (see .visible). Transitioning visibility symmetrically
+     keeps the overlay non-visible for the whole 250 ms, and a
+     visibility:hidden element cannot take focus -- the focus() call on open is
+     silently rejected. */
+  transition: opacity 0.25s ease, visibility 0s linear 0.25s;
 }
 .video-overlay.visible {
   opacity: 1;
   pointer-events: all;
   visibility: visible;
+  /* No delay in this direction: focusable as soon as the class lands. */
+  transition: opacity 0.25s ease, visibility 0s linear 0s;
 }
 .video-modal {
   background: var(--glass-bg);
