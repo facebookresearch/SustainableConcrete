@@ -11,6 +11,10 @@
   --accent-on: #ffffff;
   --band: rgba(37, 99, 235, 0.18);
   --pareto: #e11d48;
+  /* Foreground for text ON the pareto pill, same pattern as --accent-on.
+     White on #e11d48 is 4.70:1, which clears WCAG AA for the pill's 9.6 px
+     bold text (not "large text", so the bar is 4.5:1, not 3:1). */
+  --pareto-on: #ffffff;
   --observation: #475569;
   --point: #475569;
   --glass-bg: rgba(var(--card-bg-rgb), 0.7);
@@ -30,6 +34,10 @@
   --accent-on: #0f0f1a;
   --band: rgba(96, 165, 250, 0.2);
   --pareto: #fb7185;
+  /* White on #fb7185 is only 2.69:1 and FAILED WCAG AA at the pill's 9.6 px
+     bold size. Keep the bright chip -- it needs to read against a dark panel
+     -- and darken the text instead, exactly as --accent-on does: 5.81:1. */
+  --pareto-on: #4c0519;
   --observation: #94a3b8;
   --point: #94a3b8;
   --glass-bg: rgba(var(--card-bg-rgb), 0.7);
@@ -232,11 +240,18 @@ body {
   justify-content: center;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.25s ease;
+  /* Also remove it from the tab order and the accessibility tree while closed.
+     opacity alone left .about-close, the two arXiv links, .video-close and the
+     iframe permanently tabbable, and put the modal's h2/h3 headings ahead of
+     the app's own in the heading outline. `visibility` still animates, so the
+     fade is preserved. */
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
 }
 .about-overlay.visible {
   opacity: 1;
   pointer-events: all;
+  visibility: visible;
 }
 .about-modal {
   background: var(--glass-bg);
@@ -325,11 +340,18 @@ body {
   justify-content: center;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.25s ease;
+  /* Also remove it from the tab order and the accessibility tree while closed.
+     opacity alone left .about-close, the two arXiv links, .video-close and the
+     iframe permanently tabbable, and put the modal's h2/h3 headings ahead of
+     the app's own in the heading outline. `visibility` still animates, so the
+     fade is preserved. */
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
 }
 .video-overlay.visible {
   opacity: 1;
   pointer-events: all;
+  visibility: visible;
 }
 .video-modal {
   background: var(--glass-bg);
@@ -606,6 +628,12 @@ h2 {
   border-color: var(--accent);
   background: rgba(var(--card-bg-rgb), 0.6);
 }
+/* A border-colour change alone is colour-only signalling; keyboard users get
+   a real outline. */
+.slider-value:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 /* The input is the TOUCH TARGET; the visible 6 px bar is drawn by the track
    pseudo-elements below. Previously the element itself was the 6 px bar, which
    meant the whole hit area was 6 px tall -- measured 220x6 on mobile, against a
@@ -621,6 +649,15 @@ h2 {
   height: 24px;
   background: transparent;
   outline: none;
+}
+/* `outline: none` above removed the only focus indicator these controls had,
+   with no replacement anywhere -- a WCAG 2.4.7 Focus Visible (AA) failure on
+   the app's primary controls. Note Lighthouse's accessibility category does
+   NOT audit focus visibility, so the a11y score gate cannot catch this. */
+.slider-group input[type=range]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
 }
 .slider-group input[type=range]::-webkit-slider-runnable-track {
   height: 6px;
@@ -898,6 +935,20 @@ h2 {
 .filter-row-wrapper.collapsed {
   display: none;
 }
+/* Visible to assistive technology only. Standard clip-rect pattern: stays in
+   the accessibility tree (unlike display:none) while occupying no space. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .filter-row {
   display: flex;
   align-items: center;
@@ -950,6 +1001,10 @@ h2 {
 .filter-row input[type=number]:focus {
   border-color: var(--accent);
   outline: none;
+}
+.filter-row input[type=number]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 /* Categorical filter (Material Source). An unordered class axis has no
    meaningful min/max, so its row renders one toggle per class instead of
@@ -1183,7 +1238,7 @@ a.ref-link {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   background: var(--pareto);
-  color: #fff;
+  color: var(--pareto-on);
   padding: 2px 8px;
   border-radius: 999px;
   opacity: 0;
@@ -1622,5 +1677,58 @@ a.ref-link {
   .chart-panel {
     height: calc(100dvh - 46px);
     width: calc(50% - 0.2rem);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Reduced motion (WCAG 2.3.3, and 2.2.2 for the infinite animations).
+
+   The JS honours prefers-reduced-motion for canvas easing and the transition
+   durations, but CSS animations are independent of that and were not covered.
+   Two of them run forever:
+
+     - `gradientShift` (30 s, infinite) on the page title. Automatically
+       starting, moving, presented alongside other content and lasting well
+       over 5 s with no pause control -- that is a Pause/Stop/Hide (Level A)
+       exposure, not merely a 2.3.3 (AAA) one.
+     - `previewPulse` (1.5 s, infinite) on the slider preview marker.
+
+   `fadeInUp` and the transitions are one-shot, but a reduced-motion user has
+   asked not to see them either.
+
+   Motion is removed rather than merely shortened; `animation: none` also stops
+   the infinite ones from holding a compositor layer awake. Durations are set
+   to a near-zero value rather than 0 so that transitionend/animationend
+   listeners still fire, which is the standard form of this reset.
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    /* Required, and easy to omit: .fade-in-up uses `animation-fill-mode: both`
+       with staggered per-panel delays (0-350 ms via --delay). Without this the
+       backwards fill holds the `from` keyframe (opacity 0) for the delay, so
+       the six panels stay invisible and then pop in one at a time -- a staged
+       reveal, which is precisely what the preference asks to remove. */
+    animation-delay: -1ms !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* The two infinite decorative animations: stop outright, and pin the title
+     gradient to a static position so it does not freeze mid-sweep. */
+  h1 {
+    animation: none !important;
+    /* gradientShift runs 200% -> 0%, so this pins the END keyframe (a settled
+       gradient), not a mid-sweep frame. */
+    background-position: 0% 50% !important;
+  }
+  .slider-preview-marker {
+    /* The base rule already sets the centring transform, so stopping the
+       animation is sufficient -- no transform override needed. */
+    animation: none !important;
   }
 }

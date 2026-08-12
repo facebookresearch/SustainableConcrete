@@ -24,6 +24,23 @@ test.describe("composition sliders", () => {
     test.skip(testInfo.project.name !== "desktop", "desktop only");
     await page.goto("/");
     await expect(page.locator("#sliders .slider-group").first()).toBeVisible();
+    // A visible slider no longer implies a drawn curve: the shell renders
+    // before the GP resolves in the worker, and drawStrengthCurve bails while
+    // strengthParams is null. Baselining a blank canvas here would make the
+    // test pass because the MODEL arrived, not because the slider redrew.
+    await expect
+      .poll(
+        async () =>
+          await page.evaluate(() => {
+            const c = document.querySelector("canvas#curve-canvas") as HTMLCanvasElement;
+            if (!c) return false;
+            const d = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
+            for (let i = 3; i < d.length; i += 400) if (d[i] !== 0) return true;
+            return false;
+          }),
+        { timeout: 15000 },
+      )
+      .toBe(true);
 
     // Read initial pixel snapshot of the curve canvas
     const before = await page.locator("canvas#curve-canvas").screenshot();

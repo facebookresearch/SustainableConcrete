@@ -154,10 +154,18 @@ document.addEventListener("toggle-units", () => {
   const oldFactors = { ...U() };
   unitSystem = unitSystem === "metric" ? "imperial" : "metric";
   const newFactors = { ...U() };
-  unitTransition = { startTime: performance.now(), duration: 350, from: oldFactors, to: newFactors };
-  document.getElementById("unit-label").textContent = unitSystem === "metric" ? "SI" : "US";
+  unitTransition = { startTime: performance.now(), duration: motionDuration(350), from: oldFactors, to: newFactors };
+  const unitWord = unitSystem === "metric" ? "SI" : "US";
+  const otherWord = unitSystem === "metric" ? "US" : "SI";
+  document.getElementById("unit-label").textContent = unitWord;
   const mobileUnitLabel = document.getElementById("mobile-unit-label");
-  if (mobileUnitLabel) mobileUnitLabel.textContent = unitSystem === "metric" ? "SI" : "US";
+  if (mobileUnitLabel) mobileUnitLabel.textContent = unitWord;
+  // WCAG 2.5.3 Label in Name: the accessible name must contain the visible
+  // text, so it has to track the toggle rather than stay generic.
+  for (const id of ["unit-toggle", "mobile-unit-toggle"]) {
+    const btn = document.getElementById(id);
+    if (btn) btn.setAttribute("aria-label", `${unitWord} units - switch to ${otherWord} units`);
+  }
   // Update composition toggle button label with current unit
   const mobileSlidersBtn = document.getElementById("mobile-show-sliders");
   if (mobileSlidersBtn) {
@@ -168,12 +176,30 @@ document.addEventListener("toggle-units", () => {
   document.getElementById("sliders-title").textContent =
     unitSystem === "metric" ? "Composition (kg/m³)" : "Composition (lb/yd³)";
   updateSliderLabels();
+  // The screen-reader summary quotes the strength unit, so it has to be
+  // re-emitted after a unit change. The scheduler retries while the unit
+  // transition is in flight.
+  scheduleCurveSummary();
   startAnimLoop();
 });
 
 // --- Load model data ---
+// `cache: "no-cache"` forces revalidation rather than disabling caching: the
+// browser still reuses its cached body on a 304, so the cost is one small
+// conditional request per artifact.
+//
+// This matters because the five model artifacts are mutually index-dependent
+// -- mix_analyses.json is keyed by position in compositions.json -- but Pages
+// serves them with `max-age=600` and independent `age` values. Without
+// revalidation a visitor can hold a fresh compositions.json next to a stale
+// mix_analyses.json for up to ten minutes after any deploy, which renders as
+// missing mix names and "insight not available" on the newest mixes. Observed
+// in production after the 3-class merge.
 async function loadJSON(path) {
-  const resp = await fetch(path);
+  const resp = await fetch(path, { cache: "no-cache" });
+  if (!resp.ok) {
+    throw new Error(`${path}: HTTP ${resp.status} ${resp.statusText}`);
+  }
   return resp.json();
 }
 
@@ -260,17 +286,32 @@ async function init() {
       console.warn("[boxcrete] mix_analyses.json failed to load; mix-insight panel will be empty:", err);
     });
 
+  // Build and wire the UI shell BEFORE the strength model resolves.
+  //
+  // Everything here needs only compositions.json plus the linear GWP/cost
+  // models, all of which are already loaded. The strength GP takes ~70 ms on
+  // desktop and several hundred on a phone; waiting for it before wiring the
+  // page meant the shell -- sliders, readouts, scatter (drawn from the
+  // precomputed strength_predictions in the catalog) -- appeared no sooner
+  // than the GP did. Moving the work into a worker removed the freeze but not
+  // that delay.
+  //
+  // The draw paths tolerate `strengthParams === null` and simply omit the
+  // model-derived parts (see drawStrengthCurve / drawScatter).
+  COL_MS = compositionsData.column_names.indexOf("Material Source");
+  COL_TEMP = compositionsData.column_names.indexOf("Temp (C)");
+  buildSliders();
+  _sliderInputs = document.querySelectorAll("#sliders input[type=range]");
+  setupEventListeners();
+  update();
+
   // Rebuild the kernel + Cholesky off the main thread where possible.
   strengthParams = await initStrengthModelAsync(rawStrength);
 
   // Initialize WASM BLAS for accelerated variance (non-blocking, falls back to JS)
   initWASM(strengthParams);
 
-  buildSliders();
-  _sliderInputs = document.querySelectorAll("#sliders input[type=range]");
-  COL_MS = compositionsData.column_names.indexOf("Material Source");
-  COL_TEMP = compositionsData.column_names.indexOf("Temp (C)");
-  setupEventListeners();
+  // Now that predictions are available, render them.
   update();
   startAnimLoop();
   updateMixInsight(); // initial insight for default composition
@@ -396,8 +437,7 @@ function buildSliders() {
     // Display name: strip unit suffix and rename "Temp" → "Temperature" for
     // a friendlier label. The underlying column name in `compositionsData`
     // is unchanged (still "Temp (C)") so model code keeps working.
-    let shortName = col.replace(" (kg/m3)", "").replace(" (C)", "");
-    if (shortName === "Temp") shortName = "Temperature";
+    let shortName = shortIngredientName(col);
     nameSpan.textContent = shortName;
     // Make ingredient names clickable for info
     const infoKey = shortName;
@@ -415,7 +455,7 @@ function buildSliders() {
     // `decimal` is safe here: all composition columns have b.min >= 0, so no
     // negative values are ever entered (no need for `-` key on iOS Safari).
     valueInput.inputMode = "decimal";
-    valueInput.setAttribute("aria-label", `${shortName} value`);
+    valueInput.setAttribute("aria-label", `${shortName} value (${sliderUnitLabel(col)})`);
     valueInput.value = displayCompValue(col, currentComposition[i]).toFixed(1);
     valueInput.dataset.idx = i;
     valueInput.dataset.col = col;
@@ -441,6 +481,11 @@ function buildSliders() {
     input.value = currentComposition[i];
     input.dataset.idx = i;
     input.dataset.col = col;
+    // Accessible name. Without this the slider is announced as an unlabeled
+    // "slider, 353" -- the ingredient is conveyed only by the adjacent text,
+    // which a screen reader does not associate with the control (WCAG 4.1.2).
+    // The sibling value input already does this; the range input was missed.
+    input.setAttribute("aria-label", `${shortName} (${sliderUnitLabel(col)})`);
     input.addEventListener("input", onSliderChange);
 
     const infoRow = document.createElement("div");
@@ -456,6 +501,11 @@ function buildSliders() {
 let _activeIngredientKey = null;
 
 function animateContentSwap(bodyEl, textEl, newHTML) {
+  // The 300 ms waits below are matched to the CSS opacity transition. Under
+  // reduced motion that transition is instant, so keeping the waits would drop
+  // the text to opacity 0 and leave the panel BLANK for 300 ms -- worse than
+  // the fade it replaces. Collapse the timing to match the visuals.
+  const swapDelay = _reduceMotion ? 0 : 300;
   const prevHeight = bodyEl.offsetHeight;
   textEl.classList.add("fade-out");
   setTimeout(() => {
@@ -469,8 +519,8 @@ function animateContentSwap(bodyEl, textEl, newHTML) {
     textEl.classList.remove("fade-out");
     textEl.classList.add("fade-in");
     requestAnimationFrame(() => textEl.classList.remove("fade-in"));
-    setTimeout(() => { bodyEl.style.height = "auto"; }, 300);
-  }, 300);
+    setTimeout(() => { bodyEl.style.height = "auto"; }, swapDelay);
+  }, swapDelay);
 }
 
 function materialSourceInsightHTML() {
@@ -600,6 +650,29 @@ function hideSliderPreview() {
 let _sliderActive = false;
 let _sliderIdleTimer = null;
 
+// Coalesce slider redraws to at most one per animation frame.
+//
+// `input` events from a touch drag or a high-polling mouse arrive faster than
+// 60 Hz, and each one used to trigger a full synchronous redraw. A redraw is
+// ~24 ms on a 4x-throttled CPU (98% of it the strength-curve GP evaluation),
+// so bursts queued work the screen could never show.
+//
+// Note this bounds the *burst*, not the total: `onSliderChange` also calls
+// startAnimLoop(), and animLoop unconditionally redraws both canvases, so a
+// drag frame still does this work twice. That overlap predates this change
+// (the old synchronous path had it too, and worse), and removing it means
+// untangling who owns the drag redraw -- deliberately out of scope here.
+let _pendingRedraw = null;
+function requestRedraw() {
+  if (_pendingRedraw !== null) return;
+  _pendingRedraw = requestAnimationFrame(() => {
+    _pendingRedraw = null;
+    update();
+    updateMixInsight();
+    checkExtrapolationWarning();
+  });
+}
+
 function onSliderChange(e) {
   const idx = parseInt(e.target.dataset.idx);
   currentComposition[idx] = parseFloat(e.target.value);
@@ -609,10 +682,8 @@ function onSliderChange(e) {
   _sliderActive = true;
   if (_sliderIdleTimer) clearTimeout(_sliderIdleTimer);
   _sliderIdleTimer = setTimeout(() => { _sliderActive = false; update(); }, 150);
-  update();
+  requestRedraw();
   startAnimLoop(); // keep loop alive for smooth y-axis expansion
-  updateMixInsight(); // immediate for manual slider adjustments
-  checkExtrapolationWarning();
 }
 
 // Display value for a composition column under the active unit system.
@@ -626,6 +697,14 @@ function internalCompValue(colName, display) {
   return compFromDisplay(colName, display, unitSystem);
 }
 // Unit suffix label for a slider column (delegates to `units.mjs`).
+// Display name for a composition column, e.g. "Cement (kg/m3)" -> "Cement".
+// Shared by the visible label and the sliders' accessible names so the two
+// cannot drift apart.
+function shortIngredientName(colName) {
+  const s = colName.replace(" (kg/m3)", "").replace(" (C)", "");
+  return s === "Temp" ? "Temperature" : s;
+}
+
 function sliderUnitLabel(colName) {
   return sliderUnitLabelFor(colName, unitSystem);
 }
@@ -652,6 +731,24 @@ function updateSliderLabels() {
     // Refresh per-row unit suffix (kg/m³ ↔ lb/yd³, °C ↔ °F)
     const unitEl = document.getElementById(`unit-${i}`);
     if (unitEl) unitEl.textContent = sliderUnitLabel(col);
+    // Keep the slider's accessible name in step with the displayed unit,
+    // otherwise a screen-reader user hears kg/m3 while the UI shows lb/yd3.
+    const rangeEl = document.querySelector(`#sliders input[type=range][data-idx="${i}"]`);
+    if (rangeEl) {
+      rangeEl.setAttribute(
+        "aria-label",
+        `${shortIngredientName(col)} (${sliderUnitLabel(col)})`,
+      );
+    }
+    // The editable value field needs the same treatment, or a screen-reader
+    // user editing it hears "Cement value" while the content is in lb/yd3.
+    const valEl = document.getElementById(`val-${i}`);
+    if (valEl && valEl.tagName === "INPUT") {
+      valEl.setAttribute(
+        "aria-label",
+        `${shortIngredientName(col)} value (${sliderUnitLabel(col)})`,
+      );
+    }
   }
 }
 
@@ -680,7 +777,7 @@ function animateToComposition(targetComp) {
   const msIdx = COL_MS;
   if (msIdx >= 0) startComp[msIdx] = Math.round(targetComp[msIdx]);
 
-  const duration = CURVE_TRANSITION_MS;
+  const duration = motionDuration(CURVE_TRANSITION_MS);
   const startTime = performance.now();
 
   function step(now) {
@@ -732,6 +829,15 @@ function animateToComposition(targetComp) {
 // posteriors rather than the posterior of the composition the sliders show.
 // Both endpoints are exact; only the 350 ms in between is a visual blend.
 const CURVE_TRANSITION_MS = 350;
+// Duration for interaction-triggered transitions, collapsed under reduced
+// motion so the change is applied immediately instead of animated.
+//
+// Returns 1 ms rather than 0: all four consumers compute progress as
+// `elapsed / duration`, and a 0 duration read in the same millisecond it was
+// created would evaluate 0/0 = NaN, which fails the `t >= 1` completion check
+// and feeds NaN into the easing. 1 ms completes on the very next frame with no
+// such edge case.
+function motionDuration(ms) { return _reduceMotion ? 1 : ms; }
 // 32 points, matching what the standard path already used during any
 // interaction. Per-frame cost is a lerp either way (measured 0.002 ms at 32
 // vs 0.003 ms at 64), so the grid only sets the one-time cost of computing
@@ -775,7 +881,7 @@ function beginCurveTransition(targetComp) {
 
   _curveTransition = {
     startTime: performance.now(),
-    duration: CURVE_TRANSITION_MS,
+    duration: motionDuration(CURVE_TRANSITION_MS),
     times: curveTransitionTimes,
     fromMeans,
     fromStds,
@@ -876,10 +982,80 @@ function setComposition(comp) {
 }
 
 // --- Update everything ---
+// Text equivalent of the strength curve for screen readers.
+//
+// A canvas exposes no data to assistive technology, so the aria-label conveys
+// that a chart exists but nothing about what it shows. This publishes the
+// headline numbers into a polite live region.
+//
+// Debounced and only emitted once the composition has settled: an aria-live
+// region that fires on every animation frame is worse than none, because
+// screen readers queue and read every update.
+let _curveSummaryTimer = null;
+// 1200 ms, not 500. `aria-live="polite"` QUEUES announcements; it does not
+// replace them. A keyboard user arrow-stepping a slider settles the 150 ms
+// idle timer between presses, so a short debounce emits a fresh multi-second
+// utterance roughly twice a second and the queue drifts ever further behind
+// the UI. A longer window coalesces a burst of steps into one announcement.
+const CURVE_SUMMARY_DEBOUNCE_MS = 1200;
+function scheduleCurveSummary() {
+  if (_curveSummaryTimer) clearTimeout(_curveSummaryTimer);
+  _curveSummaryTimer = setTimeout(updateCurveSummary, CURVE_SUMMARY_DEBOUNCE_MS);
+}
+
+function updateCurveSummary() {
+  const el = document.getElementById("curve-summary");
+  if (!el || !strengthParams || !compositionsData) return;
+  // Anything still moving? Try again later rather than dropping the update,
+  // which would leave the summary permanently stale (e.g. after a unit
+  // toggle, whose animation is in flight when the debounce first fires).
+  if (
+    animationId !== null ||
+    _sliderActive ||
+    _curveTransition !== null ||
+    unitTransition !== null
+  ) {
+    scheduleCurveSummary();
+    return;
+  }
+
+  const u = U();
+  const days = [1, 7, 28];
+  const { means, variances } = predictStrengthCurve(
+    currentComposition, days, strengthParams
+  );
+  const stds = computeStds(variances, strengthParams);
+  const sf = u.strengthFactor;
+  const unit = u.strength;
+
+  const points = days
+    .map((d, i) => {
+      const mean = Math.max(0, means[i] * sf);
+      const band = 2 * stds[i] * sf;
+      return `${mean.toFixed(0)} plus or minus ${band.toFixed(0)} ${unit} at ${d} day${d === 1 ? "" : "s"}`;
+    })
+    .join("; ");
+
+  const idx = findNearestCompositionIdx(currentComposition);
+  const named = idx !== null && mixAnalyses && mixAnalyses[String(idx)]
+    ? (mixAnalyses[String(idx)].match(/^\*\*([^*]+)\*\*/) || [])[1]
+    : null;
+  const prefix = named ? `Mix ${named}. ` : "";
+
+  const text = `${prefix}Predicted strength: ${points}.`;
+  // Assigning textContent re-announces even when the string is identical, and
+  // update() runs for reasons unrelated to the composition -- theme toggle,
+  // and the mobile scatter/composition tab switch both call it. Without this
+  // check, tapping between mobile tabs re-reads the whole strength summary.
+  if (el.textContent === text) return;
+  el.textContent = text;
+}
+
 function update() {
   updateReadouts();
   drawStrengthCurve();
   drawScatter();
+  scheduleCurveSummary();
   // Mix insight updates are triggered separately with delay (see animateToComposition)
 }
 
@@ -1176,6 +1352,11 @@ function drawStrengthCurve() {
   const { ctx, W, H } = setupHiDPICanvas(canvas);
   const pad = { top: 20, right: 20, bottom: 40, left: 70 };
 
+  // The GP is built off-thread, so the shell renders before it exists. Nothing
+  // meaningful can be drawn without it; bail rather than throw, and the model
+  // arrival triggers another update().
+  if (!strengthParams) return;
+
   // Compute predictions (use log-spaced time points for smooth early-time resolution).
   // Two paths:
   //   (1) Curve transition active — lerp between two precomputed endpoint
@@ -1229,7 +1410,7 @@ function drawStrengthCurve() {
   const yMaxNeededRaw = Math.max(yMaxFloorRaw, peakValRaw * 1.1);
   _curveYMaxTarget = yMaxNeededRaw;
   // Smooth interpolation in raw space — snap for small differences or during unit transition
-  if (_curveYMax === null || unitTransition !== null) {
+  if (_curveYMax === null || unitTransition !== null || _reduceMotion) {
     _curveYMax = yMaxNeededRaw;
   } else {
     const diff = Math.abs(_curveYMax - yMaxNeededRaw);
@@ -1441,7 +1622,7 @@ function startScatterTransition(applyChange) {
 
   scatterTransition = {
     startTime: performance.now(),
-    duration: 350,
+    duration: motionDuration(350),
     fromX: before.xPreds,
     fromY: before.yPreds,
     fromPareto: before.paretoMask,
@@ -1535,9 +1716,12 @@ function drawScatter() {
   const curCostRaw = predictCost(compForCost, costParams).mean;
   const curX = scatterXAxis === "cost" ? -curCostRaw * df.costFactor : -curGWPRaw * df.gwpFactor;
   // Mean-only: the scatter marker draws a point, not an uncertainty band.
-  const curStr = predictStrengthMeanOnly(
-    currentComposition, [scatterDay], strengthParams
-  )[0] * yFactor;
+  // Null before the model resolves; the marker is simply omitted until then
+  // (the catalog points come from precomputed strength_predictions and still
+  // render).
+  const curStr = strengthParams
+    ? predictStrengthMeanOnly(currentComposition, [scatterDay], strengthParams)[0] * yFactor
+    : null;
 
   // Axis ranges (use interpolated ranges during transition to avoid jumps)
   const xVals = xPreds;
@@ -1545,7 +1729,9 @@ function drawScatter() {
   const xMin = 0; // physical lower bound for both GWP and Cost
   const xMax = overrideXMax !== null ? overrideXMax : Math.max(...xVals, curX) * 1.05;
   const yMin = 0;
-  const yMax = overrideYMax !== null ? overrideYMax : Math.max(...yVals, Math.max(0, curStr)) * 1.1;
+  const yMax = overrideYMax !== null
+    ? overrideYMax
+    : Math.max(...yVals, Math.max(0, curStr ?? 0)) * 1.1;
 
   const xScale = (v) => pad.left + ((v - xMin) / (xMax - xMin)) * (W - pad.left - pad.right);
   const yScale = (v) => H - pad.bottom - ((v - yMin) / (yMax - yMin)) * (H - pad.top - pad.bottom);
@@ -1658,13 +1844,23 @@ function drawScatter() {
     ctx.stroke();
   }
 
-  // Highlight selected composition with a pulsing glow ring (no crosshair)
+  // Highlight selected composition with a pulsing glow ring (no crosshair).
+  //
+  // Scoped to a block rather than an early return: everything below this
+  // marker -- the axes, ticks, labels, and the canvas._pad/_xMin/... scale
+  // stash that the mousemove and click handlers read -- is model-independent
+  // and must still run. Returning here instead left the pre-model scatter
+  // without axes AND without the stash, which silently disabled hover and
+  // made clicking a point a no-op for the whole model-load window.
+  if (curStr !== null) {
   const cx = xScale(curX);
   const cy = yScale(Math.max(0, curStr));
   const nearIdx = findNearestCompositionIdx(currentComposition);
 
   // Animated pulse: subtle radius oscillation using time
-  const pulse = Math.sin(Date.now() / 400) * 0.5 + 0.5; // 0-1 oscillation
+  // Held at mid-phase under reduced motion: animLoop stays alive for the
+  // whole of a scatter hover, so this ring would otherwise pulse continuously.
+  const pulse = _reduceMotion ? 0.5 : Math.sin(Date.now() / 400) * 0.5 + 0.5;
   const ringRadius = 6.5 + pulse * 1.5;
   const ringAlpha = 0.7 + pulse * 0.3;
 
@@ -1698,7 +1894,7 @@ function drawScatter() {
     ctx.lineWidth = 2.5;
     ctx.stroke();
   }
-
+  } // end selected-composition marker (model-dependent)
 
   // Axes
   ctx.strokeStyle = clr.axis;
@@ -1763,6 +1959,31 @@ let prevHoveredPointIdx = null; // previous hovered point (shrinking out)
 let prevHoverScale = 0; // shrink-out scale for previous point
 let hoveredCurveObsIdx = null; // hovered observation in strength curve
 let curveObsHoverScale = 0; // animated hover scale for curve obs
+// Respect the OS "reduce motion" setting (WCAG 2.3.3). When set, the easing
+// loops snap straight to their targets: the animations here are decorative
+// feedback, not information, so removing them loses nothing.
+//
+// This also matters for performance. Every animated frame redraws both
+// canvases, which on a throttled mobile CPU costs more than 50 ms -- so each
+// frame registers as a main-thread long task. A startup fade that runs for a
+// second therefore produces a second of long tasks, which is why Lighthouse
+// mobile measured 1.2 s of total blocking time and could never find a quiet
+// window for time-to-interactive.
+const _reduceMotion =
+  typeof matchMedia === "function" &&
+  matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Snap easing to its target on the first animated frame. The observation fade
+// and hover easing exist to soften *changes* during interaction; animating
+// them from zero on load is pure cost.
+//
+// Named for what it actually tracks: it is set inside animLoop, so it means
+// "the first animLoop frame has run", not "the page has painted". Those differ
+// now that the shell is interactive before the model resolves -- a user who
+// touches the page during model load burns the flag on a pre-model frame.
+// Consequence is cosmetic (that one interaction snaps instead of easing).
+let _firstAnimFrameDone = false;
+
 let obsOpacity = 0; // smooth fade for observation points
 let prevObsIdx = null; // track which observations are currently shown
 
@@ -1788,8 +2009,11 @@ function animLoop(now) {
   const dt = now - lastFrameTime;
   lastFrameTime = now;
 
-  // Frame-rate-independent interpolation factor
-  const factor = 1 - Math.pow(0.85, dt / 16.67);
+  // Frame-rate-independent interpolation factor. Under reduced motion the
+  // factor is 1, i.e. jump straight to the target: this ~1.4 s composition
+  // slide is interaction-triggered motion, which is exactly what WCAG 2.3.3
+  // covers -- more so than the decorative easings snapped in animLoop.
+  const factor = _reduceMotion ? 1 : 1 - Math.pow(0.85, dt / 16.67);
 
   // Interpolate displayPreviewComp toward target.
   //
@@ -1833,6 +2057,28 @@ function animLoop(now) {
   }
   obsOpacity += (obsTarget - obsOpacity) * 0.15;
   if (Math.abs(obsOpacity - obsTarget) < 0.01) obsOpacity = obsTarget;
+
+  // First animated frame, or the user asked for reduced motion: land on the
+  // target immediately instead of easing toward it over ~30 frames.
+  //
+  // `prevHoveredPointIdx`/`prevHoverScale` are included deliberately. The
+  // shrink-out of the previously hovered point is a SEPARATE easing
+  // (prevHoverScale *= 0.7, ~12 frames), and `hasHoverAnim` below stays true
+  // while prevHoveredPointIdx is set. Snapping only the grow-in left reduced
+  // motion with an asymmetric hover -- instant in, animated out -- and kept
+  // the loop redrawing both canvases for a dozen frames.
+  //
+  // `_curveYMax` is NOT snapped here: drawStrengthCurve owns that easing and
+  // re-derives it later in this same frame, so assigning it here is dead. The
+  // reduced-motion case is handled at its source instead.
+  if (!_firstAnimFrameDone || _reduceMotion) {
+    obsOpacity = obsTarget;
+    hoverScale = hoverScaleTarget;
+    curveObsHoverScale = curveHoverTarget;
+    prevHoveredPointIdx = null;
+    prevHoverScale = 0;
+    _firstAnimFrameDone = true;
+  }
 
   // Redraw
   drawScatter();
@@ -2060,7 +2306,7 @@ function setupEventListeners() {
       const anim = wrapper.animate([
         { height: `${h}px`, opacity: 1, marginBottom: "0.3rem" },
         { height: "0px", opacity: 0, marginBottom: "0px" }
-      ], { duration: 250, easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" });
+      ], { duration: motionDuration(250), easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" });
       anim.onfinish = () => {
         wrapper.classList.add("collapsed");
         wrapper.style.display = "none";
@@ -2081,7 +2327,7 @@ function setupEventListeners() {
     wrapper.animate([
       { height: "0px", opacity: 0, marginBottom: "0px" },
       { height: `${naturalHeight}px`, opacity: 1, marginBottom: "0.3rem" }
-    ], { duration: 250, easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" });
+    ], { duration: motionDuration(250), easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" });
   }
 
   function applyFilters() {
@@ -2156,7 +2402,7 @@ function setupEventListeners() {
       const anim = w.animate([
         { height: `${h}px`, opacity: 1, marginBottom: "0.3rem" },
         { height: "0px", opacity: 0, marginBottom: "0px" }
-      ], { duration: 250, easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" });
+      ], { duration: motionDuration(250), easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" });
       anim.onfinish = () => {
         w.classList.add("collapsed");
         w.style.display = "none";
@@ -2267,6 +2513,16 @@ if (typeof location !== "undefined" &&
     // `preview-curve.spec.ts` — it's the deterministic alternative to
     // racing screenshot timing against the 350 ms blend window.
     get isCurveTransitionActive() { return _curveTransition !== null; },
+    // The UI shell now renders before the strength GP finishes building (it is
+    // constructed in a worker), so "page loaded" no longer implies "model
+    // ready". Anything asserting on predictions or curve transitions must wait
+    // on this rather than on a rendered slider.
+    get modelReady() { return strengthParams !== null; },
+    // Index of the scatter point under the cursor, or null. Exposed so tests
+    // can verify hover works during the pre-model window: the mousemove
+    // handler bails on a missing canvas scale stash, and a regression there
+    // is invisible from the outside (no glow, and clicks silently do nothing).
+    get hoveredPointIdx() { return hoveredPointIdx; },
     // True when the last draw put the preview curve on the same time grid as
     // the main curve. They are overlaid, so different grids make them
     // visibly disagree even when both are correct (a 32-pt main curve against

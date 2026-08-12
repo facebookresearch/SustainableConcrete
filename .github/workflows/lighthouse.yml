@@ -15,6 +15,7 @@ on:
     paths: &lighthouse_paths
       - 'docs/**'
       - 'lighthouserc.json'
+      - 'lighthouserc.mobile.json'
       - '.github/workflows/lighthouse.yml'
   pull_request:
     branches: [main, master]
@@ -30,7 +31,7 @@ env:
 jobs:
   lighthouse:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v5
@@ -43,9 +44,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run Lighthouse CI
-        run: npx lhci autorun
+      # Desktop and mobile are separate Lighthouse profiles, not one run with
+      # two viewports. Only desktop was ever measured, which is why a 6 px
+      # touch target and 1.2 s of mobile blocking time both shipped unnoticed.
+      #
+      # Deliberately two steps in ONE job rather than a matrix: a matrix job's
+      # check-run name becomes "lighthouse (<matrix values>)", so any branch
+      # protection requiring the "lighthouse" context would wait forever on a
+      # status that is never reported again. Keeping a single job preserves
+      # the existing check name.
+      - name: Run Lighthouse CI (desktop)
+        run: npx lhci autorun --config=lighthouserc.json
         env:
           # Public uploads to temporary-public-storage are anonymous;
           # no token required for our config.
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+      # `if: always()` so a desktop failure still reports the mobile result --
+      # otherwise the profile this change exists to add would be skipped
+      # exactly when something is wrong.
+      - name: Run Lighthouse CI (mobile)
+        if: always()
+        run: npx lhci autorun --config=lighthouserc.mobile.json
+        env:
           LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}

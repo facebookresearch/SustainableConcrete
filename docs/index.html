@@ -164,7 +164,7 @@
     <div class="panel sliders fade-in-up" id="sliders-panel" style="--delay: 0ms">
       <div class="sliders-header">
         <h2 id="sliders-title">Composition (kg/m³)</h2>
-        <button class="unit-toggle" id="unit-toggle" aria-label="Toggle metric/imperial units">
+        <button class="unit-toggle" id="unit-toggle" aria-label="SI units - switch to US units">
           <span class="unit-label" id="unit-label">SI</span>
         </button>
       </div>
@@ -179,7 +179,7 @@
         <div class="mobile-panel-header">
           <button id="mobile-show-scatter" class="active">Performance Tradeoffs</button>
           <button id="mobile-show-sliders">Composition (kg/m³)</button>
-          <button class="unit-toggle mobile-unit-toggle" id="mobile-unit-toggle" aria-label="Toggle metric/imperial units">
+          <button class="unit-toggle mobile-unit-toggle" id="mobile-unit-toggle" aria-label="SI units - switch to US units">
             <span class="unit-label" id="mobile-unit-label">SI</span>
           </button>
         </div>
@@ -208,7 +208,7 @@
       <!-- Mix Insight (below scatter) -->
       <div class="panel mix-insight-panel fade-in-up" id="mix-insight" style="--delay: 300ms">
         <div class="mix-insight-header">
-          <h3 class="mix-insight-title">Mix Insight</h3>
+          <h2 class="mix-insight-title">Mix Insight</h2>
           <span class="pareto-pill" id="pareto-pill">Pareto-optimal</span>
         </div>
         <div class="mix-insight-body">
@@ -218,7 +218,7 @@
 
       <!-- Ingredient Insights (below mix insight) -->
       <div class="panel ingredient-insight-panel fade-in-up" id="ingredient-insight" style="--delay: 350ms">
-        <h3 class="ingredient-insight-title">Ingredient Insight</h3>
+        <h2 class="ingredient-insight-title">Ingredient Insight</h2>
         <div class="ingredient-insight-body">
           <p class="ingredient-insight-text" id="ingredient-insight-text"><span class="mix-insight-placeholder">Click an ingredient name in the Composition panel to learn more.</span></p>
         </div>
@@ -232,6 +232,21 @@
         <span class="extrapolation-warning" id="extrapolation-warning">⚠ Far from data</span>
         <h2>Predicted Strength Curve</h2>
         <canvas id="curve-canvas" aria-label="Predicted concrete strength curve over curing time"></canvas>
+        <!-- Text equivalent of the curve for screen readers. A canvas exposes
+             no data, so aria-label conveys that a chart exists but not what it
+             says. Updated only once the composition settles, and skipped when
+             unchanged, so the live region does not chatter.
+
+             Deliberately NOT wired up via aria-describedby on the canvas. These
+             divs are clip-hidden, not display:none, so they already sit in
+             reading order immediately after it; referencing them as well makes
+             a browse-mode user hear the same sentence twice. The canvas is also
+             not focusable, so the description would be unreliable anyway. -->
+        <div id="curve-summary" class="sr-only" role="status" aria-live="polite"></div>
+        <!-- Static caveat, deliberately OUTSIDE the live region: it never
+             changes, so re-speaking it on every update would add ~9 words to
+             each announcement for no information. -->
+        <div id="curve-summary-note" class="sr-only">Strength figures are model predictions with a 95 percent interval.</div>
         <div class="readouts" id="readouts">
           <div>GWP: <span class="value" id="gwp-value">–</span> <span class="unit" id="gwp-unit">kg CO₂e/m³</span></div>
           <div>Cost: <span class="value" id="cost-value">–</span> <span id="cost-uncertainty"></span> <span class="unit" id="cost-unit">$/m³</span></div>
@@ -340,7 +355,12 @@
     });
 
     // Crossfade helper: fade out current, swap, fade in new
+    // 150 ms matches the .fading opacity transition. Under reduced motion that
+    // transition is instant, so the wait would leave the panel blank for
+    // 150 ms instead of fading -- collapse it to match.
+    const REDUCE_MOTION = matchMedia('(prefers-reduced-motion: reduce)').matches;
     function crossfade(fadeOut, fadeIn, onSwap) {
+      const fadeMs = REDUCE_MOTION ? 0 : 150;
       fadeOut.classList.add('fading');
       setTimeout(() => {
         fadeOut.classList.add('hidden');
@@ -351,7 +371,7 @@
         requestAnimationFrame(() => {
           requestAnimationFrame(() => fadeIn.classList.remove('fading'));
         });
-      }, 150);
+      }, fadeMs);
     }
 
     mobileScatterBtn.addEventListener('click', () => {
