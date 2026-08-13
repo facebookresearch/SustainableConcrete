@@ -50,7 +50,7 @@ import torch
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "experiments"))
 
-from boxcrete.utils import load_concrete_strength  # noqa: E402
+from .shared_fits import get_fitted_strength_gp  # noqa: E402
 
 STRENGTH_JSON_PATH = REPO_ROOT / "docs" / "model" / "strength.json"
 COMPOSITIONS_JSON_PATH = REPO_ROOT / "docs" / "model" / "compositions.json"
@@ -147,11 +147,11 @@ def _predict_grid_for_committed_model() -> np.ndarray:
 def _predict_grid_for_fresh_fit() -> np.ndarray:
     """Fit the V2 strength GP via the public ``boxcrete.fit_strength_gp``
     and predict on the dense ``[n_comp, N_TIMES]`` grid."""
-    from boxcrete import fit_strength_gp
-
-    data = load_concrete_strength()
-    X, Y, Yvar, bounds = data.strength_data
-    model = fit_strength_gp(X=X, Y=Y, Yvar=Yvar, X_bounds=bounds, seed=0)
+    # Shared with three other modules; see test/shared_fits.py. Equivalent
+    # to fit_strength_gp(..., seed=0) -- that is exactly how the provider
+    # produces it -- but fitted once per worker instead of per module.
+    # The returned model is a fresh deepcopy, so .eval() below cannot leak.
+    model, X, Y, Yvar, bounds = get_fitted_strength_gp()
     model.eval()
 
     compositions = json.loads(COMPOSITIONS_JSON_PATH.read_text())["compositions"]
