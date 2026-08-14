@@ -85,15 +85,17 @@ let currentComposition = null; // current slider values (without time)
 let scatterDay = 28;
 let scatterXAxis = "gwp"; // "gwp" or "cost"
 let curveObsPositions = []; // [{px, py, time, strength}] for tooltip hit-testing
-let animationId = null; // for smooth transitions
-// Most recent animation TARGET (intended end state). When the user commits a
-// click-to-edit value during an in-flight animation, we build the new target
-// from this — not from mid-lerp `currentComposition` — so other still-animating
-// sliders land at their intended positions.
-let _lastAnimTarget = null;
+// Unified-loop-owned composition transition. The target is also the intended
+// end state used by click-to-edit while the interpolation is in flight.
+let compositionTransition = null; // {startComp, targetComp, startTime, duration}
 let scatterFilter = null; // [{colIdx, min, max}] array or null
 let mixAnalyses = null; // pre-computed mix descriptions
+const CANVAS_CURVE = 1;
+const CANVAS_SCATTER = 2;
+const CANVAS_BOTH = CANVAS_CURVE | CANVAS_SCATTER;
+let pendingCanvasMask = 0;
 let animLoopId = null; // unified animation loop frame ID
+let lastAnimFrameTimestamp = null; // coalesces callbacks delivered for one browser frame
 let lastFrameTime = 0; // for frame-rate-independent interpolation
 let scatterTransition = null; // {startTime, duration, fromX, fromY, toX, toY, fromPareto, toPareto}
 let _curveYMax = null; // smoothly interpolated y-axis max for strength curve
@@ -555,7 +557,7 @@ function buildSliders() {
       previewScopeBtn = null;
       previewScopeIdx = i;
       previewScopeValue = value;
-      startAnimLoop();
+      invalidateCanvases(CANVAS_CURVE);
     });
     input.addEventListener("pointerdown", (e) => {
       if (e.pointerType !== "mouse" || previewSource !== "slider") return;
@@ -565,7 +567,7 @@ function buildSliders() {
       for (let j = 0; j < currentComposition.length; j++) {
         displayPreviewComp[j] = currentComposition[j];
       }
-      startAnimLoop();
+      invalidateCanvases(CANVAS_CURVE);
     });
     input.addEventListener("pointerup", disarmSliderCommitPreview);
     input.addEventListener("pointercancel", disarmSliderCommitPreview);
@@ -573,7 +575,7 @@ function buildSliders() {
     input.addEventListener("pointerleave", () => {
       if (previewSource !== "slider") return;
       previewSource = null;
-      if (!restoreFocusedClassPreview()) startAnimLoop();
+      if (!restoreFocusedClassPreview()) invalidateCanvases(CANVAS_CURVE);
     });
 
     const infoRow = document.createElement("div");
@@ -834,38 +836,15 @@ function queueSliderCurveRetarget(
   });
 }
 
-// Coalesce slider redraws to at most one per animation frame.
-//
-// `input` events from a touch drag or a high-polling mouse arrive faster than
-// 60 Hz, and each one used to trigger a full synchronous redraw. A redraw is
-// ~24 ms on a 4x-throttled CPU (98% of it the strength-curve GP evaluation),
-// so bursts queued work the screen could never show.
-//
-// Note this bounds the *burst*, not the total: `onSliderChange` also calls
-// startAnimLoop(), and animLoop unconditionally redraws both canvases, so a
-// drag frame still does this work twice. That overlap predates this change
-// (the old synchronous path had it too, and worse), and removing it means
-// untangling who owns the drag redraw -- deliberately out of scope here.
+// Coalesce high-frequency slider DOM work to at most once per animation
+// frame. Canvas work is owned exclusively by animLoop via dirty bits.
 let _pendingRedraw = null;
 function requestRedraw() {
   if (_pendingRedraw !== null) return;
   _pendingRedraw = requestAnimationFrame(() => {
     _pendingRedraw = null;
-    // When the animation loop is running it already redraws both canvases
-    // every frame, so calling update() here draws them a second time.
-    // Measured during a sustained drag: 1.68 canvas redraws per animation
-    // frame, i.e. ~40% of the work on the one hot path that none of the
-    // earlier optimisations touched.
-    //
-    // The loop only owns the CANVASES, so the rest of update() still has to
-    // run -- dropping it would freeze the readouts and the screen-reader
-    // summary mid-drag.
-    if (animLoopId !== null) {
-      updateReadouts();
-      scheduleCurveSummary();
-    } else {
-      update();
-    }
+    updateReadouts();
+    scheduleCurveSummary();
     updateMixInsight();
     checkExtrapolationWarning();
   });
@@ -910,9 +889,14 @@ function onSliderChange(e) {
   setValueDisplay(idx, displayVal.toFixed(1));
   _sliderActive = true;
   if (_sliderIdleTimer) clearTimeout(_sliderIdleTimer);
-  _sliderIdleTimer = setTimeout(() => { _sliderActive = false; update(); }, 150);
+  _sliderIdleTimer = setTimeout(() => {
+    _sliderActive = false;
+    updateReadouts();
+    scheduleCurveSummary();
+    invalidateCanvases(CANVAS_CURVE);
+  }, 150);
   requestRedraw();
-  startAnimLoop(); // keep loop alive for smooth y-axis expansion
+  invalidateCanvases(CANVAS_BOTH); // curve plus one current-composition marker redraw
 }
 
 // Display value for a composition column under the active unit system.
@@ -983,20 +967,13 @@ function updateSliderLabels() {
 
 // --- Animated transition to a new composition ---
 function cancelCompositionAnimation() {
-  if (animationId !== null) cancelAnimationFrame(animationId);
-  animationId = null;
-  _lastAnimTarget = null;
+  compositionTransition = null;
 }
 
 function animateToComposition(targetComp) {
   cancelCompositionAnimation();
   cancelQueuedSliderCurveRetarget();
   hideExtrapolationWarning(); // suppress during transition
-  startAnimLoop();
-
-  // Track the *intended* end state so a click-to-edit during this animation
-  // can build the new target from un-clobbered values. Cleared on completion.
-  _lastAnimTarget = [...targetComp];
 
   const startComp = [...currentComposition];
 
@@ -1013,43 +990,46 @@ function animateToComposition(targetComp) {
   const msIdx = COL_MS;
   if (msIdx >= 0) startComp[msIdx] = Math.round(targetComp[msIdx]);
 
-  const duration = motionDuration(CURVE_TRANSITION_MS);
-  const startTime = performance.now();
-
-  function step(now) {
-    const t = Math.min((now - startTime) / duration, 1);
-    // Smooth easing (ease-in-out: starts at zero velocity, ends at zero velocity)
-    const ease = easeInOutCubic(t);
-
-    // Lerp each dimension
-    for (let i = 0; i < startComp.length; i++) {
-      currentComposition[i] = startComp[i] + (targetComp[i] - startComp[i]) * ease;
-      if (previewSource === null) displayPreviewComp[i] = currentComposition[i];
-    }
-
-    syncSliderDOM(currentComposition);
-
-    update();
-
-    if (t < 1) {
-      animationId = requestAnimationFrame(step);
-    } else {
-      animationId = null;
-      _lastAnimTarget = null;
-      // Snap to exact target and update toggle
-      setComposition(targetComp);
-      if (_pendingFocusedPreviewRestore) {
-        _pendingFocusedPreviewRestore = false;
-        restoreFocusedClassPreview();
-      }
-      // Sequenced: update insight after the curve has settled
-      scheduleInsightUpdate();
-      checkExtrapolationWarning();
-    }
-  }
-
-  animationId = requestAnimationFrame(step);
+  compositionTransition = {
+    startComp,
+    targetComp: [...targetComp],
+    startTime: performance.now(),
+    duration: motionDuration(CURVE_TRANSITION_MS),
+  };
+  startAnimLoop();
   return curveTransitionId;
+}
+
+function advanceCompositionTransition(now) {
+  const transition = compositionTransition;
+  if (transition === null) return;
+
+  const t = Math.min(
+    (now - transition.startTime) / transition.duration,
+    1,
+  );
+  const ease = easeInOutCubic(t);
+
+  for (let i = 0; i < transition.startComp.length; i++) {
+    currentComposition[i] = transition.startComp[i] +
+      (transition.targetComp[i] - transition.startComp[i]) * ease;
+    if (previewSource === null) displayPreviewComp[i] = currentComposition[i];
+  }
+  syncSliderDOM(currentComposition);
+  update();
+
+  if (t < 1) return;
+
+  compositionTransition = null;
+  // Snap to the exact endpoint and update the Material Source toggle.
+  setComposition(transition.targetComp);
+  if (_pendingFocusedPreviewRestore) {
+    _pendingFocusedPreviewRestore = false;
+    restoreFocusedClassPreview();
+  }
+  // Sequenced: update insight after the curve has settled.
+  scheduleInsightUpdate();
+  checkExtrapolationWarning();
 }
 
 // --- Curve-level transition ---
@@ -1110,7 +1090,7 @@ function clearPreviewHold(restoreFocused = false) {
   const shouldRestore = restoreFocused && _restoreFocusedAfterPreviewHold;
   _restoreFocusedAfterPreviewHold = false;
   if (shouldRestore) {
-    if (animationId !== null) {
+    if (compositionTransition !== null) {
       _pendingFocusedPreviewRestore = true;
     } else {
       restoreFocusedClassPreview();
@@ -1181,7 +1161,7 @@ function beginCurveTransition(targetComp, fromComp = currentComposition) {
 // Material Source toggle: commit the new class immediately (the GP only ever
 // sees an integer class) and crossfade the curve to it.
 function triggerMaterialSourceTransition(idx, newVal) {
-  const interruptedCompositionAnimation = animationId !== null;
+  const interruptedCompositionAnimation = compositionTransition !== null;
   cancelCompositionAnimation();
   cancelQueuedSliderCurveRetarget();
   if (currentComposition[idx] === newVal) {
@@ -1219,8 +1199,8 @@ function attachValueEditHandlers(inputEl, idx, col, b) {
     const clamped = Math.max(b.min, Math.min(b.max, internal));
     // Build target from the most recent intended end state to avoid landing
     // mid-animation values for sliders that are currently in flight.
-    const base = animationId !== null && _lastAnimTarget !== null
-      ? [..._lastAnimTarget]
+    const base = compositionTransition !== null
+      ? [...compositionTransition.targetComp]
       : [...currentComposition];
     base[idx] = clamped;
     animateToComposition(base);
@@ -1304,7 +1284,7 @@ function updateCurveSummary() {
   // which would leave the summary permanently stale (e.g. after a unit
   // toggle, whose animation is in flight when the debounce first fires).
   if (
-    animationId !== null ||
+    compositionTransition !== null ||
     _sliderActive ||
     _curveTransition !== null ||
     unitTransition !== null
@@ -1347,9 +1327,8 @@ function updateCurveSummary() {
 
 function update() {
   updateReadouts();
-  drawStrengthCurve();
-  drawScatter();
   scheduleCurveSummary();
+  invalidateCanvases(CANVAS_BOTH);
   // Mix insight updates are triggered separately with delay (see animateToComposition)
 }
 
@@ -1488,20 +1467,16 @@ function setupHiDPICanvas(canvas) {
     rect = canvas.getBoundingClientRect();
     _canvasCache.set(canvas, { width: rect.width, height: rect.height });
     rect = _canvasCache.get(canvas);
-    // Observe resize to invalidate cache and trigger redraw
+    // Observe resize to invalidate cache and redraw only affected canvases.
     if (!_resizeObserver) {
-      let resizeRAF = null;
       _resizeObserver = new ResizeObserver((entries) => {
+        let mask = 0;
         for (const entry of entries) {
           _canvasCache.delete(entry.target);
+          if (entry.target.id === "curve-canvas") mask |= CANVAS_CURVE;
+          if (entry.target.id === "scatter-canvas") mask |= CANVAS_SCATTER;
         }
-        // Debounce redraw to next animation frame for snappy resize
-        if (!resizeRAF) {
-          resizeRAF = requestAnimationFrame(() => {
-            resizeRAF = null;
-            update();
-          });
-        }
+        if (mask !== 0) invalidateCanvases(mask);
       });
     }
     _resizeObserver.observe(canvas);
@@ -1688,7 +1663,7 @@ function drawStrengthCurve() {
     }
   }
   if (means === undefined) {
-    const isAnimating = animationId !== null;
+    const isAnimating = compositionTransition !== null;
     const isInteracting = _sliderActive || isAnimating || showPreview;
     nPts = isInteracting ? 32 : 64;
     times = logSpacedTimes(nPts);
@@ -2420,13 +2395,36 @@ function isCompositionConverged() {
 }
 
 // --- Unified Animation Loop ---
+function invalidateCanvases(mask) {
+  pendingCanvasMask |= mask;
+  startAnimLoop();
+}
+
+function scheduleAnimLoopFrame() {
+  const frameId = requestAnimationFrame((now) => {
+    // A cancelled callback can already be queued for delivery. Ignore it if a
+    // newer callback owns the loop, otherwise both would render in one frame.
+    if (animLoopId !== frameId) return;
+    if (now === lastAnimFrameTimestamp) {
+      animLoopId = null;
+      scheduleAnimLoopFrame();
+      return;
+    }
+    lastAnimFrameTimestamp = now;
+    animLoop(now);
+  });
+  animLoopId = frameId;
+}
+
 function startAnimLoop() {
-  if (animLoopId) return;
+  if (animLoopId !== null) return;
   lastFrameTime = performance.now();
-  animLoopId = requestAnimationFrame(animLoop);
+  scheduleAnimLoopFrame();
 }
 
 function animLoop(now) {
+  advanceCompositionTransition(now);
+
   const dt = now - lastFrameTime;
   lastFrameTime = now;
 
@@ -2516,20 +2514,51 @@ function animLoop(now) {
     _firstAnimFrameDone = true;
   }
 
-  // Redraw. A disappearing preview gets one additional frame so the solid
-  // curve immediately returns from the 32-point interaction grid to 64 points.
-  drawScatter();
-  const idleRedrawWasPending = _previewIdleRedrawPending;
-  drawStrengthCurve();
-  if (idleRedrawWasPending) _previewIdleRedrawPending = false;
-
-  // Continue or stop (no wasted work when idle)
   const hasHoverAnim = (Math.abs(hoverScale - hoverScaleTarget) > 0.01) || prevHoveredPointIdx !== null;
   const hasCurveAnim = Math.abs(curveObsHoverScale - curveHoverTarget) > 0.01;
   const hasObsAnim = Math.abs(obsOpacity - obsTarget) > 0.01;
   const hasYAxisAnim = _curveYMaxTarget !== null && Math.abs(_curveYMax - _curveYMaxTarget) > 0.5;
-  if (!previewConverged || hasHoverAnim || hasCurveAnim || hasObsAnim || hasYAxisAnim || animationId !== null || scatterTransition !== null || unitTransition !== null || _curveTransition !== null || _previewCurveTransition !== null || _previewIdleRedrawPending) {
-    animLoopId = requestAnimationFrame(animLoop);
+
+  // Snapshot and clear pending work before drawing. A renderer may request a
+  // cleanup frame while completing a transition, and that request must survive.
+  let frameMask = pendingCanvasMask;
+  pendingCanvasMask = 0;
+  if (
+    !previewConverged || hasCurveAnim || hasObsAnim || hasYAxisAnim ||
+    _curveTransition !== null || _previewCurveTransition !== null ||
+    _previewIdleRedrawPending
+  ) {
+    frameMask |= CANVAS_CURVE;
+  }
+  if (hasHoverAnim || scatterTransition !== null) frameMask |= CANVAS_SCATTER;
+  if (
+    previewSource === "scatter" ||
+    compositionTransition !== null ||
+    unitTransition !== null
+  ) {
+    frameMask |= CANVAS_BOTH;
+  }
+
+  if (frameMask & CANVAS_SCATTER) drawScatter();
+  if (frameMask & CANVAS_CURVE) {
+    const idleRedrawWasPending = _previewIdleRedrawPending;
+    drawStrengthCurve();
+    if (idleRedrawWasPending) _previewIdleRedrawPending = false;
+  }
+
+  // Renderers own transition completion and can establish new convergence
+  // work, so continuation must be evaluated against their post-draw state.
+  const yAxisStillAnimating =
+    _curveYMaxTarget !== null && Math.abs(_curveYMax - _curveYMaxTarget) > 0.5;
+  if (
+    !previewConverged || hasHoverAnim || hasCurveAnim || hasObsAnim ||
+    yAxisStillAnimating || compositionTransition !== null || scatterTransition !== null ||
+    unitTransition !== null || _curveTransition !== null ||
+    _previewCurveTransition !== null || _previewIdleRedrawPending ||
+    pendingCanvasMask !== 0
+  ) {
+    animLoopId = null;
+    scheduleAnimLoopFrame();
   } else {
     animLoopId = null;
   }
@@ -2598,7 +2627,7 @@ function setupEventListeners() {
         previewSource = null;
         restoreFocusedClassPreview();
       }
-      startAnimLoop();
+      invalidateCanvases(CANVAS_BOTH);
     }
   });
 
@@ -2612,9 +2641,9 @@ function setupEventListeners() {
       hoverScaleTarget = 0;
       if (previewSource === "scatter") {
         previewSource = null;
-        if (!restoreFocusedClassPreview()) startAnimLoop();
+        if (!restoreFocusedClassPreview()) invalidateCanvases(CANVAS_BOTH);
       } else {
-        startAnimLoop();
+        invalidateCanvases(CANVAS_BOTH);
       }
       scatterCanvas.style.cursor = "default";
     }
@@ -2847,7 +2876,7 @@ function setupEventListeners() {
         }
       }
     }
-    drawScatter();
+    invalidateCanvases(CANVAS_SCATTER);
   }
 
   document.getElementById("filter-add").addEventListener("click", () => {
@@ -2872,7 +2901,7 @@ function setupEventListeners() {
         finished++;
         if (finished === wrappers.length) {
           scatterFilter = null;
-          drawScatter();
+          invalidateCanvases(CANVAS_SCATTER);
         }
       };
     }
@@ -2907,7 +2936,7 @@ function setupEventListeners() {
     if (hitIdx !== hoveredCurveObsIdx) {
       hoveredCurveObsIdx = hitIdx;
       curveObsHoverScale = 0;
-      startAnimLoop();
+      invalidateCanvases(CANVAS_CURVE);
     }
 
     if (hit) {
@@ -2929,7 +2958,7 @@ function setupEventListeners() {
     curveCanvas.style.cursor = "default";
     if (hoveredCurveObsIdx !== null) {
       hoveredCurveObsIdx = null;
-      startAnimLoop();
+      invalidateCanvases(CANVAS_CURVE);
     }
   });
 }
@@ -2961,7 +2990,7 @@ new MutationObserver(() => { _canvasColors = null; update(); }).observe(
 document.addEventListener("invalidate-scatter", () => {
   const canvas = document.getElementById("scatter-canvas");
   _canvasCache.delete(canvas);
-  update();
+  invalidateCanvases(CANVAS_SCATTER);
 });
 
 // --- Test hook (gated behind ?test=1 to avoid leaking internals in prod) ---
@@ -3012,9 +3041,13 @@ if (typeof location !== "undefined" &&
     get isPreviewVisualHeld() {
       return _previewHoldCurveTransitionId !== null;
     },
-    get isCompositionTransitionActive() { return animationId !== null; },
+    get isCompositionTransitionActive() {
+      return compositionTransition !== null;
+    },
     get compositionTransitionTarget() {
-      return _lastAnimTarget ? [..._lastAnimTarget] : null;
+      return compositionTransition
+        ? [...compositionTransition.targetComp]
+        : null;
     },
     get isAnimLoopActive() { return animLoopId !== null; },
     // The UI shell now renders before the strength GP finishes building (it is
