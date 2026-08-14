@@ -17,6 +17,7 @@ from boxcrete.model_utils import FixedFeatureModel
 from boxcrete.slump_model import fit_slump_gp
 from boxcrete.strength_model_legacy import get_strength_gp_input_transform
 from boxcrete.utils import DATA_PATH, load_concrete_strength, SLUMP_Y_COLUMNS
+from .shared_fits import get_fitted_concrete_model
 from parameterized import parameterized
 
 # Limit optimizer iterations in tests for speed (follows BoTorch testing convention)
@@ -380,11 +381,9 @@ class TestPredictiveQualityRegression(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        torch.manual_seed(42)
-        cls.data = load_concrete_strength(data_path=DATA_PATH)
-        cls.shared_model = SustainableConcreteModel(strength_days=[1, 28])
-        cls.shared_model.fit_gwp_model(cls.data)
-        cls.shared_model.fit_strength_model(cls.data)
+        # Shared with three other modules that need the identical fit; see
+        # test/shared_fits.py. Returns a fresh deepcopy every call.
+        cls.shared_model, cls.data = get_fitted_concrete_model()
 
         # Slump uses a separate dataset shape (different Y_columns).
         torch.manual_seed(42)
@@ -540,11 +539,8 @@ class TestGetModelListWithCost(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        torch.manual_seed(42)
-        cls.shared_data = load_concrete_strength(data_path=DATA_PATH)
-        cls.shared_base_model = SustainableConcreteModel(strength_days=[1, 28])
-        cls.shared_base_model.fit_gwp_model(cls.shared_data)
-        cls.shared_base_model.fit_strength_model(cls.shared_data)
+        # Shared across modules; see test/shared_fits.py.
+        cls.shared_base_model, cls.shared_data = get_fitted_concrete_model()
 
     def setUp(self):
         import copy

@@ -63,6 +63,7 @@ from boxcrete.priors import (
     _default_lengthscale_prior,
 )
 from boxcrete.utils import DEFAULT_X_COLUMNS, REPO_DIR, load_concrete_strength
+from .shared_fits import get_fitted_strength_gp
 
 STRENGTH_JSON_PATH = os.path.join(REPO_DIR, "docs", "model", "strength.json")
 TEST_VECTORS_PATH = os.path.join(REPO_DIR, "docs", "model", "test_vectors.json")
@@ -106,20 +107,17 @@ def _load_strength_params():
         return json.load(f)
 
 
-@lru_cache(maxsize=1)
 def _fit_default_strength_gp():
-    """Fit the production strength GP once (with the default within-group
-    shrinkage prior) and cache it across tests. Saves ~10s per extra test."""
-    torch.manual_seed(0)
-    data = load_concrete_strength()
-    X, Y, Yvar, X_bounds = data.strength_data
-    gp = fit_strength_gp(
-        X=X,
-        Y=Y,
-        Yvar=Yvar,
-        X_bounds=X_bounds,
-    )
-    return gp, X, Y, Yvar, X_bounds
+    """The production strength GP with the default within-group shrinkage
+    prior, plus its training tensors.
+
+    Delegates to the cross-module provider (test/shared_fits.py) rather
+    than fitting here: three other tests need this identical fit, and it
+    costs ~105s. The provider hands back a fresh deepcopy each call, so
+    the previous module-local lru_cache is no longer needed -- and callers
+    can now mutate the model without affecting siblings.
+    """
+    return get_fitted_strength_gp()
 
 
 @lru_cache(maxsize=1)

@@ -85,6 +85,19 @@ format:
 # --- Python unit tests ---------------------------------------------
 # Mirrors .github/workflows/tests.yml :test. We drop --cov-report=xml
 # because we don't need the coverage.xml artefact locally.
+# Serial on purpose. test/shared_fits.py fits the production strength GP once
+# per process and hands out deepcopies, which took this target from ~399 s to
+# ~135 s (405/393 -> 141/130, same machine, coverage on).
+#
+# Parallelism was tried and removed. pytest-xdist did help BEFORE the fits were
+# shared (435 s -> 200 s, measured on a busier machine than the 399 s figure
+# above -- the two baselines are not directly comparable), but afterwards it
+# stopped paying for itself -- 135 s
+# serial against ~184 s at -n 4, since workers are separate processes that each
+# re-import torch and, without grouping, each refit. It also carried a sharp
+# edge: with the default --dist load the shared fit scatters across workers and
+# the suite measured 265 s, slower than not parallelising at all. Recorded here
+# so it is not rediscovered.
 test-py:
 	$(PYTHON) -m pytest test/ -v --tb=short --cov=boxcrete --cov-report=term-missing --cov-fail-under=100
 
