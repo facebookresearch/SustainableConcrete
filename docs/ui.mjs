@@ -104,13 +104,24 @@ let _curveYMaxTarget = null; // target y-max (for animation loop convergence che
 // (0/1/2); composition-level interpolation would feed the GP non-categorical
 // values and yield a noisy intermediate prediction. Curve-level interpolation
 // keeps the visual aesthetic smooth without violating the GP's input domain.
-let _curveTransition = null; // {startTime, duration, times, fromMeans, fromStds, toMeans, toStds}
+let _curveTransition = null; // {id, startTime, duration, times, fromMeans, fromStds, toMeans, toStds}
+let _curveTransitionSeq = 0;
+let _previewCurveTransition = null; // class-preview curve-space transition
+let _previewCurveTransitionSeq = 0;
+let _previewHoldCurveTransitionId = null; // keeps an approved ghost visible through commit
+let _previewHeldMeans = null;
+let _restoreFocusedAfterPreviewHold = false;
+let _pendingFocusedPreviewRestore = false;
+let _previewIdleRedrawPending = false;
 // Time grids used by the last strength-curve draw, for the regression test in
 // preview-curve.spec.ts. The main curve and the preview curve are drawn on top
 // of each other, so they must share a grid or they visibly disagree even when
 // both are numerically correct. Reference-compared, so reintroducing a
 // separate preview grid fails the test.
 let _lastDrawGrids = { main: null, preview: null };
+let _curveDrawSequence = 0;
+let _lastCurveRenderMode = null; // "direct" | "transition"
+let _lastDrawHadPreview = false;
 
 // --- Unit System ---
 let unitSystem = "metric"; // "metric" or "imperial"
@@ -357,6 +368,7 @@ function buildSliders() {
   const medianIdx = Math.floor(n / 2);
   currentComposition = [...compositions[medianIdx]];
   displayPreviewComp = [...currentComposition];
+  _scratchTarget.push(...currentComposition);
 
   for (let i = 0; i < colNames.length; i++) {
     const col = colNames[i];
@@ -399,10 +411,50 @@ function buildSliders() {
           Math.round(currentComposition[i]) === cls
             ? "toggle-btn active"
             : "toggle-btn";
+        let classPointerInside = false;
+        let classFocused = false;
+        const releaseClassPreview = () => {
+          if (classPointerInside || classFocused || previewScopeBtn !== btn) return;
+          btn.removeAttribute("data-previewing");
+          previewScopeBtn = null;
+          if (!restoreFocusedClassPreview()) {
+            previewSource = null;
+            beginPreviewCurveTransition(currentComposition, true);
+          }
+        };
+        btn.addEventListener("pointerenter", (e) => {
+          if (e.pointerType !== "mouse") return;
+          classPointerInside = true;
+          acquireClassPreview(btn, cls);
+        });
+        btn.addEventListener("pointerleave", (e) => {
+          if (e.pointerType !== "mouse") return;
+          classPointerInside = false;
+          releaseClassPreview();
+        });
+        btn.addEventListener("focus", () => {
+          classFocused = true;
+          if (cls !== Math.round(currentComposition[COL_MS])) {
+            _focusedClassPreview = { btn, cls };
+            acquireClassPreview(btn, cls);
+          }
+        });
+        btn.addEventListener("blur", () => {
+          classFocused = false;
+          if (_focusedClassPreview?.btn === btn) _focusedClassPreview = null;
+          releaseClassPreview();
+        });
         btn.addEventListener("click", () => {
+          if (previewSource === "class") previewSource = null;
+          if (previewScopeBtn) previewScopeBtn.removeAttribute("data-previewing");
+          previewScopeBtn = null;
+          if (_focusedClassPreview?.btn === btn) _focusedClassPreview = null;
           // Smooth curve-level transition (see `triggerMaterialSourceTransition`).
           // Updates `currentComposition[i]` and `displayPreviewComp[i]` internally.
-          triggerMaterialSourceTransition(i, cls);
+          const target = [...currentComposition];
+          target[i] = cls;
+          const curveTransitionId = triggerMaterialSourceTransition(i, cls);
+          holdPreviewThroughCurveTransition(curveTransitionId, target);
           for (const b of buttons) b.className = "toggle-btn";
           btn.className = "toggle-btn active";
           document.getElementById(`val-${i}`).textContent = sourceLabel(cls);
@@ -487,6 +539,42 @@ function buildSliders() {
     // The sibling value input already does this; the range input was missed.
     input.setAttribute("aria-label", `${shortName} (${sliderUnitLabel(col)})`);
     input.addEventListener("input", onSliderChange);
+    input.addEventListener("pointermove", (e) => {
+      if (e.pointerType !== "mouse" || e.buttons !== 0) return;
+      const value = sliderValueFromClientX(input, e.clientX);
+      _previewCurveTransition = null;
+      clearPreviewHold(false);
+      for (let j = 0; j < currentComposition.length; j++) {
+        _scratchTarget[j] = currentComposition[j];
+        if (j !== i) displayPreviewComp[j] = currentComposition[j];
+      }
+      _scratchTarget[i] = value;
+      previewTarget = _scratchTarget;
+      if (previewScopeBtn) previewScopeBtn.removeAttribute("data-previewing");
+      previewSource = "slider";
+      previewScopeBtn = null;
+      previewScopeIdx = i;
+      previewScopeValue = value;
+      startAnimLoop();
+    });
+    input.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "mouse" || previewSource !== "slider") return;
+      _sliderCommitPreviewArmed = true;
+      previewSource = null;
+      _previewCurveTransition = null;
+      for (let j = 0; j < currentComposition.length; j++) {
+        displayPreviewComp[j] = currentComposition[j];
+      }
+      startAnimLoop();
+    });
+    input.addEventListener("pointerup", disarmSliderCommitPreview);
+    input.addEventListener("pointercancel", disarmSliderCommitPreview);
+    input.addEventListener("lostpointercapture", disarmSliderCommitPreview);
+    input.addEventListener("pointerleave", () => {
+      if (previewSource !== "slider") return;
+      previewSource = null;
+      if (!restoreFocusedClassPreview()) startAnimLoop();
+    });
 
     const infoRow = document.createElement("div");
     infoRow.className = "info-row";
@@ -602,53 +690,149 @@ function setValueDisplay(idx, formatted) {
   }
 }
 
-function showSliderPreview(comp) {
+function sliderTrackGeometry(slider) {
+  const thumbHalfRaw = getComputedStyle(slider.parentElement)
+    .getPropertyValue("--thumb-half");
+  const thumbHalf = parseFloat(thumbHalfRaw) || 9;
+  return { thumbHalf, trackWidth: slider.offsetWidth - 2 * thumbHalf };
+}
+
+function sliderLeftPxFromValue(slider, value) {
+  const min = parseFloat(slider.min);
+  const max = parseFloat(slider.max);
+  const fraction = (value - min) / (max - min);
+  const { thumbHalf, trackWidth } = sliderTrackGeometry(slider);
+  return slider.offsetLeft + thumbHalf + fraction * trackWidth;
+}
+
+function sliderValueFromClientX(slider, clientX) {
+  const min = parseFloat(slider.min);
+  const max = parseFloat(slider.max);
+  const step = parseFloat(slider.step);
+  const rect = slider.getBoundingClientRect();
+  const { thumbHalf } = sliderTrackGeometry(slider);
+  // This is the viewport-coordinate inverse of sliderLeftPxFromValue. It relies
+  // on rect.width matching offsetWidth; add transform/zoom handling here if a
+  // future layout makes those geometries diverge.
+  const trackWidth = rect.width - 2 * thumbHalf;
+  const fraction = Math.max(
+    0,
+    Math.min(1, (clientX - rect.left - thumbHalf) / trackWidth),
+  );
+  const rawValue = min + fraction * (max - min);
+  if (!Number.isFinite(step) || step <= 0) return rawValue;
+  return Math.max(min, Math.min(max, min + Math.round((rawValue - min) / step) * step));
+}
+
+function showSliderPreview(comp, scopeIdx = null, scopeValue = null) {
   if (!_sliderInputs) return;
   for (const slider of _sliderInputs) {
     const idx = parseInt(slider.dataset.idx);
-    const val = comp[idx];
-    const min = parseFloat(slider.min);
-    const max = parseFloat(slider.max);
-    const fraction = (val - min) / (max - min);
-
-    // Get or create preview marker
     let marker = slider.parentElement.querySelector(".slider-preview-marker");
+    if (scopeIdx !== null && idx !== scopeIdx) {
+      if (marker) {
+        marker.style.display = "none";
+        marker.classList.remove("tracking");
+      }
+      continue;
+    }
+
     if (!marker) {
       marker = document.createElement("div");
       marker.className = "slider-preview-marker";
       slider.parentElement.insertBefore(marker, slider.nextSibling);
     }
-    // Account for range input thumb inset (thumb center at min is `thumbHalf`
-    // px from each edge of the input box). The half-width is exposed as a
-    // CSS variable on `.slider-group` so the desktop (9 px) and mobile
-    // (8 px, smaller thumb) values stay in sync with the actual rendered
-    // thumb size — falls back to 9 if the variable isn't set.
-    // `slider.offsetLeft` is 0 on desktop (the slider is a full-width child of
-    // `.slider-group`), but on mobile the slider lives in column 2 of a CSS grid
-    // so we must include its offset within the positioning parent.
-    const thumbHalfRaw = getComputedStyle(slider.parentElement).getPropertyValue("--thumb-half");
-    const thumbHalf = parseFloat(thumbHalfRaw) || 9;
-    const trackWidth = slider.offsetWidth - 2 * thumbHalf;
-    const leftPx = slider.offsetLeft + thumbHalf + fraction * trackWidth;
-    marker.style.left = leftPx + "px";
-    // Align vertically with the slider thumb center
+    const value = scopeIdx === idx && scopeValue !== null ? scopeValue : comp[idx];
+    marker.style.left = sliderLeftPxFromValue(slider, value) + "px";
     marker.style.top = `${slider.offsetTop + slider.offsetHeight / 2}px`;
     marker.style.display = "block";
+    marker.classList.toggle("tracking", scopeIdx === idx && scopeValue !== null);
   }
-
-  const panel = document.getElementById("sliders-panel");
-  panel.classList.add("previewing");
 }
 
 function hideSliderPreview() {
   const markers = document.querySelectorAll(".slider-preview-marker");
-  for (const m of markers) m.style.display = "none";
-  const panel = document.getElementById("sliders-panel");
-  panel.classList.remove("previewing");
+  for (const marker of markers) {
+    marker.style.display = "none";
+    marker.classList.remove("tracking");
+  }
 }
 
 let _sliderActive = false;
 let _sliderIdleTimer = null;
+let _queuedSliderCurveRetarget = null;
+let _sliderCurveRetargetFrame = null;
+let _sliderCommitPreviewArmed = false;
+
+function disarmSliderCommitPreview() {
+  _sliderCommitPreviewArmed = false;
+  if (_queuedSliderCurveRetarget !== null) {
+    _queuedSliderCurveRetarget.holdCommittedPreview = false;
+  }
+}
+
+window.addEventListener("blur", disarmSliderCommitPreview);
+
+function cancelQueuedSliderCurveRetarget() {
+  if (_sliderCurveRetargetFrame !== null) {
+    cancelAnimationFrame(_sliderCurveRetargetFrame);
+  }
+  _sliderCurveRetargetFrame = null;
+  _queuedSliderCurveRetarget = null;
+}
+
+function queueSliderCurveRetarget(
+  fromComp,
+  targetComp,
+  previewTargetComp = null,
+  holdCommittedPreview = false,
+  previewOwner = null,
+) {
+  if (_queuedSliderCurveRetarget === null) {
+    _queuedSliderCurveRetarget = {
+      fromComp: [...fromComp],
+      targetComp: [...targetComp],
+      previewTargetComp: previewTargetComp ? [...previewTargetComp] : null,
+      holdCommittedPreview,
+      previewOwner,
+    };
+  } else {
+    _queuedSliderCurveRetarget.targetComp = [...targetComp];
+    _queuedSliderCurveRetarget.previewTargetComp = previewTargetComp
+      ? [...previewTargetComp]
+      : null;
+    _queuedSliderCurveRetarget.holdCommittedPreview = holdCommittedPreview;
+    _queuedSliderCurveRetarget.previewOwner = previewOwner;
+  }
+  if (_sliderCurveRetargetFrame !== null) return;
+  _sliderCurveRetargetFrame = requestAnimationFrame(() => {
+    _sliderCurveRetargetFrame = null;
+    const retarget = _queuedSliderCurveRetarget;
+    _queuedSliderCurveRetarget = null;
+    if (retarget !== null) {
+      const curveTransitionId = beginCurveTransition(
+        retarget.targetComp,
+        retarget.fromComp,
+      );
+      if (
+        previewSource === "class" &&
+        previewScopeBtn === retarget.previewOwner &&
+        retarget.previewTargetComp !== null
+      ) {
+        beginPreviewCurveTransition(retarget.previewTargetComp);
+      } else if (retarget.holdCommittedPreview) {
+        holdPreviewThroughCurveTransition(
+          curveTransitionId,
+          retarget.targetComp,
+          false,
+          _curveTransition?.id === curveTransitionId
+            ? _curveTransition.toMeans
+            : null,
+        );
+      }
+    }
+  });
+}
 
 // Coalesce slider redraws to at most one per animation frame.
 //
@@ -689,8 +873,39 @@ function requestRedraw() {
 
 function onSliderChange(e) {
   const idx = parseInt(e.target.dataset.idx);
-  currentComposition[idx] = parseFloat(e.target.value);
+  const nextValue = parseFloat(e.target.value);
+  cancelCompositionAnimation();
+  const curveFrom = [...currentComposition];
+  const curveTarget = [...currentComposition];
+  curveTarget[idx] = nextValue;
+  const classPreviewTarget = previewSource === "class"
+    ? Math.round(previewTarget[COL_MS])
+    : null;
+  if (previewSource !== "class") previewSource = null;
+  currentComposition[idx] = nextValue;
   displayPreviewComp[idx] = currentComposition[idx];
+  if (classPreviewTarget !== null) {
+    for (let j = 0; j < currentComposition.length; j++) {
+      _scratchTarget[j] = currentComposition[j];
+      if (j !== COL_MS) displayPreviewComp[j] = currentComposition[j];
+    }
+    _scratchTarget[COL_MS] = classPreviewTarget;
+    previewTarget = _scratchTarget;
+  }
+  queueSliderCurveRetarget(
+    curveFrom,
+    curveTarget,
+    classPreviewTarget !== null ? _scratchTarget : null,
+    _sliderCommitPreviewArmed,
+    classPreviewTarget !== null ? previewScopeBtn : null,
+  );
+  // `pointerdown` may already have queued the preview loop. Move that draw
+  // behind the curve-retarget callback so the new posterior cannot flash for
+  // one frame before the old-to-new transition starts.
+  if (animLoopId !== null) {
+    cancelAnimationFrame(animLoopId);
+    animLoopId = null;
+  }
   const displayVal = displayCompValue(e.target.dataset.col, currentComposition[idx]);
   setValueDisplay(idx, displayVal.toFixed(1));
   _sliderActive = true;
@@ -767,8 +982,15 @@ function updateSliderLabels() {
 }
 
 // --- Animated transition to a new composition ---
+function cancelCompositionAnimation() {
+  if (animationId !== null) cancelAnimationFrame(animationId);
+  animationId = null;
+  _lastAnimTarget = null;
+}
+
 function animateToComposition(targetComp) {
-  if (animationId) cancelAnimationFrame(animationId);
+  cancelCompositionAnimation();
+  cancelQueuedSliderCurveRetarget();
   hideExtrapolationWarning(); // suppress during transition
   startAnimLoop();
 
@@ -781,7 +1003,7 @@ function animateToComposition(targetComp) {
   // Crossfade the curve between the two endpoint posteriors. Must run before
   // `currentComposition` starts moving so `from` reflects what is on screen.
   // Supersedes any in-flight transition, picking up from its current blend.
-  beginCurveTransition(targetComp);
+  const curveTransitionId = beginCurveTransition(targetComp);
 
   // Material Source is a categorical class, not a continuous quantity. The
   // curve no longer re-predicts per frame, but the preview curve, the scatter
@@ -802,6 +1024,7 @@ function animateToComposition(targetComp) {
     // Lerp each dimension
     for (let i = 0; i < startComp.length; i++) {
       currentComposition[i] = startComp[i] + (targetComp[i] - startComp[i]) * ease;
+      if (previewSource === null) displayPreviewComp[i] = currentComposition[i];
     }
 
     syncSliderDOM(currentComposition);
@@ -815,6 +1038,10 @@ function animateToComposition(targetComp) {
       _lastAnimTarget = null;
       // Snap to exact target and update toggle
       setComposition(targetComp);
+      if (_pendingFocusedPreviewRestore) {
+        _pendingFocusedPreviewRestore = false;
+        restoreFocusedClassPreview();
+      }
       // Sequenced: update insight after the curve has settled
       scheduleInsightUpdate();
       checkExtrapolationWarning();
@@ -822,6 +1049,7 @@ function animateToComposition(targetComp) {
   }
 
   animationId = requestAnimationFrame(step);
+  return curveTransitionId;
 }
 
 // --- Curve-level transition ---
@@ -875,15 +1103,56 @@ function sampleActiveTransition() {
 // Start a crossfade from the currently displayed curve to `targetComp`'s.
 // Returns false if the predictor is not ready, in which case callers fall
 // back to the standard per-frame path.
-function beginCurveTransition(targetComp) {
+function clearPreviewHold(restoreFocused = false) {
+  const clearedVisibleHold = _previewHeldMeans !== null;
+  _previewHoldCurveTransitionId = null;
+  _previewHeldMeans = null;
+  const shouldRestore = restoreFocused && _restoreFocusedAfterPreviewHold;
+  _restoreFocusedAfterPreviewHold = false;
+  if (shouldRestore) {
+    if (animationId !== null) {
+      _pendingFocusedPreviewRestore = true;
+    } else {
+      restoreFocusedClassPreview();
+    }
+  } else if (!restoreFocused) {
+    _pendingFocusedPreviewRestore = false;
+  }
+  if (clearedVisibleHold && previewSource === null && _previewCurveTransition === null) {
+    _previewIdleRedrawPending = true;
+  }
+}
+
+function holdPreviewThroughCurveTransition(
+  id,
+  targetComp,
+  restoreFocused = false,
+  targetMeans = null,
+) {
+  if (id === null || id === false) return;
+  _previewCurveTransition = null;
+  _previewHoldCurveTransitionId = id;
+  _previewHeldMeans = targetMeans
+    ? [...targetMeans]
+    : predictStrengthMeanOnly(
+      targetComp,
+      curveTransitionTimes,
+      strengthParams,
+    );
+  _restoreFocusedAfterPreviewHold = restoreFocused;
+  startAnimLoop();
+}
+
+function beginCurveTransition(targetComp, fromComp = currentComposition) {
   if (!strengthParams) return false;
+  clearPreviewHold(false);
 
   let fromMeans, fromStds;
   if (_curveTransition !== null) {
     ({ means: fromMeans, stds: fromStds } = sampleActiveTransition());
   } else {
     const r = predictStrengthCurve(
-      currentComposition, curveTransitionTimes, strengthParams
+      fromComp, curveTransitionTimes, strengthParams
     );
     fromMeans = r.means;
     fromStds = computeStds(r.variances, strengthParams);
@@ -893,31 +1162,42 @@ function beginCurveTransition(targetComp) {
     targetComp, curveTransitionTimes, strengthParams
   );
 
+  const id = ++_curveTransitionSeq;
   _curveTransition = {
+    id,
     startTime: performance.now(),
     duration: motionDuration(CURVE_TRANSITION_MS),
     times: curveTransitionTimes,
+    targetComp: [...targetComp],
     fromMeans,
     fromStds,
     toMeans: to.means,
     toStds: computeStds(to.variances, strengthParams),
   };
   startAnimLoop();
-  return true;
+  return id;
 }
 
 // Material Source toggle: commit the new class immediately (the GP only ever
 // sees an integer class) and crossfade the curve to it.
 function triggerMaterialSourceTransition(idx, newVal) {
-  if (currentComposition[idx] === newVal) return; // no-op
+  const interruptedCompositionAnimation = animationId !== null;
+  cancelCompositionAnimation();
+  cancelQueuedSliderCurveRetarget();
+  if (currentComposition[idx] === newVal) {
+    return interruptedCompositionAnimation
+      ? beginCurveTransition([...currentComposition])
+      : false;
+  }
 
   const target = [...currentComposition];
   target[idx] = newVal;
   // Snapshot `from` off the pre-toggle composition before committing.
-  beginCurveTransition(target);
+  const curveTransitionId = beginCurveTransition(target);
 
   currentComposition[idx] = newVal;
   displayPreviewComp[idx] = newVal;
+  return curveTransitionId;
 }
 
 // --- Click-to-edit value handlers (regular sliders only) ---
@@ -1382,15 +1662,24 @@ function drawStrengthCurve() {
   // curve must use the cheaper 32-point grid too. Leaving it at 64 made
   // preview-settling the most expensive frame in the app (measured 14.1 ms
   // vs a 16.7 ms budget at 60 fps).
-  const showPreview = isPreviewActive || !isCompositionConverged();
+  const showPreview = previewSource !== null ||
+    !isCompositionConverged() ||
+    _previewCurveTransition !== null ||
+    _previewHeldMeans !== null;
   let times, means, stds, nPts;
+  let curveRenderMode = "direct";
   if (_curveTransition !== null) {
     const elapsed = performance.now() - _curveTransition.startTime;
     const t = Math.min(elapsed / _curveTransition.duration, 1);
     if (t >= 1) {
+      const completedId = _curveTransition.id;
       _curveTransition = null; // fall through to standard path
+      if (_previewHoldCurveTransitionId === completedId) {
+        clearPreviewHold(true);
+      }
     } else {
       const ease = easeInOutCubic(t);
+      curveRenderMode = "transition";
       times = _curveTransition.times;
       nPts = times.length;
       const { fromMeans, fromStds, toMeans, toStds } = _curveTransition;
@@ -1411,6 +1700,9 @@ function drawStrengthCurve() {
   }
 
   _lastDrawGrids = { main: times, preview: null };
+  _lastDrawHadPreview = false;
+  _lastCurveRenderMode = curveRenderMode;
+  _curveDrawSequence++;
 
   // Dynamic Y range: floor at 16500 psi (max observed: 16029), expands smoothly if needed
   // _curveYMax is stored in RAW (psi) space to be unit-invariant — prevents visual drift
@@ -1479,21 +1771,47 @@ function drawStrengthCurve() {
   // gate-opening region. Sharing the grid makes the gap identically zero at
   // any resolution.
   if (showPreview) {
-    const previewMeans = predictStrengthMeanOnly(displayPreviewComp, times, strengthParams);
-    _lastDrawGrids.preview = times;
+    let previewMeans;
+    if (_previewCurveTransition !== null) {
+      const elapsed = performance.now() - _previewCurveTransition.startTime;
+      const t = Math.min(elapsed / _previewCurveTransition.duration, 1);
+      if (t >= 1) {
+        previewMeans = _previewCurveTransition.toMeans;
+        const hideOnComplete = _previewCurveTransition.hideOnComplete;
+        _previewCurveTransition = null;
+        if (hideOnComplete) {
+          previewMeans = null;
+          _previewIdleRedrawPending = true;
+        }
+      } else {
+        previewMeans = sampleActivePreviewTransition();
+      }
+    } else if (_previewHeldMeans !== null) {
+      previewMeans = _previewHeldMeans;
+    } else {
+      previewMeans = predictStrengthMeanOnly(
+        displayPreviewComp,
+        times,
+        strengthParams,
+      );
+    }
+    if (previewMeans !== null) {
+      _lastDrawHadPreview = true;
+      _lastDrawGrids.preview = times;
     ctx.beginPath();
     for (let i = 0; i < nPts; i++) {
       const x = xScale(times[i]);
       const y = yScale(Math.max(0, previewMeans[i] * sf));
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
-    ctx.setLineDash([6, 4]);
-    ctx.strokeStyle = colors.point;
-    ctx.globalAlpha = 0.5;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.globalAlpha = 1;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = colors.point;
+      ctx.globalAlpha = 0.5;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
   }
 
   // Overlay actual observations for the nearest matching composition
@@ -2004,7 +2322,96 @@ let prevObsIdx = null; // track which observations are currently shown
 // --- Unified Smooth Preview System ---
 let previewTarget = null; // composition we're interpolating TOWARD (set on hover)
 let displayPreviewComp = null; // always-valid interpolated composition (initialized on load)
-let isPreviewActive = false; // true when hovering a scatter point
+const _scratchTarget = []; // reused for one-dimension slider/class preview targets
+let previewSource = null; // null | "scatter" | "slider" | "class"
+let previewScopeIdx = null;
+let previewScopeBtn = null;
+let previewScopeValue = null;
+let _focusedClassPreview = null;
+
+function currentDisplayedSolidMeans() {
+  if (_curveTransition !== null) return sampleActiveTransition().means;
+  return predictStrengthMeanOnly(
+    currentComposition,
+    curveTransitionTimes,
+    strengthParams,
+  );
+}
+
+function sampleActivePreviewTransition() {
+  const tr = _previewCurveTransition;
+  const t = Math.min((performance.now() - tr.startTime) / tr.duration, 1);
+  const e = easeInOutCubic(t);
+  return tr.fromMeans.map((value, idx) =>
+    value + (tr.toMeans[idx] - value) * e
+  );
+}
+
+function currentDisplayedPreviewMeans() {
+  if (_previewCurveTransition !== null) return sampleActivePreviewTransition();
+  if (_previewHeldMeans !== null) return [..._previewHeldMeans];
+  if (previewSource !== null || !isCompositionConverged()) {
+    return predictStrengthMeanOnly(
+      displayPreviewComp,
+      curveTransitionTimes,
+      strengthParams,
+    );
+  }
+  return currentDisplayedSolidMeans();
+}
+
+function beginPreviewCurveTransition(targetComp, hideOnComplete = false) {
+  if (!strengthParams) return false;
+  const fromMeans = currentDisplayedPreviewMeans();
+  clearPreviewHold(false);
+  const toMeans = predictStrengthMeanOnly(
+    targetComp,
+    curveTransitionTimes,
+    strengthParams,
+  );
+  _previewCurveTransition = {
+    id: ++_previewCurveTransitionSeq,
+    startTime: performance.now(),
+    duration: motionDuration(CURVE_TRANSITION_MS),
+    fromMeans,
+    toMeans,
+    hideOnComplete,
+  };
+  startAnimLoop();
+  return true;
+}
+
+function acquireClassPreview(btn, cls) {
+  if (cls === Math.round(currentComposition[COL_MS])) return false;
+  const target = [...currentComposition];
+  target[COL_MS] = cls;
+  beginPreviewCurveTransition(target);
+  if (previewScopeBtn && previewScopeBtn !== btn) {
+    previewScopeBtn.removeAttribute("data-previewing");
+  }
+  for (let j = 0; j < currentComposition.length; j++) {
+    _scratchTarget[j] = currentComposition[j];
+    if (j !== COL_MS) displayPreviewComp[j] = currentComposition[j];
+  }
+  _scratchTarget[COL_MS] = cls;
+  previewTarget = _scratchTarget;
+  previewSource = "class";
+  previewScopeIdx = null;
+  previewScopeValue = null;
+  previewScopeBtn = btn;
+  btn.dataset.previewing = "";
+  startAnimLoop();
+  return true;
+}
+
+function restoreFocusedClassPreview() {
+  if (!_focusedClassPreview) return false;
+  return acquireClassPreview(
+    _focusedClassPreview.btn,
+    _focusedClassPreview.cls,
+  );
+}
+
 function isCompositionConverged() {
   for (let i = 0; i < displayPreviewComp.length; i++) {
     if (Math.abs(displayPreviewComp[i] - currentComposition[i]) > 1e-6) return false;
@@ -2037,16 +2444,31 @@ function animLoop(now) {
   // whole ~1.4 s approach renders a collapsed "unseen class" posterior (-3%)
   // and briefly passes through the neighbouring real class (+19%) on the way.
   // Snap it instead, exactly as animateToComposition pins it.
-  const target = isPreviewActive ? previewTarget : currentComposition;
+  const target = previewSource !== null ? previewTarget : currentComposition;
   const previewConverged = stepPreviewComposition(
     displayPreviewComp, target, factor, COL_MS
   );
 
-  // Show/hide slider preview markers from interpolated composition
-  if (isPreviewActive || !previewConverged) {
-    showSliderPreview(displayPreviewComp);
+  // The panel accent follows every preview source. Slider markers are scoped:
+  // scatter previews show all markers, slider previews show one, and class
+  // previews use the button ring instead of leaving a stale slider marker.
+  const showPreviewAffordance = previewSource !== null || !previewConverged;
+  document.getElementById("sliders-panel").classList.toggle(
+    "previewing",
+    showPreviewAffordance,
+  );
+  if (previewSource === "class" || previewScopeBtn !== null) {
+    hideSliderPreview();
+  } else if (showPreviewAffordance) {
+    const pointerValue = previewSource === "slider" ? previewScopeValue : null;
+    showSliderPreview(displayPreviewComp, previewScopeIdx, pointerValue);
   } else {
     hideSliderPreview();
+  }
+  if (previewSource === null && previewConverged) {
+    previewScopeIdx = null;
+    previewScopeBtn = null;
+    previewScopeValue = null;
   }
 
   // Animate hover scales
@@ -2094,16 +2516,19 @@ function animLoop(now) {
     _firstAnimFrameDone = true;
   }
 
-  // Redraw
+  // Redraw. A disappearing preview gets one additional frame so the solid
+  // curve immediately returns from the 32-point interaction grid to 64 points.
   drawScatter();
+  const idleRedrawWasPending = _previewIdleRedrawPending;
   drawStrengthCurve();
+  if (idleRedrawWasPending) _previewIdleRedrawPending = false;
 
   // Continue or stop (no wasted work when idle)
   const hasHoverAnim = (Math.abs(hoverScale - hoverScaleTarget) > 0.01) || prevHoveredPointIdx !== null;
   const hasCurveAnim = Math.abs(curveObsHoverScale - curveHoverTarget) > 0.01;
   const hasObsAnim = Math.abs(obsOpacity - obsTarget) > 0.01;
   const hasYAxisAnim = _curveYMaxTarget !== null && Math.abs(_curveYMax - _curveYMaxTarget) > 0.5;
-  if (!previewConverged || isPreviewActive || hasHoverAnim || hasCurveAnim || hasObsAnim || hasYAxisAnim || animationId !== null || scatterTransition !== null || unitTransition !== null || _curveTransition !== null) {
+  if (!previewConverged || hasHoverAnim || hasCurveAnim || hasObsAnim || hasYAxisAnim || animationId !== null || scatterTransition !== null || unitTransition !== null || _curveTransition !== null || _previewCurveTransition !== null || _previewIdleRedrawPending) {
     animLoopId = requestAnimationFrame(animLoop);
   } else {
     animLoopId = null;
@@ -2162,9 +2587,16 @@ function setupEventListeners() {
       // Update preview target
       if (hoveredPointIdx !== null) {
         previewTarget = compositionsData.compositions[hoveredPointIdx];
-        isPreviewActive = true;
-      } else {
-        isPreviewActive = false;
+        _previewCurveTransition = null;
+        clearPreviewHold(false);
+        if (previewScopeBtn) previewScopeBtn.removeAttribute("data-previewing");
+        previewSource = "scatter";
+        previewScopeIdx = null;
+        previewScopeBtn = null;
+        previewScopeValue = null;
+      } else if (previewSource === "scatter") {
+        previewSource = null;
+        restoreFocusedClassPreview();
       }
       startAnimLoop();
     }
@@ -2178,9 +2610,13 @@ function setupEventListeners() {
       hoveredPointIdx = null;
       hoverScale = 0;
       hoverScaleTarget = 0;
-      isPreviewActive = false;
+      if (previewSource === "scatter") {
+        previewSource = null;
+        if (!restoreFocusedClassPreview()) startAnimLoop();
+      } else {
+        startAnimLoop();
+      }
       scatterCanvas.style.cursor = "default";
-      startAnimLoop();
     }
   });
 
@@ -2189,7 +2625,20 @@ function setupEventListeners() {
     // If a point is already hovered, use it directly (guarantees preview matches selection)
     const idx = hoveredPointIdx !== null ? hoveredPointIdx : null;
     if (idx !== null) {
-      animateToComposition(compositionsData.compositions[idx]);
+      const target = compositionsData.compositions[idx];
+      previewSource = null;
+      previewScopeIdx = null;
+      if (previewScopeBtn) previewScopeBtn.removeAttribute("data-previewing");
+      previewScopeBtn = null;
+      previewScopeValue = null;
+      hideSliderPreview();
+      document.getElementById("sliders-panel").classList.remove("previewing");
+      const curveTransitionId = animateToComposition(target);
+      holdPreviewThroughCurveTransition(
+        curveTransitionId,
+        target,
+        _focusedClassPreview !== null,
+      );
     }
   });
 
@@ -2522,11 +2971,52 @@ if (typeof location !== "undefined" &&
   window.__test = {
     get currentComposition() { return currentComposition ? [...currentComposition] : null; },
     get displayPreviewComp() { return displayPreviewComp ? [...displayPreviewComp] : null; },
+    get previewSource() { return previewSource; },
+    get previewScopeIdx() { return previewScopeIdx; },
+    get previewScopeBtnLabel() {
+      return previewScopeBtn ? previewScopeBtn.textContent : null;
+    },
     // Whether the Material Source curve-level transition is currently in
     // flight. Used by the smooth-transition regression test in
     // `preview-curve.spec.ts` — it's the deterministic alternative to
     // racing screenshot timing against the 350 ms blend window.
     get isCurveTransitionActive() { return _curveTransition !== null; },
+    get curveTransitionSequence() { return _curveTransition?.id ?? null; },
+    get curveTransitionTarget() {
+      return _curveTransition?.targetComp ? [..._curveTransition.targetComp] : null;
+    },
+    get curveTransitionEndpointDelta() {
+      if (_curveTransition === null) return null;
+      return {
+        mean: Math.max(..._curveTransition.fromMeans.map(
+          (value, idx) => Math.abs(_curveTransition.toMeans[idx] - value),
+        )),
+        std: Math.max(..._curveTransition.fromStds.map(
+          (value, idx) => Math.abs(_curveTransition.toStds[idx] - value),
+        )),
+      };
+    },
+    get isPreviewCurveTransitionActive() {
+      return _previewCurveTransition !== null;
+    },
+    get previewCurveTransitionEndpointDelta() {
+      if (_previewCurveTransition === null) return null;
+      return Math.max(..._previewCurveTransition.fromMeans.map(
+        (value, idx) => Math.abs(_previewCurveTransition.toMeans[idx] - value),
+      ));
+    },
+    get previewCurveTransitionSequence() {
+      return _previewCurveTransition?.id ?? null;
+    },
+    get previewCurveTransitionCount() { return _previewCurveTransitionSeq; },
+    get isPreviewVisualHeld() {
+      return _previewHoldCurveTransitionId !== null;
+    },
+    get isCompositionTransitionActive() { return animationId !== null; },
+    get compositionTransitionTarget() {
+      return _lastAnimTarget ? [..._lastAnimTarget] : null;
+    },
+    get isAnimLoopActive() { return animLoopId !== null; },
     // The UI shell now renders before the strength GP finishes building (it is
     // constructed in a worker), so "page loaded" no longer implies "model
     // ready". Anything asserting on predictions or curve transitions must wait
@@ -2546,6 +3036,10 @@ if (typeof location !== "undefined" &&
       if (_lastDrawGrids.preview === null) return null;
       return _lastDrawGrids.preview === _lastDrawGrids.main;
     },
+    get mainCurvePointCount() { return _lastDrawGrids.main?.length ?? null; },
+    get curveDrawSequence() { return _curveDrawSequence; },
+    get lastCurveRenderMode() { return _lastCurveRenderMode; },
+    get lastDrawHadPreview() { return _lastDrawHadPreview; },
   };
 }
 
