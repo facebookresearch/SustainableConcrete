@@ -216,6 +216,22 @@ test.describe("accessibility", () => {
     }
   });
 
+  test("keyboard focus previews an inactive Material Source class", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "Material Source controls are desktop-visible");
+    await page.goto("/?test=1");
+    await page.waitForFunction(() => (window as any).__test?.modelReady === true, null, {
+      timeout: 20000,
+    });
+    const inactive = page.locator(".material-source-group .toggle-btn:not(.active)").first();
+    const label = (await inactive.textContent())?.trim() ?? "";
+
+    await inactive.focus();
+
+    await expect.poll(() => page.evaluate(() => (window as any).__test.previewSource)).toBe("class");
+    expect(await page.evaluate(() => (window as any).__test.previewScopeBtnLabel)).toBe(label);
+    await expect(inactive).toHaveAttribute("data-previewing", "");
+  });
+
   test("controls inside a closed modal are not reachable", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "one project is enough");
     await openApp(page, testInfo.project.name);

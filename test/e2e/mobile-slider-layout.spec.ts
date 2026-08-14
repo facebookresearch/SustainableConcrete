@@ -340,9 +340,10 @@ test.describe("mobile slider multi-row layout", () => {
         const mx = mr.left + mr.width / 2;
         if (mx >= sr.left - 1 && mx <= sr.right + 1) onTrack++;
       }
-      return { onTrack, total };
+      const eligible = groups.filter((group) => group.querySelector("input[type=range]")).length;
+      return { onTrack, total, eligible };
     });
-    expect(verdict.total, "expected at least one visible preview marker").toBeGreaterThan(0);
+    expect(verdict.total, "scatter preview should mark every slider").toBe(verdict.eligible);
     expect(
       verdict.onTrack,
       `markers off-track: ${verdict.total - verdict.onTrack}/${verdict.total}`,

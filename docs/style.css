@@ -551,7 +551,11 @@ h2 {
    Note: no `max-height` / `overflow-y` here — the panel grows to fit all
    ingredient rows naturally on desktop. The references panel in column 3 is
    typically taller, so the composition panel still ends within the page flow. */
-.sliders { grid-column: 1; position: relative; }
+.sliders {
+  grid-column: 1;
+  position: relative;
+  transition: box-shadow 180ms ease-out;
+}
 .sliders-header {
   display: flex;
   align-items: center;
@@ -715,8 +719,8 @@ h2 {
   /* Half the rendered thumb width, exposed as a CSS variable so the JS
      marker-positioning math (`showSliderPreview` in ui.mjs) can derive
      the same value via `getComputedStyle(...).getPropertyValue('--thumb-half')`.
-     Mobile overrides this to 8 px because the thumb is shrunk to 16 px
-     in the @media block below; without that override, the preview marker
+     Mobile overrides this to 11 px for its larger 22 px touch thumb;
+     without that override, the preview marker
      sat 1 px off-track on mobile. */
   --thumb-half: 9px;
 }
@@ -793,12 +797,15 @@ h2 {
   transition: left 0.15s ease-out;
   animation: previewPulse 1.5s ease-in-out infinite;
 }
+.slider-preview-marker.tracking {
+  transition: none;
+}
 @keyframes previewPulse {
   0%, 100% { opacity: 0.8; transform: translate(-9px, -9px) scale(1); }
   50% { opacity: 0.55; transform: translate(-9px, -9px) scale(1.15); }
 }
 .sliders.previewing {
-  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), inset 0 0 0 1px var(--accent);
 }
 .info-row {
   display: flex;
@@ -864,6 +871,7 @@ h2 {
   margin-top: 4px;
 }
 .toggle-btn {
+  position: relative;
   flex: 1;
   padding: 4px 8px;
   font-size: 0.78rem;
@@ -884,6 +892,20 @@ h2 {
 .toggle-btn:hover:not(.active) {
   border-color: var(--accent);
   transform: translateY(-1px);
+}
+.toggle-btn[data-previewing]::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border: 2px solid var(--text);
+  border-radius: 10px;
+  pointer-events: none;
+  opacity: 0.8;
+  animation: togglePreviewPulse 1.5s ease-in-out infinite;
+}
+@keyframes togglePreviewPulse {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(1.06); }
 }
 
 /* Controls */
@@ -1594,30 +1616,28 @@ a.ref-link {
        small breathing margin from the label above and info-row below. */
     width: min(60vw, 220px);
     display: block;
-    /* 44 px hit area (Apple HIG); the visible bar stays 6 px via the track
+    /* 56 px hit area; the visible bar stays 6 px via the track
        pseudo-element. Margin drops to 0 so the row grows by less than the
        full height increase -- the taller target absorbs the gap that used to
        sit between the label row and the info-row. */
-    height: 44px;
+    height: 56px;
     margin: 0 auto;
   }
-  /* Smaller thumb on mobile reduces the intrinsic thumb-half-width inset
-     (was 9 px for the 18 px desktop thumb). 16 px is still a comfortable
-     touch target combined with the row's vertical generosity. The CSS
-     variable below keeps the JS slider-preview-marker math in sync —
-     `showSliderPreview` reads `--thumb-half` from the slider-group. */
+  /* The mobile thumb is larger than desktop for easier touch acquisition.
+     Keep the CSS variable synchronized with its half-width because the JS
+     preview-marker geometry reads it from the slider group. */
   .mobile-sliders-view .slider-group {
-    --thumb-half: 8px;
+    --thumb-half: 11px;
   }
   .mobile-sliders-view .slider-group input[type=range]::-webkit-slider-thumb {
-    width: 16px;
-    height: 16px;
-    /* Re-center the smaller mobile thumb on the 6 px track. */
-    margin-top: -5px;
+    width: 22px;
+    height: 22px;
+    /* Re-center the mobile thumb on the 6 px track. */
+    margin-top: -8px;
   }
   .mobile-sliders-view .slider-group input[type=range]::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
+    width: 22px;
+    height: 22px;
   }
   .mobile-sliders-view .slider-group .info-row {
     /* Right-align the max-bound text to the same pixel column as the
@@ -1743,6 +1763,9 @@ a.ref-link {
   .slider-preview-marker {
     /* The base rule already sets the centring transform, so stopping the
        animation is sufficient -- no transform override needed. */
+    animation: none !important;
+  }
+  .toggle-btn[data-previewing]::after {
     animation: none !important;
   }
 }

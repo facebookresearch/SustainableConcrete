@@ -43,6 +43,31 @@ test.describe("slider touch targets", () => {
     ).toBe(0);
   });
 
+  test("mobile slider thumbs are at least 22px", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "mobile thumb sizing");
+    await page.goto("/");
+    const thumbSize = await page.evaluate(() => {
+      for (const sheet of Array.from(document.styleSheets)) {
+        let rules: CSSRuleList;
+        try { rules = (sheet as CSSStyleSheet).cssRules; } catch { continue; }
+        for (const rule of Array.from(rules)) {
+          if (!(rule instanceof CSSMediaRule) ||
+              !rule.conditionText.includes("max-width: 1050px")) continue;
+          for (const nested of Array.from(rule.cssRules)) {
+            const styleRule = nested as CSSStyleRule;
+            if (styleRule.selectorText?.includes("mobile-sliders-view") &&
+                styleRule.selectorText.includes("::-webkit-slider-thumb")) {
+              return parseFloat(styleRule.style.width);
+            }
+          }
+        }
+      }
+      return null;
+    });
+    expect(thumbSize, "mobile WebKit thumb rule not found").not.toBeNull();
+    expect(thumbSize!).toBeGreaterThanOrEqual(22);
+  });
+
   test("desktop sliders meet the WCAG 2.2 AA 24px minimum", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "desktop pointer sizing");
     await page.goto("/");

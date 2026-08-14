@@ -66,6 +66,33 @@ test.describe("reduced motion", () => {
     ).toEqual([]);
   });
 
+  test("the Material Source preview curve completes on the next frame", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "Material Source controls are desktop-visible");
+    await openReducedMotion(page, { waitForModel: true });
+    const inactive = page.locator(".material-source-group .toggle-btn:not(.active)").first();
+
+    await inactive.hover();
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+
+    expect(
+      await page.evaluate(() => (window as any).__test.isPreviewCurveTransitionActive),
+    ).toBe(false);
+    expect(Number.isInteger(
+      await page.evaluate(() => (window as any).__test.displayPreviewComp[7]),
+    )).toBe(true);
+  });
+
+  test("the Material Source preview ring does not animate", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "Material Source controls are desktop-visible");
+    await openReducedMotion(page, { waitForModel: true });
+    const inactive = page.locator(".material-source-group .toggle-btn:not(.active)").first();
+    await inactive.hover();
+    await expect(inactive).toHaveAttribute("data-previewing", "");
+    expect(
+      await inactive.evaluate((el) => getComputedStyle(el, "::after").animationName),
+    ).toBe("none");
+  });
+
   test("the title gradient is pinned, not frozen mid-sweep", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "one project is enough");
     await openReducedMotion(page);

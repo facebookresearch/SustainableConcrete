@@ -42,6 +42,34 @@ test.describe("@visual full-page snapshots", () => {
     });
   });
 
+  test("mobile Composition view", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "mobile Composition layout only");
+    await page.goto("/");
+    await page.locator("#mobile-show-sliders").click();
+    await expect(page.locator(".mobile-sliders-view input[type=range]").first()).toBeVisible({
+      timeout: 15000,
+    });
+    await page.addStyleTag({
+      content: `.mobile-scroll-content {
+        flex: none !important;
+        min-height: max-content !important;
+        overflow: visible !important;
+      }
+      .chart-panel:has(#scatter-canvas) {
+        height: auto !important;
+      }
+      *, *::before, *::after {
+        animation-duration: 0s !important;
+        animation-delay: 0s !important;
+        transition-duration: 0s !important;
+        transition-delay: 0s !important;
+      }`,
+    });
+    await expect(page).toHaveScreenshot(`composition-${testInfo.project.name}.png`, {
+      fullPage: true,
+    });
+  });
+
   test("about modal open", async ({ page }, testInfo) => {
     await page.goto("/");
     await page.locator("#about-link").click();
