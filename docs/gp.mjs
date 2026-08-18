@@ -610,4 +610,4 @@ export function predictCost(composition, costParams) {
 }
 
 // Export kernel functions for testing
-export { matern52, rbf, kernel, transformInput, solveTriangularLower, cholesky };
+export { matern52, matern52ActiveDims, rbf, kernel, transformInput, solveTriangularLower, cholesky };
