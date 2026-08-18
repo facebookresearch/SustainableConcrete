@@ -8,6 +8,9 @@ import { predictStrengthCurve, predictStrengthMeanOnly, predictGWP, predictCost,
 import { stepPreviewComposition } from "./preview_state.mjs";
 import { makeComputedFilters, matchesFilters } from "./filters.mjs";
 import {
+  buildSimilarityContext, computeSimilarities, similarityToFillAlpha,
+} from "./similarity.mjs";
+import {
   UNITS,
   compToDisplay,
   compFromDisplay,
@@ -89,6 +92,11 @@ let curveObsPositions = []; // [{px, py, time, strength}] for tooltip hit-testin
 // end state used by click-to-edit while the interpolation is in flight.
 let compositionTransition = null; // {startComp, targetComp, startTime, duration}
 let scatterFilter = null; // [{colIdx, min, max}] array or null
+// Recipe-similarity encoding: fade catalog mixes by how unlike the currently
+// selected composition they are. In-memory only, like the unit and axis
+// toggles. `_similarityCache` mirrors the `_paretoCache` pattern below.
+let similarityEnabled = true;
+let _similarityCache = null; // { key, day, ctx, sims }
 let mixAnalyses = null; // pre-computed mix descriptions
 const CANVAS_CURVE = 1;
 const CANVAS_SCATTER = 2;
@@ -1904,6 +1912,31 @@ function getCachedParetoMask(xVals, yVals) {
   return mask;
 }
 
+// --- Cached Recipe Similarity ---
+// Similarity of every catalog mix to the *committed* composition. Deliberately
+// not the hover preview: re-centring on hover would churn the whole field every
+// time the cursor crossed a point.
+//
+// Cheap enough to recompute per frame (~11 µs for all 149 mixes), but the cache
+// avoids re-transforming the catalog, which is the expensive half.
+function getCachedSimilarities() {
+  if (!similarityEnabled || !strengthParams || !currentComposition || !compositionsData) {
+    return null;
+  }
+  const key = `${scatterDay}|${currentComposition.join(",")}`;
+  if (_similarityCache && _similarityCache.key === key) return _similarityCache.sims;
+  const ctx = _similarityCache && _similarityCache.day === scatterDay
+    ? _similarityCache.ctx
+    : buildSimilarityContext(compositionsData.compositions, strengthParams, scatterDay);
+  _similarityCache = {
+    key,
+    day: scatterDay,
+    ctx,
+    sims: computeSimilarities(currentComposition, ctx, strengthParams),
+  };
+  return _similarityCache.sims;
+}
+
 // --- Scatter Plot Transition Animation ---
 function getScatterData() {
   const df = getDisplayFactors();
@@ -2693,6 +2726,17 @@ function setupEventListeners() {
     toggleDay.textContent = dayLabels[nextIdx];
     startScatterTransition(() => { scatterDay = dayOptions[nextIdx]; });
     updateMixInsight();
+  });
+
+  // Recipe-similarity encoding toggle. Goes through invalidateCanvases rather
+  // than calling drawScatter() directly: canvas renderers must stay owned by
+  // requestAnimationFrame (asserted in test/e2e/canvas-frame-probe.ts).
+  const toggleSim = document.getElementById("toggle-similarity");
+  toggleSim.addEventListener("click", () => {
+    similarityEnabled = !similarityEnabled;
+    toggleSim.textContent = similarityEnabled ? "on" : "off";
+    toggleSim.setAttribute("aria-pressed", String(similarityEnabled));
+    invalidateCanvases(CANVAS_SCATTER);
   });
 
   // Filter panel — multi-dimensional filtering
