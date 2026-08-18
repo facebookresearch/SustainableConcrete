@@ -66,6 +66,20 @@ property on a PR, add a spec for it before merging.
 | `visual-regression.spec.ts`   | Full-page screenshot matches committed Linux baseline (active on Linux)   | desktop+mobile |
 | `touch-targets.spec.ts`       | Slider hit area meets WCAG 2.2 AA (24 px) / Apple HIG (44 px mobile)      | desktop+mobile |
 | `mobile-behavior.spec.ts`     | Material Source tap commits an integral class; curve transition runs and clears; click-to-edit commits; curve non-blank | mobile |
+| `pareto-similarity.spec.ts`   | Similarity toggle defaults on, reports `aria-pressed`, and is keyboard operable | desktop |
+| `pareto-similarity.spec.ts`   | Enabled: distant recipes render faded and every outline carries the point hue; legend shown | desktop |
+| `pareto-similarity.spec.ts`   | Disabled: fills return to solid and the white outline; legend and similarities are null | desktop |
+| `pareto-similarity.spec.ts`   | Toggling is pixel-reversible under reduced motion, and on differs from off | desktop |
+| `pareto-similarity.spec.ts`   | Similarity tracks the selected composition and peaks at 1                 | desktop |
+| `pareto-similarity.spec.ts`   | Clicking a scatter point makes that exact mix maximally similar           | desktop |
+| `pareto-similarity.spec.ts`   | Hovering a faded point restores it to full emphasis                       | desktop |
+| `pareto-similarity.spec.ts`   | Points are drawn least-similar first, so neighbours land on top           | desktop |
+| `pareto-similarity.spec.ts`   | Filtered-out points keep grey styling and stay out of the similarity reorder | desktop |
+| `pareto-similarity.spec.ts`   | Similarity stays finite and in range across axis and curing-day changes   | desktop |
+| `pareto-similarity.spec.ts`   | The encoding works in both themes                                         | desktop |
+| `pareto-similarity.spec.ts`   | The scatter paints un-encoded before the model resolves (similarities null) | desktop |
+| `pareto-similarity.spec.ts`   | The toggle never draws outside requestAnimationFrame                      | desktop |
+| `pareto-similarity.spec.ts`   | Enabling similarity adds no scatter draws during a slider drag            | desktop |
 
 ## Running
 
@@ -88,6 +102,18 @@ npm run test:e2e:ui
 
 # show last HTML report
 npm run test:e2e:report
+```
+
+### Running several git worktrees at once
+
+The dev server is reused if one is already listening (`reuseExistingServer` is
+on outside CI), so a server left running by another checkout on the default port
+4173 is silently reused — and the suite then tests *that* checkout's `docs/`
+rather than this one's, which looks like inexplicable assertion failures. Give
+each worktree its own port:
+
+```bash
+BOXCRETE_TEST_PORT=4183 npm run test:e2e
 ```
 
 ## Updating visual snapshots
