@@ -60,6 +60,25 @@ export function similarityFromTransformed(z1, z2, src1, src2, params) {
 }
 
 /**
+ * Map raw kernel similarity to a fill alpha.
+ *
+ * Raw catalog similarities occupy [0.267, 1.0], but with an interquartile range
+ * of only [0.637, 0.828] — mapping them straight to alpha would render every
+ * point at roughly 70% solid, i.e. no visible encoding at all. Shifting by the
+ * floor and applying gamma 2.0 spreads a rendered frame across roughly
+ * [0.18, 0.95]. Calibrated against the shipped catalog; see the plan's gamma
+ * table for the 1.0 (too flat) and 3.0 (too harsh) alternatives.
+ *
+ * @param {number} s - raw similarity, nominally in [0, 1].
+ * @returns {number} fill alpha in [FILL_ALPHA_MIN, 1].
+ */
+export function similarityToFillAlpha(s) {
+  if (!Number.isFinite(s)) return FILL_ALPHA_MIN;
+  const t = Math.min(1, Math.max(0, (s - SIMILARITY_FLOOR) / (1 - SIMILARITY_FLOOR)));
+  return FILL_ALPHA_MIN + (1 - FILL_ALPHA_MIN) * Math.pow(t, SIMILARITY_GAMMA);
+}
+
+/**
  * Normalized composition kernel between two 9-dim compositions at a fixed curing day.
  *
  * @param {number[]} comp1 - 9-dim composition.

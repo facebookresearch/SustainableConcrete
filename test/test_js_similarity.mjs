@@ -16,7 +16,12 @@ import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { matern52ActiveDims, kernel, transformInput } from "../docs/gp.mjs";
-import { compositionSimilarity } from "../docs/similarity.mjs";
+import {
+  compositionSimilarity,
+  similarityToFillAlpha,
+  SIMILARITY_FLOOR,
+  FILL_ALPHA_MIN,
+} from "../docs/similarity.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const modelDir = resolve(__dirname, "..", "docs", "model");
@@ -140,6 +145,42 @@ check(
   "similarity reconstructs gp.mjs kernel() exactly",
   worstParity < 1e-10,
   `max err ${worstParity}`,
+);
+
+// --- contrast stretch ------------------------------------------------------
+check("alpha(1) === 1", close(similarityToFillAlpha(1), 1, 1e-12));
+check(
+  "alpha at/below the floor === FILL_ALPHA_MIN",
+  close(similarityToFillAlpha(SIMILARITY_FLOOR), FILL_ALPHA_MIN, 1e-12) &&
+    close(similarityToFillAlpha(0), FILL_ALPHA_MIN, 1e-12),
+);
+check("alpha is never zero (the point stays visible)", similarityToFillAlpha(0) > 0);
+
+let alphaMonotone = true;
+let lastAlpha = -1;
+for (let s = 0; s <= 1.0001; s += 0.02) {
+  const a = similarityToFillAlpha(s);
+  if (a < lastAlpha - 1e-12 || a < 0 || a > 1) alphaMonotone = false;
+  lastAlpha = a;
+}
+check("alpha is monotone non-decreasing within [0,1]", alphaMonotone);
+check(
+  "out-of-range inputs clamp rather than produce NaN",
+  similarityToFillAlpha(-5) === FILL_ALPHA_MIN &&
+    close(similarityToFillAlpha(9), 1, 1e-12),
+);
+check("NaN degrades to the floor", similarityToFillAlpha(NaN) === FILL_ALPHA_MIN);
+
+// The stretch exists to create contrast: raw similarities sit in a narrow IQR
+// of roughly [0.64, 0.83], which would render as a uniformly ~70% solid plot.
+const frameAlphas = X.map((c) =>
+  similarityToFillAlpha(compositionSimilarity(X[0], c, P, 28)),
+);
+const alphaSpread = Math.max(...frameAlphas) - Math.min(...frameAlphas);
+check(
+  "rendered alpha spread across a frame exceeds 0.5",
+  alphaSpread > 0.5,
+  `spread=${alphaSpread.toFixed(3)}`,
 );
 
 // ===== INSERT NEW CHECKS ABOVE THIS LINE — the exit gate must stay last =====
