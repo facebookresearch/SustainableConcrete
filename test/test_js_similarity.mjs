@@ -116,6 +116,32 @@ check(
 
 check("null params yields null", compositionSimilarity(X[0], X[1], null, 28) === null);
 
+// --- parity with the production kernel -------------------------------------
+// Our composition-only similarity must reconstruct gp.mjs's full normalized
+// kernel exactly once the (constant, at equal curing day) time branch is added
+// back. This is what stops similarity.mjs drifting into a private, divergent
+// reimplementation of the model. If it ever fails, fix similarity.mjs, not this.
+let worstParity = 0;
+for (const [i, j] of [
+  [0, 1],
+  [5, 40],
+  [12, 12],
+  [100, 3],
+  [77, 148],
+]) {
+  const z1 = transformInput([...X[i], 28], P);
+  const z2 = transformInput([...X[j], 28], P);
+  const full = kernel(z1, z2, P) / Math.sqrt(kernel(z1, z1, P) * kernel(z2, z2, P));
+  const s = compositionSimilarity(X[i], X[j], P, 28);
+  const reconstructed = (s * (osB + osS) + osT) / (osB + osS + osT);
+  worstParity = Math.max(worstParity, Math.abs(full - reconstructed));
+}
+check(
+  "similarity reconstructs gp.mjs kernel() exactly",
+  worstParity < 1e-10,
+  `max err ${worstParity}`,
+);
+
 // ===== INSERT NEW CHECKS ABOVE THIS LINE — the exit gate must stay last =====
 if (failures) {
   console.error(`\n${failures} failure(s)`);
