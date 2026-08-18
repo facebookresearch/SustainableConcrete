@@ -120,7 +120,8 @@ JS_TESTS = \
   test/test_data_freshness.mjs \
   test/test_js_preview_state.mjs \
   test/test_js_categorical_source.mjs \
-  test/test_js_filters.mjs
+  test/test_js_filters.mjs \
+  test/test_js_similarity.mjs
 
 test-js:
 	@for t in $(JS_TESTS); do \

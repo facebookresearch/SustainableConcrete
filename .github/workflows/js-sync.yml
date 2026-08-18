@@ -29,6 +29,7 @@ on:
       - 'docs/gp_v2_fast.mjs'
       - 'docs/feature_registry.mjs'
       - 'docs/units.mjs'
+      - 'docs/similarity.mjs'
       - 'docs/model/**'
       - 'boxcrete/features.py'
       - 'package.json'
@@ -44,6 +45,7 @@ on:
       - 'test/fixtures/feature_parity_fixture.json'
       - 'test/test_curve_monotonicity.mjs'
       - 'test/test_data_freshness.mjs'
+      - 'test/test_js_similarity.mjs'
       - '.github/workflows/js-sync.yml'
   pull_request:
     branches: [main, master]
@@ -103,3 +105,6 @@ jobs:
 
       - name: Scatter filter predicate + derived quantities
         run: node test/test_js_filters.mjs
+
+      - name: Recipe-similarity metric (kernel parity + dynamic range)
+        run: node test/test_js_similarity.mjs
