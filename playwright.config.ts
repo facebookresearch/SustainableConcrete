@@ -13,7 +13,13 @@ import { defineConfig, devices } from "@playwright/test";
  * Each test runs once per project unless skipped via testInfo.project.name.
  *
  * See test/e2e/README.md for the catalogue of invariants.
+ *
+ * PORT: defaults to 4173, overridable via BOXCRETE_TEST_PORT. `reuseExistingServer`
+ * is on locally, so a server left running by another git worktree on the same
+ * port would silently be reused and the suite would test that checkout's docs/
+ * instead of this one's. Set BOXCRETE_TEST_PORT when running worktrees in parallel.
  */
+const PORT = Number(process.env.BOXCRETE_TEST_PORT ?? 4173);
 export default defineConfig({
   testDir: "./test/e2e",
   testMatch: /.*\.spec\.ts/,
@@ -29,7 +35,7 @@ export default defineConfig({
     : [["html", { open: "never" }], ["list"]],
 
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL: `http://127.0.0.1:${PORT}`,
     // Capture diagnostics only on failure to keep artifacts small
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
@@ -59,8 +65,8 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: "npx http-server docs -p 4173 -s -c-1 -a 127.0.0.1",
-    url: "http://127.0.0.1:4173/index.html",
+    command: `npx http-server docs -p ${PORT} -s -c-1 -a 127.0.0.1`,
+    url: `http://127.0.0.1:${PORT}/index.html`,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },
