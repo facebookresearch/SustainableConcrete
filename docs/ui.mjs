@@ -97,6 +97,14 @@ let scatterFilter = null; // [{colIdx, min, max}] array or null
 // toggles. `_similarityCache` mirrors the `_paretoCache` pattern below.
 let similarityEnabled = true;
 let _similarityCache = null; // { key, day, ctx, sims }
+// Per-draw scatter styling recorded only under ?test=1, so E2E can assert on the
+// rendering contract structurally instead of by fragile pixel comparison. Same
+// pattern as `curveDrawSequence` / `lastCurveRenderMode`; zero cost otherwise.
+const _testMode = typeof location !== "undefined" &&
+  new URLSearchParams(location.search).get("test") === "1";
+let _lastPointStyles = null;
+let _lastDrawOrder = null;
+let _lastLegend = null;
 let mixAnalyses = null; // pre-computed mix descriptions
 const CANVAS_CURVE = 1;
 const CANVAS_SCATTER = 2;
@@ -2110,30 +2118,70 @@ function drawScatter() {
   }
 
   // Draw points (apply filter if active)
+  //
+  // When the recipe-similarity encoding is on, each in-filter point's FILL is
+  // faded by how unlike the selected composition its recipe is, while its
+  // OUTLINE is drawn in the point's own hue at full opacity. Keeping the outline
+  // solid means position and contrast never degrade — a point can go hollow but
+  // never invisible, which a plain alpha fade cannot promise. Hue and radius are
+  // left entirely to the Pareto encoding.
+  const sims = getCachedSimilarities();
+  if (_testMode) _lastPointStyles = new Array(xVals.length);
+
+  // Filtered-out points are drawn first, in catalog order, so their rendering is
+  // byte-identical whether or not the encoding is on: exclusion is categorical
+  // and must never be confused with "far away".
+  const inFilter = [];
   for (let i = 0; i < xVals.length; i++) {
-    // Check all filter conditions
-    if (scatterFilter && scatterFilter.length > 0) {
-      const comp = compositionsData.compositions[i];
-      if (!matchesFilters(comp, scatterFilter)) {
-        const x = xScale(xVals[i]);
-        const y = yScale(yVals[i]);
-        ctx.beginPath();
-        ctx.arc(x, y, 1.5, 0, 2 * Math.PI);
-        ctx.fillStyle = "rgba(148, 163, 184, 0.3)";
-        ctx.fill();
-        continue;
-      }
+    if (scatterFilter && scatterFilter.length > 0 &&
+        !matchesFilters(compositionsData.compositions[i], scatterFilter)) {
+      ctx.beginPath();
+      ctx.arc(xScale(xVals[i]), yScale(yVals[i]), 1.5, 0, 2 * Math.PI);
+      ctx.fillStyle = "rgba(148, 163, 184, 0.3)";
+      ctx.fill();
+      if (_testMode) _lastPointStyles[i] = { kind: "filtered", fillAlpha: 0.3, stroke: null };
+      continue;
     }
+    inFilter.push(i);
+  }
+
+  // Least similar first, so the user's own neighbourhood ends up on top.
+  if (sims) inFilter.sort((a, b) => sims[a] - sims[b]);
+  if (_testMode) _lastDrawOrder = [...inFilter];
+
+  for (const i of inFilter) {
     const x = xScale(xVals[i]);
     const y = yScale(yVals[i]);
     const isPareto = paretoMask[i];
+    const base = isPareto ? clr.pareto : clr.point;
+
+    let fillAlpha = 1;
+    if (sims) {
+      const a = similarityToFillAlpha(sims[i]);
+      // Hovering means "I am interested in this one", so it renders at full
+      // emphasis. The previously hovered point eases back to its similarity
+      // alpha rather than snapping, which would flicker during the shrink-out.
+      if (i === hoveredPointIdx) fillAlpha = 1;
+      else if (i === prevHoveredPointIdx) fillAlpha = a + (1 - a) * prevHoverScale;
+      else fillAlpha = a;
+    }
+
     ctx.beginPath();
     ctx.arc(x, y, isPareto ? 5 : 3.5, 0, 2 * Math.PI);
-    ctx.fillStyle = isPareto ? clr.pareto : clr.point;
+    ctx.globalAlpha = fillAlpha;
+    ctx.fillStyle = base;
     ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.7)";
-    ctx.lineWidth = 0.8;
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = sims ? base : "rgba(255,255,255,0.7)";
+    ctx.lineWidth = sims ? 1.2 : 0.8;
     ctx.stroke();
+    if (_testMode) {
+      _lastPointStyles[i] = {
+        kind: isPareto ? "pareto" : "dominated",
+        fillAlpha,
+        stroke: ctx.strokeStyle,
+      };
+    }
   }
 
   // Draw shrinking previous hovered point
@@ -2280,6 +2328,19 @@ function drawScatter() {
   ctx.textAlign = "center";
   ctx.fillText(`${scatterDay}-day Strength (${df.strength})`, 0, 0);
   ctx.restore();
+
+  // Tell the user what the fade means. Mirrors the "shaded: ±2σ" legend on the
+  // strength curve, including its textBaseline.
+  if (sims) {
+    ctx.save();
+    ctx.font = "11px -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = clr.text;
+    ctx.fillText("solid = similar recipe", W - pad.right, pad.top + 4);
+    ctx.restore();
+  }
+  if (_testMode) _lastLegend = sims ? "solid = similar recipe" : null;
 
   // Store scale functions for click handling
   canvas._xMin = xMin;
@@ -3104,6 +3165,18 @@ if (typeof location !== "undefined" &&
     // handler bails on a missing canvas scale stash, and a regression there
     // is invisible from the outside (no glow, and clicks silently do nothing).
     get hoveredPointIdx() { return hoveredPointIdx; },
+    // --- recipe-similarity encoding ---
+    get similarityEnabled() { return similarityEnabled; },
+    get similarities() {
+      const s = getCachedSimilarities();
+      return s ? Array.from(s) : null;
+    },
+    // Per-point styling recorded by the last drawScatter. Lets specs assert the
+    // rendering contract (fade, hue-carrying outline, filtered precedence)
+    // structurally rather than by comparing pixels.
+    get pointRenderStyles() { return _lastPointStyles ? [..._lastPointStyles] : null; },
+    get similarityDrawOrder() { return _lastDrawOrder ? [..._lastDrawOrder] : null; },
+    get scatterLegend() { return _lastLegend; },
     // True when the last draw put the preview curve on the same time grid as
     // the main curve. They are overlaid, so different grids make them
     // visibly disagree even when both are correct (a 32-pt main curve against
