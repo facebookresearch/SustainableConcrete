@@ -19,6 +19,8 @@ import { matern52ActiveDims, kernel, transformInput } from "../docs/gp.mjs";
 import {
   compositionSimilarity,
   similarityToFillAlpha,
+  buildSimilarityContext,
+  computeSimilarities,
   SIMILARITY_FLOOR,
   FILL_ALPHA_MIN,
 } from "../docs/similarity.mjs";
@@ -181,6 +183,47 @@ check(
   "rendered alpha spread across a frame exceeds 0.5",
   alphaSpread > 0.5,
   `spread=${alphaSpread.toFixed(3)}`,
+);
+
+// --- batched path ----------------------------------------------------------
+const ctx = buildSimilarityContext(X, P, 28);
+const sims = computeSimilarities(X[0], ctx, P);
+check("one similarity per catalog mix", sims.length === X.length);
+check(
+  "batched agrees with pairwise",
+  X.every((c, i) => close(sims[i], compositionSimilarity(X[0], c, P, 28), 1e-12)),
+);
+check("self-similarity is 1 at the reference index", close(sims[0], 1, 1e-12));
+check("null params yields null (pre-model)", computeSimilarities(X[0], ctx, null) === null);
+check("null context yields null", computeSimilarities(X[0], null, P) === null);
+check(
+  "empty catalog yields an empty result",
+  computeSimilarities(X[0], buildSimilarityContext([], P, 28), P).length === 0,
+);
+const simsAgain = computeSimilarities(X[0], ctx, P);
+check("deterministic across calls", sims.every((v, i) => v === simsAgain[i]));
+
+// A dragged slider puts the reference between catalog points, so the reference
+// is routinely off-catalog. That path must stay finite and in range.
+const offCatalog = X[0].map((v, i) => (i === SRC ? v : v * 1.37 + 5));
+check(
+  "off-catalog reference stays finite and in range",
+  computeSimilarities(offCatalog, ctx, P).every(
+    (v) => Number.isFinite(v) && v >= 0 && v <= 1 + 1e-12,
+  ),
+);
+
+// --- golden fixture --------------------------------------------------------
+// Pins behaviour against the shipped model artifact. Regenerate DELIBERATELY,
+// and review the diff, if the strength model is ever retrained.
+const GOLDEN_TOP5 = [0, 16, 22, 19, 15];
+const top5 = Array.from(sims.keys())
+  .sort((i, j) => sims[j] - sims[i])
+  .slice(0, 5);
+check(
+  "golden: top-5 nearest neighbours of catalog mix #0 are unchanged",
+  JSON.stringify(top5) === JSON.stringify(GOLDEN_TOP5),
+  `got [${top5}], want [${GOLDEN_TOP5}]`,
 );
 
 // ===== INSERT NEW CHECKS ABOVE THIS LINE — the exit gate must stay last =====

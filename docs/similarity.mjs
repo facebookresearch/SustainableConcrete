@@ -97,3 +97,52 @@ export function compositionSimilarity(comp1, comp2, params, curingDay) {
     params,
   );
 }
+
+/**
+ * Precompute the transformed catalog once, so a per-frame similarity sweep is a
+ * kernel evaluation rather than 149 input transforms.
+ *
+ * The transform depends on the curing day (through the time dim and
+ * `log_maturity_robust`), so callers rebuild when the displayed day changes. The
+ * practical difference is small — max |s(day 1) − s(day 28)| is about 0.0015 —
+ * but the rebuild costs 0.04 ms, so we stay exact rather than approximate.
+ *
+ * @param {number[][]} compositions - catalog of 9-dim compositions.
+ * @param {object|null} params - parsed strength.json.
+ * @param {number} curingDay - day to evaluate at.
+ * @returns {{curingDay: number, transformed: number[][], sources: number[]}|null}
+ */
+export function buildSimilarityContext(compositions, params, curingDay) {
+  if (!params || !compositions) return null;
+  const srcDim = params.source_dim_raw;
+  return {
+    curingDay,
+    transformed: compositions.map((c) => transformInput([...c, curingDay], params)),
+    sources: compositions.map((c) => c[srcDim]),
+  };
+}
+
+/**
+ * Similarity of every catalog mix to `currentComp`.
+ *
+ * @param {number[]} currentComp - the 9-dim reference composition.
+ * @param {object|null} ctx - from `buildSimilarityContext`.
+ * @param {object|null} params - parsed strength.json.
+ * @returns {Float64Array|null} null when the model or context is unavailable.
+ */
+export function computeSimilarities(currentComp, ctx, params) {
+  if (!params || !ctx) return null;
+  const zCur = transformInput([...currentComp, ctx.curingDay], params);
+  const srcCur = currentComp[params.source_dim_raw];
+  const out = new Float64Array(ctx.transformed.length);
+  for (let i = 0; i < ctx.transformed.length; i++) {
+    out[i] = similarityFromTransformed(
+      zCur,
+      ctx.transformed[i],
+      srcCur,
+      ctx.sources[i],
+      params,
+    );
+  }
+  return out;
+}
