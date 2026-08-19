@@ -8,6 +8,8 @@
  * Run: node --test test/test_js_bo.mjs
  */
 
+import { transformInput } from "./gp.mjs";
+
 /**
  * Reference point for the hypervolume indicator, mirroring
  * `boxcrete.CONCRETE_REFERENCE_POINT` = [-200, 1000, 5000] and
@@ -266,9 +268,8 @@ export function forwardSolve(L, ld, n, B, b) {
  * rank-deficient block.
  */
 export function choleskySmall(A, m) {
-  const diag0 = new Float64Array(m);
-  for (let i = 0; i < m; i++) diag0[i] = A[i * m + i];
-
+  // Jitter is added to the accumulator, not written back into A, so A is never
+  // mutated and successive attempts cannot compound each other's jitter.
   let jitter = 0;
   for (let attempt = 0; attempt < 10; attempt++) {
     const L = new Float64Array(m * m);
@@ -288,9 +289,6 @@ export function choleskySmall(A, m) {
     }
     if (ok) return L;
     jitter = jitter === 0 ? 1e-8 : jitter * 10;
-    // Restore the pristine diagonal so each attempt sets jitter from the
-    // original values rather than compounding the previous attempt's.
-    for (let i = 0; i < m; i++) A[i * m + i] = diag0[i];
   }
   throw new Error("choleskySmall: Cholesky failed even after jitter escalation.");
 }
@@ -634,7 +632,10 @@ function conditionOn(state, k) {
   const Knn = new Float64Array(b * b);
   for (let i = 0; i < b; i++) {
     for (let j = 0; j < b; j++) Knn[i * b + j] = KnnCm[j * b + i];
-    Knn[i * b + i] += sp.noise;
+    // state.noise, not sp.noise: the field is optional in the schema, and an
+    // undefined here would put NaN on the diagonal and fail the factorisation
+    // with a misleading "Cholesky failed" rather than a missing-field error.
+    Knn[i * b + i] += state.noise;
   }
 
   const { Lb, Lnn } = extendCholeskyBlock(state.L, state.ld, n, Kna, Knn, b);
@@ -710,6 +711,7 @@ export function createBOState({
     refY,
     m,
     ld: capacity,
+    noise: strengthParams.noise || 0,
     n: 0,
     rows: [],
     L: new Float64Array(capacity * capacity),
@@ -853,4 +855,84 @@ export function randomArmTraces({
     return out;
   };
   return { p10: pct(0.1), p50: pct(0.5), p90: pct(0.9) };
+}
+
+/** Solve L^T x = b for x, given a lower-triangular L. */
+export function backSolve(L, ld, n, b) {
+  const x = new Float64Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    let acc = b[i];
+    for (let k = i + 1; k < n; k++) acc -= L[k * ld + i] * x[k];
+    x[i] = acc / L[i * ld + i];
+  }
+  return x;
+}
+
+/**
+ * Strength curve under the CURRENT conditioning set, not the full-data model.
+ *
+ * BO mode re-points the right-hand panel at the mix just acquired so its
+ * uncertainty band visibly tightens. Leaving that panel on the full-data model
+ * would show a confident band beside a scatter driven by a handful of
+ * observations -- actively contradictory, not just a missed opportunity.
+ *
+ * Costs an O(n^2) back-solve for alpha plus an [n x K] triangular solve for the
+ * band. Called once per iteration, never per frame.
+ *
+ * Test rows go through gp.mjs's exported `transformInput`, so the derive ->
+ * log_offset -> log10 -> normalize chain has exactly one implementation.
+ */
+export function predictStrengthCurveSubset(state, composition, times) {
+  const sp = state.strengthParams;
+  const dAug = sp.d_aug;
+  const dRaw = sp.d_in || 10;
+  const nT = times.length;
+  const n = state.n;
+
+  const raw = new Array(dRaw).fill(0);
+  for (let i = 0; i < dRaw; i++) raw[i] = composition[i] ?? 0;
+
+  const Xt = new Float64Array(nT * dAug);
+  for (let t = 0; t < nT; t++) {
+    raw[sp.time_dim_raw] = times[t];
+    const row = transformInput(raw, sp);
+    for (let d = 0; d < dAug; d++) Xt[t * dAug + d] = row[d];
+  }
+
+  const Xa = new Float64Array(n * dAug);
+  for (let i = 0; i < n; i++) {
+    const src = sp.X_train[state.rows[i]];
+    for (let d = 0; d < dAug; d++) Xa[i * dAug + d] = src[d];
+  }
+
+  const Ka = kernelBlock(Xa, n, Xt, nT, dAug, sp); // [n x nT] column-major
+  const alpha = backSolve(state.L, state.ld, n, state.w);
+  const Vc = forwardSolve(state.L, state.ld, n, Ka, nT);
+
+  const gatedNoise = (sp.noise_kind || "global") === "gated";
+  const noiseTau = sp.noise_gate_tau ?? sp.gate_tau;
+  const noise = sp.noise || 0;
+  const ymax = sp.y_max;
+
+  const means = new Float64Array(nT);
+  const variances = new Float64Array(nT);
+  for (let t = 0; t < nT; t++) {
+    let mean = 0;
+    let nrm = 0;
+    for (let i = 0; i < n; i++) {
+      mean += Ka[t * n + i] * alpha[i];
+      const v = Vc[t * n + i];
+      nrm += v * v;
+    }
+    means[t] = mean * ymax;
+    let latent = Math.max(0, selfKernel(Xt, t * dAug, sp) - nrm);
+    if (gatedNoise) {
+      const h = gate(Xt[t * dAug + sp.time_dim_aug], noiseTau);
+      latent += h * h * noise;
+    } else {
+      latent += noise;
+    }
+    variances[t] = latent * ymax * ymax;
+  }
+  return { means, variances };
 }

@@ -35,6 +35,8 @@ import {
   randomArmTraces,
   chooseSeeds,
   makeRng,
+  backSolve,
+  predictStrengthCurveSubset,
 } from "../docs/bo.mjs";
 import { kernel as gpKernel } from "../docs/gp.mjs";
 import { readFileSync } from "node:fs";
@@ -943,6 +945,122 @@ test("randomArmTraces is monotone within each restart", () => {
       assert.ok(bands[key][i] >= bands[key][i - 1] - 1e-9, `${key} fell at ${i}`);
     }
   }
+});
+
+// ---------------------------------------------------------------------------
+// Subset-model strength curve.
+//
+// BO mode re-points the right-hand panel at the mix just acquired, using the
+// CURRENT conditioning set rather than the full-data model, so the uncertainty
+// band visibly tightens. Leaving it on the full-data model would show a
+// confident band beside a scatter driven by six observations -- not merely a
+// missed opportunity but an actively contradictory display.
+// ---------------------------------------------------------------------------
+
+test("backSolve solves the transposed triangular system", () => {
+  // L = [[2,0],[3,4]];  L^T x = [8, 8]  ->  x = [1, 2]
+  const L = new Float64Array([2, 0, 3, 4]);
+  const x = backSolve(L, 2, 2, new Float64Array([8, 8]));
+  assert.ok(Math.abs(x[0] - 1) < 1e-12);
+  assert.ok(Math.abs(x[1] - 2) < 1e-12);
+});
+
+test("backSolve round-trips against forwardSolve on a random SPD factor", () => {
+  const m = 6;
+  const A = randomSPD(m, 909);
+  const L = choleskySmall(A, m);
+  const b = Float64Array.from({ length: m }, (_, i) => i + 1);
+  // alpha = A^-1 b, obtained as L^-T (L^-1 b); check A alpha == b.
+  const alpha = backSolve(L, m, m, forwardSolve(L, m, m, b, 1));
+  for (let i = 0; i < m; i++) {
+    let acc = 0;
+    for (let j = 0; j < m; j++) acc += A[i * m + j] * alpha[j];
+    assert.ok(Math.abs(acc - b[i]) < 1e-8, `row ${i}: ${acc} != ${b[i]}`);
+  }
+});
+
+test("predictStrengthCurveSubset agrees with the state's own candidate posterior", () => {
+  // Two independent routes to the same number: the incrementally-maintained V
+  // (mu, variance) versus a fresh alpha via backSolve on the curve path. They
+  // share no arithmetic beyond the kernel, so agreement is meaningful.
+  const st = freshState(3);
+  for (let i = 0; i < 8; i++) stepBO(st);
+  for (const k of [0, 33, 90, 146]) {
+    const comp = compositionsData.compositions[CAND28.mix[k]];
+    const { means, variances } = predictStrengthCurveSubset(st, comp, [28]);
+    assert.ok(
+      Math.abs(means[0] - st.mu[k]) < 1e-6,
+      `mix ${CAND28.mix[k]}: curve mean ${means[0]} vs state mu ${st.mu[k]}`,
+    );
+    assert.ok(
+      Math.abs(Math.sqrt(variances[0]) - Math.sqrt(st.variance[k])) < 1e-6,
+      `mix ${CAND28.mix[k]}: curve sd vs state sd`,
+    );
+  }
+});
+
+test("predictStrengthCurveSubset honours the time gate at t=0", () => {
+  // The kernel is multiplied by h(t) = 1 - exp(-t/tau), so the prior and every
+  // posterior are exactly zero at t=0. Concrete has no strength before it cures.
+  const st = freshState(3);
+  const comp = compositionsData.compositions[CAND28.mix[0]];
+  const { means, variances } = predictStrengthCurveSubset(st, comp, [0]);
+  assert.ok(Math.abs(means[0]) < 1e-9, `mean at t=0 should vanish, got ${means[0]}`);
+  assert.ok(variances[0] < 1e-6, `variance at t=0 should vanish, got ${variances[0]}`);
+});
+
+test("predictStrengthCurveSubset tightens the band once the mix is acquired", () => {
+  const st = freshState(3);
+  const target = st.pool.find((k) => !st.acquired.includes(k));
+  const comp = compositionsData.compositions[CAND28.mix[target]];
+  const before = predictStrengthCurveSubset(st, comp, [28]).variances[0];
+  stepBO(st, target);
+  const after = predictStrengthCurveSubset(st, comp, [28]).variances[0];
+  assert.ok(after < before * 0.5, `band should collapse: ${before} -> ${after}`);
+});
+
+test("predictStrengthCurveSubset tolerates a model with the optional fields absent", () => {
+  // d_in, noise_kind, noise_gate_tau and noise are all read defensively here,
+  // matching how gp.mjs and gp_v2_fast.mjs read them. Exercise every fallback
+  // at once: an ungated, noiseless model with no explicit input dimension.
+  const bare = JSON.parse(JSON.stringify(strengthParams));
+  delete bare.d_in;
+  delete bare.noise_kind;
+  delete bare.noise_gate_tau;
+  delete bare.noise;
+  const cand = buildCandidateSet(bare, compositionsData, 28);
+  const st = createBOState({
+    strengthParams: bare,
+    candidates: cand,
+    objectiveX: cand.gwp,
+    refX: REF28.refX,
+    refY: REF28.refY,
+    seedMixes: chooseSeeds(cand.mix.length, 3, 0),
+  });
+  const comp = compositionsData.compositions[cand.mix[0]];
+  const { means, variances } = predictStrengthCurveSubset(st, comp, [1, 28]);
+  for (const v of means) assert.ok(Number.isFinite(v));
+  for (const v of variances) assert.ok(Number.isFinite(v) && v >= 0);
+});
+
+test("predictStrengthCurveSubset pads a short composition with zeros", () => {
+  const st = freshState(3);
+  const full = compositionsData.compositions[CAND28.mix[0]];
+  // Drop the trailing temperature column; the missing slot must read as 0
+  // rather than undefined, which would poison the whole row with NaN.
+  const short = full.slice(0, full.length - 1);
+  const { means } = predictStrengthCurveSubset(st, short, [28]);
+  assert.ok(Number.isFinite(means[0]));
+});
+
+test("predictStrengthCurveSubset returns one entry per requested time", () => {
+  const st = freshState(3);
+  const comp = compositionsData.compositions[CAND28.mix[2]];
+  const times = [1, 3, 7, 14, 28, 56];
+  const { means, variances } = predictStrengthCurveSubset(st, comp, times);
+  assert.equal(means.length, times.length);
+  assert.equal(variances.length, times.length);
+  for (const v of variances) assert.ok(v >= 0, "variance must never go negative");
 });
 
 // ---------------------------------------------------------------------------
