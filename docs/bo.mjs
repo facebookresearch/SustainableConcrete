@@ -527,3 +527,330 @@ export function buildCandidateSet(strengthParams, compositionsData, day) {
 
   return { day, mix, rowMix, rowTime, rowsOfCandidate, candX, kSelf, observedY, gwp, cost, dAug };
 }
+
+// ---------------------------------------------------------------------------
+// The BO loop.
+//
+// Hyperparameters stay frozen at the shipped full-data fit; only the
+// CONDITIONING SET grows. Carrying w = L^-1 y and V = L^-1 K_test forward
+// alongside L is what makes this cheap: the posterior for all m candidates
+// updates in O(n*m) per iteration, with no back-solve for alpha and no dtrsm.
+//
+//   mu_j  = y_max * (w . V[:,j])
+//   var_j = y_max^2 * (k(x_j,x_j) - ||V[:,j]||^2 + gated noise)
+//
+// Acquiring a mix appends its b observation rows as one block; mu and var then
+// need only the new block's contribution:
+//
+//   mu_j  += y_max   * sum_c wb[c] * Vb[c][j]
+//   var_j -= y_max^2 * sum_c Vb[c][j]^2
+//
+// V is row-major [capacity x m] so the Lb^T V contraction runs contiguously
+// over j, and appending rows is a straight write at the end.
+// ---------------------------------------------------------------------------
+
+/** Deterministic PRNG (mulberry32). Seeded so a run is always reproducible. */
+export function makeRng(seed) {
+  let a = seed >>> 0;
+  return function next() {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** `count` distinct candidate indices, drawn deterministically from `seed`. */
+export function chooseSeeds(m, count, seed) {
+  if (count > m) {
+    throw new Error(`chooseSeeds: asked for ${count} seed mixes but only ${m} candidates exist`);
+  }
+  const rng = makeRng(seed);
+  const idx = Array.from({ length: m }, (_, i) => i);
+  for (let i = m - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [idx[i], idx[j]] = [idx[j], idx[i]];
+  }
+  return idx.slice(0, count);
+}
+
+/**
+ * Aleatoric variance at each candidate, in scaled units.
+ *
+ * Mirrors gp_v2_fast.mjs: with `noise_kind === "gated"` the noise scales as
+ * h(t)^2 * sigma_n^2. Included because strength.json advertises
+ * `variance_includes_aleatoric: true`, so the BO uncertainty matches the band
+ * the site already draws. It also keeps an acquired candidate's sd strictly
+ * positive, which stops EI from dividing by zero.
+ */
+export function candidateNoiseVariance(candidates, strengthParams) {
+  const tau = strengthParams.noise_gate_tau ?? strengthParams.gate_tau;
+  const gated = (strengthParams.noise_kind || "global") === "gated";
+  const noise = strengthParams.noise || 0;
+  const timeDim = strengthParams.time_dim_aug;
+  const out = new Float64Array(candidates.mix.length);
+  for (let k = 0; k < out.length; k++) {
+    if (!gated) {
+      out[k] = noise;
+      continue;
+    }
+    const h = gate(candidates.candX[k * candidates.dAug + timeDim], tau);
+    out[k] = h * h * noise;
+  }
+  return out;
+}
+
+function rowsFor(state, candidateIdx) {
+  return state.candidates.rowsOfCandidate[candidateIdx];
+}
+
+/** Condition on one candidate's observation rows, updating L, w, V, mu, var. */
+function conditionOn(state, k) {
+  const { strengthParams: sp, candidates: cand } = state;
+  const dAug = cand.dAug;
+  const m = cand.mix.length;
+  const rows = rowsFor(state, k);
+  const b = rows.length;
+  const n = state.n;
+
+  const Xn = new Float64Array(b * dAug);
+  for (let i = 0; i < b; i++) {
+    const src = sp.X_train[rows[i]];
+    for (let d = 0; d < dAug; d++) Xn[i * dAug + d] = src[d];
+  }
+
+  // Kna [n x b] column-major, Knn [b x b] row-major with noise on the diagonal.
+  let Kna = new Float64Array(0);
+  if (n > 0) {
+    const Xa = new Float64Array(n * dAug);
+    for (let i = 0; i < n; i++) {
+      const src = sp.X_train[state.rows[i]];
+      for (let d = 0; d < dAug; d++) Xa[i * dAug + d] = src[d];
+    }
+    Kna = kernelBlock(Xa, n, Xn, b, dAug, sp);
+  }
+  const KnnCm = kernelBlock(Xn, b, Xn, b, dAug, sp);
+  const Knn = new Float64Array(b * b);
+  for (let i = 0; i < b; i++) {
+    for (let j = 0; j < b; j++) Knn[i * b + j] = KnnCm[j * b + i];
+    Knn[i * b + i] += sp.noise;
+  }
+
+  const { Lb, Lnn } = extendCholeskyBlock(state.L, state.ld, n, Kna, Knn, b);
+
+  // wb = Lnn^-1 (y_new - Lb^T w)
+  const rhsW = new Float64Array(b);
+  for (let c = 0; c < b; c++) {
+    let acc = sp.Y_train[rows[c]];
+    for (let i = 0; i < n; i++) acc -= Lb[c * n + i] * state.w[i];
+    rhsW[c] = acc;
+  }
+  const wb = forwardSolve(Lnn, b, b, rhsW, 1);
+
+  // Vb = Lnn^-1 (K(X_new, X_cand) - Lb^T V)     [b x m] row-major
+  const KnCand = kernelBlock(Xn, b, cand.candX, m, dAug, sp);
+  const rhsV = new Float64Array(b * m);
+  for (let c = 0; c < b; c++) {
+    for (let j = 0; j < m; j++) {
+      let acc = KnCand[j * b + c];
+      for (let i = 0; i < n; i++) acc -= Lb[c * n + i] * state.V[i * m + j];
+      rhsV[c * m + j] = acc;
+    }
+  }
+  // Forward-substitute down the b rows in place.
+  const Vb = new Float64Array(b * m);
+  for (let c = 0; c < b; c++) {
+    const diag = Lnn[c * b + c];
+    for (let j = 0; j < m; j++) {
+      let acc = rhsV[c * m + j];
+      for (let k2 = 0; k2 < c; k2++) acc -= Lnn[c * b + k2] * Vb[k2 * m + j];
+      Vb[c * m + j] = acc / diag;
+    }
+  }
+
+  const ymax = sp.y_max;
+  for (let j = 0; j < m; j++) {
+    let dmu = 0;
+    let dvar = 0;
+    for (let c = 0; c < b; c++) {
+      const v = Vb[c * m + j];
+      dmu += wb[c] * v;
+      dvar += v * v;
+    }
+    state.mu[j] += dmu * ymax;
+    state.latentVar[j] = Math.max(0, state.latentVar[j] - dvar);
+    state.variance[j] = (state.latentVar[j] + state.noiseVar[j]) * ymax * ymax;
+  }
+
+  appendCholeskyBlock(state.L, state.ld, n, Lb, Lnn, b);
+  for (let c = 0; c < b; c++) {
+    state.w[n + c] = wb[c];
+    for (let j = 0; j < m; j++) state.V[(n + c) * m + j] = Vb[c * m + j];
+    state.rows.push(rows[c]);
+  }
+  state.n = n + b;
+}
+
+/**
+ * @param seedMixes Candidate indices to condition on before the loop starts.
+ *                  The random arm must be given the SAME set (see the fairness
+ *                  contract in test_js_bo.mjs).
+ */
+export function createBOState({
+  strengthParams, candidates, objectiveX, refX, refY, seedMixes,
+}) {
+  const m = candidates.mix.length;
+  const capacity = candidates.rowsOfCandidate.reduce((a, r) => a + r.length, 0);
+  const state = {
+    strengthParams,
+    candidates,
+    objectiveX,
+    refX,
+    refY,
+    m,
+    ld: capacity,
+    n: 0,
+    rows: [],
+    L: new Float64Array(capacity * capacity),
+    w: new Float64Array(capacity),
+    V: new Float64Array(capacity * m),
+    mu: new Float64Array(m),
+    latentVar: Float64Array.from(candidates.kSelf),
+    noiseVar: candidateNoiseVariance(candidates, strengthParams),
+    variance: new Float64Array(m),
+    acquired: [],
+    pool: Array.from({ length: m }, (_, i) => i),
+    iteration: 0,
+    lastPicked: null,
+  };
+  const ymax = strengthParams.y_max;
+  for (let j = 0; j < m; j++) {
+    state.variance[j] = (state.latentVar[j] + state.noiseVar[j]) * ymax * ymax;
+  }
+  for (const k of seedMixes) acquireInto(state, k);
+  return state;
+}
+
+function acquireInto(state, k) {
+  conditionOn(state, k);
+  state.acquired.push(k);
+  const at = state.pool.indexOf(k);
+  if (at >= 0) state.pool.splice(at, 1);
+  state.lastPicked = k;
+}
+
+/** Measured (x, y) of every acquired mix, as a non-dominated staircase. */
+export function observedFront(state) {
+  const xs = state.acquired.map((k) => state.objectiveX[k]);
+  const ys = state.acquired.map((k) => state.candidates.observedY[k]);
+  return paretoStaircase(xs, ys);
+}
+
+/**
+ * Hypervolume of what has actually been MEASURED so far.
+ *
+ * Deliberately reads observedY, never the posterior: the model chooses what to
+ * acquire, it never grades itself. This is what makes the BO-vs-random
+ * comparison fair, and there is a test that poisons the GP to prove it.
+ */
+export function observedHypervolume(state) {
+  return hypervolume2D(
+    state.acquired.map((k) => state.objectiveX[k]),
+    state.acquired.map((k) => state.candidates.observedY[k]),
+    state.refX,
+    state.refY,
+  );
+}
+
+/**
+ * One BO iteration: score the pool by EHVI, acquire the argmax, recondition.
+ *
+ * @param pick Optional explicit candidate index, for replaying a fixed
+ *             sequence or driving a non-BO arm through the same machinery.
+ */
+export function stepBO(state, pick = undefined) {
+  if (state.pool.length === 0) {
+    return { picked: null, acqValues: new Float64Array(0), hypervolume: observedHypervolume(state) };
+  }
+  const front = observedFront(state);
+  const acqValues = new Float64Array(state.pool.length);
+  for (let i = 0; i < state.pool.length; i++) {
+    const k = state.pool[i];
+    acqValues[i] = expectedHVI(
+      state.mu[k],
+      Math.sqrt(state.variance[k]),
+      state.objectiveX[k],
+      front,
+      state.refX,
+      state.refY,
+    );
+  }
+
+  let picked;
+  if (pick === undefined) {
+    let best = 0;
+    // Strict >, so ties resolve to the lowest pool index and a run is
+    // reproducible even when every candidate scores exactly 0.
+    for (let i = 1; i < acqValues.length; i++) if (acqValues[i] > acqValues[best]) best = i;
+    picked = state.pool[best];
+  } else {
+    if (state.acquired.includes(pick)) {
+      throw new Error(
+        `stepBO: candidate ${pick} is already acquired. Re-conditioning on rows ` +
+        "already in the set makes the Schur complement exactly singular.",
+      );
+    }
+    picked = pick;
+  }
+
+  acquireInto(state, picked);
+  state.iteration += 1;
+  return { picked, acqValues, hypervolume: observedHypervolume(state) };
+}
+
+/**
+ * Hypervolume percentile bands for uniform random search.
+ *
+ * Takes no model. That is structural, not stylistic: the random arm must not
+ * be able to consult the GP even by accident, and a test asserts this
+ * function's source never mentions strengthParams.
+ */
+export function randomArmTraces({
+  candidates, objectiveX, refX, refY, seedMixes, nIters, nRestarts, seed,
+}) {
+  const m = candidates.mix.length;
+  const runs = [];
+  for (let r = 0; r < nRestarts; r++) {
+    const rng = makeRng(seed + r * 7919);
+    const pool = [];
+    for (let i = 0; i < m; i++) if (!seedMixes.includes(i)) pool.push(i);
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    const acquired = [...seedMixes];
+    const trace = new Float64Array(nIters);
+    for (let it = 0; it < nIters; it++) {
+      trace[it] = hypervolume2D(
+        acquired.map((k) => objectiveX[k]),
+        acquired.map((k) => candidates.observedY[k]),
+        refX,
+        refY,
+      );
+      if (it < pool.length) acquired.push(pool[it]);
+    }
+    runs.push(trace);
+  }
+  const pct = (q) => {
+    const out = new Float64Array(nIters);
+    const col = new Float64Array(nRestarts);
+    for (let it = 0; it < nIters; it++) {
+      for (let r = 0; r < nRestarts; r++) col[r] = runs[r][it];
+      const sorted = Float64Array.from(col).sort();
+      out[it] = sorted[Math.min(nRestarts - 1, Math.floor(q * nRestarts))];
+    }
+    return out;
+  };
+  return { p10: pct(0.1), p50: pct(0.5), p90: pct(0.9) };
+}

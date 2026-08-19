@@ -27,6 +27,14 @@ import {
   kernelBlock,
   selfKernel,
   buildCandidateSet,
+  candidateNoiseVariance,
+  createBOState,
+  stepBO,
+  observedFront,
+  observedHypervolume,
+  randomArmTraces,
+  chooseSeeds,
+  makeRng,
 } from "../docs/bo.mjs";
 import { kernel as gpKernel } from "../docs/gp.mjs";
 import { readFileSync } from "node:fs";
@@ -40,6 +48,49 @@ const compositionsData = JSON.parse(
 );
 const D_AUG = strengthParams.d_aug;
 const X_FLAT = Float64Array.from(strengthParams.X_train.flat());
+
+/**
+ * Independent reference implementation: a from-scratch refit on `rows`.
+ * Deliberately composed differently from the incremental path (one dense
+ * factorisation, no block extension), so agreement is a real check.
+ */
+function directPosterior(sp, cand, rows) {
+  const dAug = cand.dAug;
+  const n = rows.length;
+  const m = cand.mix.length;
+  const Xa = Float64Array.from(rows.flatMap((r) => sp.X_train[r]));
+  const Kcm = kernelBlock(Xa, n, Xa, n, dAug, sp);
+  const A = new Float64Array(n * n);
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) A[i * n + j] = Kcm[j * n + i];
+  for (let i = 0; i < n; i++) A[i * n + i] += sp.noise;
+  const L = choleskySmall(A, n);
+  const y = Float64Array.from(rows.map((r) => sp.Y_train[r]));
+  const w = forwardSolve(L, n, n, y, 1);
+  const Kt = kernelBlock(Xa, n, cand.candX, m, dAug, sp);
+  const V = forwardSolve(L, n, n, Kt, m);
+  const noiseVar = candidateNoiseVariance(cand, sp);
+  const ymax = sp.y_max;
+  const mu = new Float64Array(m);
+  const variance = new Float64Array(m);
+  for (let j = 0; j < m; j++) {
+    let dot = 0;
+    let nrm = 0;
+    for (let i = 0; i < n; i++) {
+      const v = V[j * n + i];
+      dot += w[i] * v;
+      nrm += v * v;
+    }
+    mu[j] = dot * ymax;
+    variance[j] = (Math.max(0, cand.kSelf[j] - nrm) + noiseVar[j]) * ymax * ymax;
+  }
+  return { mu, variance };
+}
+
+function maxAbsDiff(a, b) {
+  let worst = 0;
+  for (let i = 0; i < a.length; i++) worst = Math.max(worst, Math.abs(a[i] - b[i]));
+  return worst;
+}
 
 // Deterministic uniform stream, shared by the linear-algebra fixtures.
 function makeUniform(seed) {
@@ -670,6 +721,231 @@ test("buildCandidateSet fails loudly on a degenerate normalisation range", () =>
 });
 
 // ---------------------------------------------------------------------------
+// The BO loop.
+// ---------------------------------------------------------------------------
+
+const CAND28 = buildCandidateSet(strengthParams, compositionsData, 28);
+const REF28 = referenceFor("gwp", 28);
+
+function freshState(seedCount = 3, seed = 0) {
+  return createBOState({
+    strengthParams,
+    candidates: CAND28,
+    objectiveX: CAND28.gwp,
+    refX: REF28.refX,
+    refY: REF28.refY,
+    seedMixes: chooseSeeds(CAND28.mix.length, seedCount, seed),
+  });
+}
+
+test("makeRng is deterministic and stays in [0,1)", () => {
+  const a = makeRng(42);
+  const b = makeRng(42);
+  for (let i = 0; i < 50; i++) {
+    const v = a();
+    assert.equal(v, b());
+    assert.ok(v >= 0 && v < 1);
+  }
+  assert.notEqual(makeRng(43)(), makeRng(42)());
+});
+
+test("chooseSeeds is deterministic, in range, and without repeats", () => {
+  const s = chooseSeeds(147, 3, 0);
+  assert.equal(s.length, 3);
+  assert.equal(new Set(s).size, 3);
+  for (const k of s) assert.ok(k >= 0 && k < 147);
+  assert.deepEqual(chooseSeeds(147, 3, 0), s);
+});
+
+test("chooseSeeds cannot ask for more seeds than there are candidates", () => {
+  assert.throws(() => chooseSeeds(3, 5, 0), /seed/i);
+});
+
+test("candidateNoiseVariance is positive and gated", () => {
+  const nv = candidateNoiseVariance(CAND28, strengthParams);
+  assert.equal(nv.length, CAND28.mix.length);
+  for (const v of nv) assert.ok(v > 0 && v <= strengthParams.noise * 1.000001);
+});
+
+test("candidateNoiseVariance falls back to gate_tau when noise_gate_tau is absent", () => {
+  // gp_v2_fast.mjs keeps the two gates separate in case a future variant
+  // detunes them; today both are 0.05, so dropping one must change nothing.
+  const noTau = JSON.parse(JSON.stringify(strengthParams));
+  delete noTau.noise_gate_tau;
+  assert.deepEqual(
+    Array.from(candidateNoiseVariance(CAND28, noTau)),
+    Array.from(candidateNoiseVariance(CAND28, strengthParams)),
+  );
+});
+
+test("candidateNoiseVariance treats a model with no noise fields as noiseless", () => {
+  const bare = JSON.parse(JSON.stringify(strengthParams));
+  delete bare.noise_kind;
+  delete bare.noise;
+  for (const v of candidateNoiseVariance(CAND28, bare)) assert.equal(v, 0);
+});
+
+test("createBOState reproduces a from-scratch refit on the seed set", () => {
+  const st = freshState(3);
+  const rows = st.acquired.flatMap((k) => CAND28.rowsOfCandidate[k]);
+  const ref = directPosterior(strengthParams, CAND28, rows);
+  assert.ok(maxAbsDiff(st.mu, ref.mu) < 1e-6, `mu drift ${maxAbsDiff(st.mu, ref.mu)}`);
+  const sd = Float64Array.from(st.variance, Math.sqrt);
+  const refSd = Float64Array.from(ref.variance, Math.sqrt);
+  assert.ok(maxAbsDiff(sd, refSd) < 1e-6, `sd drift ${maxAbsDiff(sd, refSd)}`);
+});
+
+test("stepBO still matches a from-scratch refit after many acquisitions", () => {
+  // The central correctness claim: O(n^2 b) extension must not drift from an
+  // O(n^3) refit, iteration after iteration.
+  const st = freshState(3);
+  for (let i = 0; i < 25; i++) stepBO(st);
+  const rows = st.acquired.flatMap((k) => CAND28.rowsOfCandidate[k]);
+  const ref = directPosterior(strengthParams, CAND28, rows);
+  const muDrift = maxAbsDiff(st.mu, ref.mu);
+  const sdDrift = maxAbsDiff(
+    Float64Array.from(st.variance, Math.sqrt),
+    Float64Array.from(ref.variance, Math.sqrt),
+  );
+  assert.ok(muDrift < 1e-6, `mean drift ${muDrift} psi after 25 acquisitions`);
+  assert.ok(sdDrift < 1e-6, `sd drift ${sdDrift} psi after 25 acquisitions`);
+});
+
+test("stepBO picks the argmax of the acquisition values", () => {
+  const st = freshState(3);
+  const poolBefore = [...st.pool];
+  const { picked, acqValues } = stepBO(st);
+  let best = 0;
+  for (let i = 1; i < acqValues.length; i++) if (acqValues[i] > acqValues[best]) best = i;
+  assert.equal(picked, poolBefore[best]);
+});
+
+test("stepBO moves exactly one candidate from the pool to acquired", () => {
+  const st = freshState(3);
+  const nPool = st.pool.length;
+  const nAcq = st.acquired.length;
+  const { picked } = stepBO(st);
+  assert.equal(st.pool.length, nPool - 1);
+  assert.equal(st.acquired.length, nAcq + 1);
+  assert.ok(st.acquired.includes(picked));
+  assert.ok(!st.pool.includes(picked));
+});
+
+test("stepBO drives the observed hypervolume up and never down", () => {
+  const st = freshState(3);
+  let prev = observedHypervolume(st);
+  for (let i = 0; i < 30; i++) {
+    stepBO(st);
+    const hv = observedHypervolume(st);
+    assert.ok(hv >= prev - 1e-9, `hypervolume fell at iteration ${i}: ${hv} < ${prev}`);
+    prev = hv;
+  }
+  assert.ok(prev > 0, "BO should find something inside the reference box");
+});
+
+test("stepBO collapses a candidate's variance to ~2x the noise floor once acquired", () => {
+  const st = freshState(3);
+  const before = [...st.variance];
+  const { picked } = stepBO(st);
+  const noiseFloor = candidateNoiseVariance(CAND28, strengthParams)[picked]
+    * strengthParams.y_max * strengthParams.y_max;
+  const after = st.variance[picked];
+
+  // Twice, not once, and that is correct rather than a bug. Conditioning on a
+  // NOISY observation at exactly this point leaves latent variance
+  // k*sigma^2/(k+sigma^2) ~= sigma^2 (since k >> sigma^2 here), and the
+  // predictive variance then adds the aleatoric term back on top. So the floor
+  // is ~2*sigma^2, not sigma^2.
+  assert.ok(after > 0, "must stay positive so EI never divides by a zero sd");
+  assert.ok(after < before[picked] * 0.5, "acquiring must sharply reduce uncertainty");
+  const ratio = after / noiseFloor;
+  assert.ok(ratio > 1.5 && ratio < 2.5, `expected ~2x the noise floor, got ${ratio.toFixed(2)}x`);
+});
+
+test("candidateNoiseVariance falls back to ungated noise when the schema says so", () => {
+  const global = JSON.parse(JSON.stringify(strengthParams));
+  global.noise_kind = "global";
+  const nv = candidateNoiseVariance(CAND28, global);
+  for (const v of nv) assert.equal(v, global.noise);
+});
+
+test("stepBO honours an explicit pick, for the random arm and for replay", () => {
+  const st = freshState(3);
+  const target = st.pool[7];
+  const { picked } = stepBO(st, target);
+  assert.equal(picked, target);
+});
+
+test("stepBO refuses to acquire a candidate twice", () => {
+  // Re-conditioning on rows already in the set makes the Schur complement
+  // exactly singular; better to reject it than to lean on jitter.
+  const st = freshState(3);
+  const already = st.acquired[0];
+  assert.throws(() => stepBO(st, already), /already acquired/i);
+});
+
+test("stepBO returns null once the pool is exhausted", () => {
+  const st = freshState(3);
+  let guard = 0;
+  while (st.pool.length > 0 && guard++ < 200) stepBO(st);
+  assert.equal(st.pool.length, 0);
+  const { picked, acqValues } = stepBO(st);
+  assert.equal(picked, null);
+  assert.equal(acqValues.length, 0);
+});
+
+test("observedFront reports the measured tradeoff of the acquired mixes", () => {
+  const st = freshState(3);
+  stepBO(st);
+  const front = observedFront(st);
+  for (const p of front) {
+    const k = st.acquired.find((c) => CAND28.gwp[c] === p.x);
+    assert.notEqual(k, undefined, "front points must come from acquired mixes");
+    assert.equal(CAND28.observedY[k], p.y);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The random-search arm.
+// ---------------------------------------------------------------------------
+
+test("randomArmTraces returns ordered percentile bands of the right length", () => {
+  const bands = randomArmTraces({
+    candidates: CAND28,
+    objectiveX: CAND28.gwp,
+    refX: REF28.refX,
+    refY: REF28.refY,
+    seedMixes: chooseSeeds(CAND28.mix.length, 3, 0),
+    nIters: 20,
+    nRestarts: 50,
+    seed: 1,
+  });
+  assert.equal(bands.p50.length, 20);
+  for (let i = 0; i < 20; i++) {
+    assert.ok(bands.p10[i] <= bands.p50[i], `p10 > p50 at ${i}`);
+    assert.ok(bands.p50[i] <= bands.p90[i], `p50 > p90 at ${i}`);
+  }
+});
+
+test("randomArmTraces is monotone within each restart", () => {
+  const bands = randomArmTraces({
+    candidates: CAND28,
+    objectiveX: CAND28.gwp,
+    refX: REF28.refX,
+    refY: REF28.refY,
+    seedMixes: chooseSeeds(CAND28.mix.length, 3, 0),
+    nIters: 25,
+    nRestarts: 40,
+    seed: 2,
+  });
+  for (const key of ["p10", "p50", "p90"]) {
+    for (let i = 1; i < 25; i++) {
+      assert.ok(bands[key][i] >= bands[key][i - 1] - 1e-9, `${key} fell at ${i}`);
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
 // The fairness contract.
 //
 // The BO-vs-random comparison is the persuasive claim this feature makes, so
@@ -687,10 +963,62 @@ test("buildCandidateSet fails loudly on a degenerate normalisation range", () =>
 //      acquisition sequence. No coverage metric would ever catch this.
 // ---------------------------------------------------------------------------
 
-test("FAIRNESS: both arms start from an identical seed set", { skip: "Phase 4" }, () => {
-  assert.fail("implement with createBOState + randomArmTraces");
+test("FAIRNESS: both arms start from an identical seed set", () => {
+  const seeds = chooseSeeds(CAND28.mix.length, 3, 0);
+  const st = freshState(3);
+  assert.deepEqual([...st.acquired].sort((a, b) => a - b), [...seeds].sort((a, b) => a - b));
+
+  const bands = randomArmTraces({
+    candidates: CAND28,
+    objectiveX: CAND28.gwp,
+    refX: REF28.refX,
+    refY: REF28.refY,
+    seedMixes: seeds,
+    nIters: 1,
+    nRestarts: 8,
+    seed: 3,
+  });
+  // Iteration 0 is scored before either arm has drawn anything, so both must
+  // report exactly the seed set's hypervolume -- with no spread across
+  // restarts, since they all start from the same three mixes.
+  assert.equal(bands.p10[0], observedHypervolume(st));
+  assert.equal(bands.p90[0], observedHypervolume(st));
 });
 
-test("FAIRNESS: hypervolume is scored on measured outcomes, not predictions", { skip: "Phase 4" }, () => {
-  assert.fail("poison the GP mean; the HV trace for a fixed sequence must not move");
+test("FAIRNESS: hypervolume is scored on measured outcomes, not predictions", () => {
+  // The sharp one. Replay a FIXED acquisition sequence twice: once against the
+  // real GP, once against a model poisoned to predict a constant. If any part
+  // of the hypervolume were being read off the posterior instead of the lab
+  // measurements, the two traces would diverge. No coverage metric catches this.
+  const sequence = [11, 40, 77, 5, 132, 90, 3];
+
+  const trace = (sp) => {
+    const cand = buildCandidateSet(sp, compositionsData, 28);
+    const st = createBOState({
+      strengthParams: sp,
+      candidates: cand,
+      objectiveX: cand.gwp,
+      refX: REF28.refX,
+      refY: REF28.refY,
+      seedMixes: chooseSeeds(cand.mix.length, 3, 0),
+    });
+    const out = [observedHypervolume(st)];
+    for (const k of sequence) {
+      if (st.acquired.includes(k)) continue;
+      stepBO(st, k);
+      out.push(observedHypervolume(st));
+    }
+    return out;
+  };
+
+  const poisoned = JSON.parse(JSON.stringify(strengthParams));
+  poisoned.Y_train = poisoned.Y_train.map(() => 0.5);
+
+  assert.deepEqual(trace(poisoned), trace(strengthParams));
+});
+
+test("FAIRNESS: the random arm has no access to the model at all", () => {
+  // Structural, not conventional: randomArmTraces takes no strengthParams, so
+  // it cannot consult the GP even by accident.
+  assert.ok(!/strengthParams/.test(randomArmTraces.toString()));
 });
