@@ -171,7 +171,8 @@ def test_golden_fixture_is_in_sync_with_this_module():
     """The committed fixture must still describe what the reference computes.
 
     Guards against the fixture and the reference drifting apart -- if this
-    fails, re-run ``experiments/regenerate_bo_golden.py``.
+    fails, re-run ``python -m experiments.regenerate_bo_golden`` from the repo
+    root.
     """
     path = pathlib.Path(__file__).parent / "fixtures" / "bo_golden.json"
     golden = json.loads(path.read_text())

@@ -2,10 +2,18 @@
 
 Freezes the Python reference's expected-hypervolume-improvement and
 hypervolume outputs, cross-validated against BoTorch, so ``docs/bo.mjs`` can be
-pinned to them from the JS suite. Run after any deliberate change to
-:mod:`boxcrete.bo_reference`::
+pinned to them from the JS suite. Run from the repo root after any deliberate
+change to :mod:`boxcrete.bo_reference`::
 
-    python experiments/regenerate_bo_golden.py
+    python -m experiments.regenerate_bo_golden
+
+``-m`` rather than ``python experiments/regenerate_bo_golden.py``: the latter
+puts ``experiments/`` on ``sys.path`` instead of the repo root, so ``boxcrete``
+resolves through whatever ``pip install -e .`` last pointed at. In a git
+worktree that is the *primary* checkout, and the script would silently import a
+different tree's ``boxcrete`` than the one being edited. ``-m`` puts the
+current directory first, so the checkout you are standing in is the one that
+gets used.
 
 Every EHVI case is checked against BoTorch's analytic
 ``ExpectedHypervolumeImprovement`` before it is written, so a fixture that

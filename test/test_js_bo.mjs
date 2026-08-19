@@ -1066,7 +1066,8 @@ test("predictStrengthCurveSubset returns one entry per requested time", () => {
 // ---------------------------------------------------------------------------
 // Golden vectors from the Python reference, cross-validated against BoTorch.
 //
-// Regenerate with: PYTHONPATH=. python experiments/regenerate_bo_golden.py
+// Regenerate from the repo root with:
+//   python -m experiments.regenerate_bo_golden
 // That script refuses to write a fixture whose EHVI values disagree with
 // BoTorch's analytic ExpectedHypervolumeImprovement, so anything committed here
 // has already been checked against an outside authority.
