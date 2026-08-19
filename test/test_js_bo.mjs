@@ -1064,6 +1064,57 @@ test("predictStrengthCurveSubset returns one entry per requested time", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Golden vectors from the Python reference, cross-validated against BoTorch.
+//
+// Regenerate with: PYTHONPATH=. python experiments/regenerate_bo_golden.py
+// That script refuses to write a fixture whose EHVI values disagree with
+// BoTorch's analytic ExpectedHypervolumeImprovement, so anything committed here
+// has already been checked against an outside authority.
+// ---------------------------------------------------------------------------
+
+const GOLDEN = JSON.parse(
+  readFileSync(new URL("./fixtures/bo_golden.json", import.meta.url), "utf8"),
+);
+
+test("expectedHVI matches the Python/BoTorch golden vectors", () => {
+  const front = paretoStaircase(GOLDEN.observed_x, GOLDEN.observed_y);
+  for (const c of GOLDEN.ehvi_cases) {
+    const got = expectedHVI(c.mu, c.sd, c.g, front, GOLDEN.ref_x, GOLDEN.ref_y);
+    const gap = Math.abs(got - c.ehvi);
+    // Two independent implementations in two languages: tight, but not bit-exact.
+    assert.ok(
+      gap <= 1e-9 * Math.max(Math.abs(c.ehvi), 1) ,
+      `mu=${c.mu} sd=${c.sd} g=${c.g}: JS ${got} vs Python ${c.ehvi} (gap ${gap})`,
+    );
+  }
+});
+
+test("hypervolume2D matches the Python golden vectors", () => {
+  for (const c of GOLDEN.hypervolume_cases) {
+    const got = hypervolume2D(c.xs, c.ys, GOLDEN.ref_x, GOLDEN.ref_y);
+    assert.ok(
+      Math.abs(got - c.hv) <= 1e-9 * Math.max(Math.abs(c.hv), 1),
+      `xs=${JSON.stringify(c.xs)}: JS ${got} vs Python ${c.hv}`,
+    );
+  }
+});
+
+test("the golden fixture still carries its BoTorch cross-check", () => {
+  // If a regeneration ever dropped the BoTorch column, the fixture would
+  // silently degrade from "validated against an outside authority" to "whatever
+  // our own Python happened to produce".
+  assert.ok(GOLDEN.ehvi_cases.length >= 5);
+  for (const c of GOLDEN.ehvi_cases) {
+    assert.equal(typeof c.botorch_ehvi, "number");
+    const gap = Math.abs(c.ehvi - c.botorch_ehvi);
+    assert.ok(
+      gap <= c.botorch_rtol * Math.max(Math.abs(c.botorch_ehvi), 1e-12) || gap <= 1e-9,
+      `case mu=${c.mu} g=${c.g} is not within its recorded BoTorch tolerance`,
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
 // The fairness contract.
 //
 // The BO-vs-random comparison is the persuasive claim this feature makes, so
