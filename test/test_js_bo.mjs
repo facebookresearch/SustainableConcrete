@@ -20,7 +20,50 @@ import {
   normalCdf,
   expectedImprovement,
   expectedHVI,
+  forwardSolve,
+  choleskySmall,
+  extendCholeskyBlock,
+  appendCholeskyBlock,
 } from "../docs/bo.mjs";
+
+// Deterministic uniform stream, shared by the linear-algebra fixtures.
+function makeUniform(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return (s + 0.5) / 4294967296;
+  };
+}
+
+/** Random symmetric positive-definite matrix, row-major [m x m]. */
+function randomSPD(m, seed, ridge = 1.0) {
+  const u = makeUniform(seed);
+  const A = new Float64Array(m * m);
+  const G = new Float64Array(m * m);
+  for (let i = 0; i < m * m; i++) G[i] = u() * 2 - 1;
+  for (let i = 0; i < m; i++) {
+    for (let j = 0; j < m; j++) {
+      let acc = 0;
+      for (let k = 0; k < m; k++) acc += G[i * m + k] * G[j * m + k];
+      A[i * m + j] = acc;
+    }
+    A[i * m + i] += ridge * m;
+  }
+  return A;
+}
+
+/** Max |(L L^T) - A| over a row-major lower-triangular L with leading dim ld. */
+function reconstructionError(L, ld, m, A) {
+  let worst = 0;
+  for (let i = 0; i < m; i++) {
+    for (let j = 0; j < m; j++) {
+      let acc = 0;
+      for (let k = 0; k <= Math.min(i, j); k++) acc += L[i * ld + k] * L[j * ld + k];
+      worst = Math.max(worst, Math.abs(acc - A[i * m + j]));
+    }
+  }
+  return worst;
+}
 
 // Deterministic normal sampler for the Monte-Carlo cross-checks. A flaky
 // statistical test is worse than none, so this is a fixed-seed LCG + Box-Muller
@@ -337,6 +380,118 @@ test("expectedHVI ignores front points outside the reference box", () => {
     expectedHVI(9000, 600, 130, dirty, 200, 5000),
     expectedHVI(9000, 600, 130, clean, 200, 5000),
   );
+});
+
+// ---------------------------------------------------------------------------
+// Incremental Cholesky.
+//
+// L is row-major lower-triangular in a flat buffer with leading dimension `ld`,
+// so the conditioning set can grow in place without reallocating. The [n x b]
+// blocks are column-major, matching gp_v2_fast.mjs's kernel layout.
+// ---------------------------------------------------------------------------
+
+test("forwardSolve returns B unchanged for an identity L", () => {
+  const L = new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+  const B = new Float64Array([1, 2, 3, 4, 5, 6]); // [3 x 2] column-major
+  assert.deepEqual(Array.from(forwardSolve(L, 3, 3, B, 2)), [1, 2, 3, 4, 5, 6]);
+});
+
+test("forwardSolve solves a hand-checked lower-triangular system", () => {
+  // L = [[2,0],[3,4]], b = [2, 11]  ->  x = [1, 2]
+  const L = new Float64Array([2, 0, 3, 4]);
+  const B = new Float64Array([2, 11]);
+  const X = forwardSolve(L, 2, 2, B, 1);
+  assert.ok(Math.abs(X[0] - 1) < 1e-12);
+  assert.ok(Math.abs(X[1] - 2) < 1e-12);
+});
+
+test("forwardSolve honours a leading dimension larger than n", () => {
+  // The BO state preallocates L at full capacity and uses the top-left block.
+  const ld = 5;
+  const L = new Float64Array(ld * ld);
+  L[0 * ld + 0] = 2;
+  L[1 * ld + 0] = 3;
+  L[1 * ld + 1] = 4;
+  const X = forwardSolve(L, ld, 2, new Float64Array([2, 11]), 1);
+  assert.ok(Math.abs(X[0] - 1) < 1e-12);
+  assert.ok(Math.abs(X[1] - 2) < 1e-12);
+});
+
+test("choleskySmall factors a hand-checked 2x2", () => {
+  // A = [[4,2],[2,10]] -> L = [[2,0],[1,3]]
+  const L = choleskySmall(new Float64Array([4, 2, 2, 10]), 2);
+  assert.ok(Math.abs(L[0] - 2) < 1e-12);
+  assert.equal(L[1], 0);
+  assert.ok(Math.abs(L[2] - 1) < 1e-12);
+  assert.ok(Math.abs(L[3] - 3) < 1e-12);
+});
+
+test("choleskySmall handles the 1x1 case", () => {
+  const L = choleskySmall(new Float64Array([9]), 1);
+  assert.ok(Math.abs(L[0] - 3) < 1e-12);
+});
+
+test("choleskySmall reconstructs random SPD matrices", () => {
+  for (const m of [1, 2, 3, 5, 8]) {
+    const A = randomSPD(m, 1000 + m);
+    const L = choleskySmall(A, m);
+    assert.ok(reconstructionError(L, m, m, A) < 1e-9, `m=${m}`);
+  }
+});
+
+test("choleskySmall recovers from a singular block via jitter escalation", () => {
+  // Two identical observations of the same mix produce exactly this: a rank-
+  // deficient Gram block. gp.mjs::cholesky escalates jitter from 1e-8; so do we.
+  const A = new Float64Array([1, 1, 1, 1]);
+  const L = choleskySmall(A, 2);
+  assert.ok(Number.isFinite(L[3]) && L[3] > 0, "jitter must make the block PD");
+  assert.ok(reconstructionError(L, 2, 2, A) < 1e-5, "and stay close to the original");
+});
+
+test("choleskySmall throws rather than returning NaN on a hopeless block", () => {
+  const A = new Float64Array([-1e6, 0, 0, -1e6]);
+  assert.throws(() => choleskySmall(A, 2), /Cholesky/i);
+});
+
+test("extendCholeskyBlock reproduces a direct factorisation of the full matrix", () => {
+  // The core correctness claim of the whole feature.
+  for (const [n, b] of [[6, 1], [6, 3], [10, 4], [10, 5], [1, 1], [1, 5]]) {
+    const m = n + b;
+    const A = randomSPD(m, 7000 + m * 13 + b);
+    const ld = m + 4; // deliberately padded, as the live state will be
+
+    // Factor the leading n x n block.
+    const Ann = new Float64Array(n * n);
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) Ann[i * n + j] = A[i * m + j];
+    const Lnn0 = choleskySmall(Ann, n);
+    const L = new Float64Array(ld * ld);
+    for (let i = 0; i < n; i++) for (let j = 0; j <= i; j++) L[i * ld + j] = Lnn0[i * n + j];
+
+    // Kna [n x b] column-major, Knn [b x b] row-major.
+    const Kna = new Float64Array(n * b);
+    for (let c = 0; c < b; c++) for (let i = 0; i < n; i++) Kna[c * n + i] = A[i * m + (n + c)];
+    const Knn = new Float64Array(b * b);
+    for (let i = 0; i < b; i++) for (let j = 0; j < b; j++) Knn[i * b + j] = A[(n + i) * m + (n + j)];
+
+    const { Lb, Lnn } = extendCholeskyBlock(L, ld, n, Kna, Knn, b);
+    appendCholeskyBlock(L, ld, n, Lb, Lnn, b);
+
+    assert.ok(
+      reconstructionError(L, ld, m, A) < 1e-8,
+      `n=${n} b=${b}: reconstruction error ${reconstructionError(L, ld, m, A)}`,
+    );
+  }
+});
+
+test("extendCholeskyBlock from an empty conditioning set is a plain factorisation", () => {
+  const b = 3;
+  const A = randomSPD(b, 4242);
+  const ld = b;
+  const L = new Float64Array(ld * ld);
+  const { Lb, Lnn } = extendCholeskyBlock(L, ld, 0, new Float64Array(0), A, b);
+  assert.equal(Lb.length, 0);
+  appendCholeskyBlock(L, ld, 0, Lb, Lnn, b);
+  assert.ok(reconstructionError(L, ld, b, A) < 1e-9);
 });
 
 // ---------------------------------------------------------------------------

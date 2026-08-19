@@ -230,3 +230,99 @@ export function expectedHVI(mu, sd, g, front, refX, refY) {
   total += (refX - cursor) * expectedImprovement(mu, sd, ceiling);
   return total;
 }
+
+// ---------------------------------------------------------------------------
+// Incremental Cholesky.
+//
+// The BO loop conditions the GP on a growing subset of the training rows. A
+// direct refit is O(n^3) per iteration; extending the existing factor is
+// O(n^2 b). Layout: L is row-major lower-triangular in a flat buffer with
+// leading dimension `ld` (the full capacity), so growth never reallocates.
+// The [n x b] blocks are column-major, matching gp_v2_fast.mjs's kernel layout.
+// ---------------------------------------------------------------------------
+
+/** Solve L X = B for X. B and X are [n x b] column-major. */
+export function forwardSolve(L, ld, n, B, b) {
+  const X = new Float64Array(n * b);
+  for (let c = 0; c < b; c++) {
+    const off = c * n;
+    for (let i = 0; i < n; i++) {
+      let acc = B[off + i];
+      const row = i * ld;
+      for (let k = 0; k < i; k++) acc -= L[row + k] * X[off + k];
+      X[off + i] = acc / L[row + i];
+    }
+  }
+  return X;
+}
+
+/**
+ * Dense Cholesky of a small symmetric matrix, row-major [m x m], returning a
+ * row-major lower-triangular factor.
+ *
+ * Escalating jitter mirrors gp.mjs::cholesky and, behind it, linear_operator's
+ * psd_safe_cholesky. This is not hypothetical here: acquiring a mix whose
+ * observations duplicate ones already in the conditioning set yields an exactly
+ * rank-deficient block.
+ */
+export function choleskySmall(A, m) {
+  const diag0 = new Float64Array(m);
+  for (let i = 0; i < m; i++) diag0[i] = A[i * m + i];
+
+  let jitter = 0;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const L = new Float64Array(m * m);
+    let ok = true;
+    for (let i = 0; i < m && ok; i++) {
+      for (let j = 0; j <= i; j++) {
+        let acc = A[i * m + j];
+        if (i === j) acc += jitter;
+        for (let k = 0; k < j; k++) acc -= L[i * m + k] * L[j * m + k];
+        if (i === j) {
+          if (!(acc > 0)) { ok = false; break; }
+          L[i * m + i] = Math.sqrt(acc);
+        } else {
+          L[i * m + j] = acc / L[j * m + j];
+        }
+      }
+    }
+    if (ok) return L;
+    jitter = jitter === 0 ? 1e-8 : jitter * 10;
+    // Restore the pristine diagonal so each attempt sets jitter from the
+    // original values rather than compounding the previous attempt's.
+    for (let i = 0; i < m; i++) A[i * m + i] = diag0[i];
+  }
+  throw new Error("choleskySmall: Cholesky failed even after jitter escalation.");
+}
+
+/**
+ * Extend a factored n x n block by b new rows.
+ *
+ *   Lb  = L^-1 K(X_a, X_new)                       [n x b] column-major
+ *   Lnn = chol(K(X_new, X_new) + noise - Lb^T Lb)  [b x b] row-major
+ *
+ * @param Kna [n x b] column-major cross-covariance.
+ * @param Knn [b x b] row-major self-covariance, noise already added.
+ */
+export function extendCholeskyBlock(L, ld, n, Kna, Knn, b) {
+  const Lb = forwardSolve(L, ld, n, Kna, b);
+  const S = new Float64Array(b * b);
+  for (let i = 0; i < b; i++) {
+    for (let j = 0; j < b; j++) {
+      let acc = Knn[i * b + j];
+      for (let k = 0; k < n; k++) acc -= Lb[i * n + k] * Lb[j * n + k];
+      S[i * b + j] = acc;
+    }
+  }
+  return { Lb, Lnn: choleskySmall(S, b) };
+}
+
+/** Write an extension block into L in place. Returns the new size, n + b. */
+export function appendCholeskyBlock(L, ld, n, Lb, Lnn, b) {
+  for (let i = 0; i < b; i++) {
+    const row = (n + i) * ld;
+    for (let k = 0; k < n; k++) L[row + k] = Lb[i * n + k];
+    for (let j = 0; j <= i; j++) L[row + n + j] = Lnn[i * b + j];
+  }
+  return n + b;
+}
