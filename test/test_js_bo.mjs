@@ -11,7 +11,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { REFERENCE_POINT, referenceFor } from "../docs/bo.mjs";
+import {
+  REFERENCE_POINT,
+  referenceFor,
+  paretoStaircase,
+  hypervolume2D,
+} from "../docs/bo.mjs";
 
 // ---------------------------------------------------------------------------
 // Reference point — mirrors boxcrete.CONCRETE_REFERENCE_POINT.
@@ -49,6 +54,128 @@ test("referenceFor throws on an unknown axis rather than defaulting", () => {
 
 test("referenceFor throws on an unknown day rather than defaulting", () => {
   assert.throws(() => referenceFor("gwp", 7), /unknown day "7"/);
+});
+
+// ---------------------------------------------------------------------------
+// Pareto geometry.
+//
+// Convention throughout: MINIMISE x (GWP or cost), MAXIMISE y (strength).
+// A point i is dominated by j iff x_j <= x_i and y_j >= y_i with one strict.
+// Consequently a non-dominated set sorted by x ascending has y ascending too,
+// and the covered region is a RISING staircase.
+// ---------------------------------------------------------------------------
+
+test("paretoStaircase returns an empty front for empty input", () => {
+  assert.deepEqual(paretoStaircase([], []), []);
+});
+
+test("paretoStaircase returns a single point unchanged", () => {
+  assert.deepEqual(paretoStaircase([150], [8000]), [{ x: 150, y: 8000, i: 0 }]);
+});
+
+test("paretoStaircase keeps both points of a genuine tradeoff", () => {
+  // Cheaper-but-weaker and dearer-but-stronger: neither dominates.
+  assert.deepEqual(paretoStaircase([100, 150], [5000, 8000]), [
+    { x: 100, y: 5000, i: 0 },
+    { x: 150, y: 8000, i: 1 },
+  ]);
+});
+
+test("paretoStaircase drops a dominated point", () => {
+  // (150, 5000) is worse on both axes than (100, 8000).
+  assert.deepEqual(paretoStaircase([100, 150], [8000, 5000]), [
+    { x: 100, y: 8000, i: 0 },
+  ]);
+});
+
+test("paretoStaircase sorts unsorted input", () => {
+  const front = paretoStaircase([150, 100, 175], [8000, 5000, 9000]);
+  assert.deepEqual(front.map((p) => p.x), [100, 150, 175]);
+  assert.deepEqual(front.map((p) => p.i), [1, 0, 2]);
+});
+
+test("paretoStaircase breaks a tie in x by keeping the higher y", () => {
+  // Same GWP, different strength: the weaker mix is strictly dominated, so a
+  // naive x-only sort that kept both would emit a zero-width segment.
+  assert.deepEqual(paretoStaircase([100, 100], [5000, 8000]), [
+    { x: 100, y: 8000, i: 1 },
+  ]);
+});
+
+test("paretoStaircase collapses exact duplicates to one point", () => {
+  assert.deepEqual(paretoStaircase([100, 100], [8000, 8000]), [
+    { x: 100, y: 8000, i: 0 },
+  ]);
+});
+
+test("paretoStaircase reports original indices so the view can highlight mixes", () => {
+  const front = paretoStaircase([300, 100, 200], [1000, 9000, 2000]);
+  assert.deepEqual(front, [{ x: 100, y: 9000, i: 1 }]);
+});
+
+test("paretoStaircase rejects mismatched array lengths", () => {
+  // xs and ys arrive from separate sources (gwp_predictions vs a GP posterior),
+  // so a length mismatch is a realistic wiring bug and must not read undefined.
+  assert.throws(() => paretoStaircase([1, 2], [1]), /length/i);
+});
+
+test("hypervolume2D is zero for an empty front", () => {
+  assert.equal(hypervolume2D([], [], 200, 5000), 0);
+});
+
+test("hypervolume2D rejects mismatched array lengths", () => {
+  // Without this guard a short ys reads undefined, `undefined >= refY` is
+  // false, and the point is silently dropped -- a wrong number with no symptom.
+  assert.throws(() => hypervolume2D([1, 2], [1], 200, 5000), /length/i);
+});
+
+test("hypervolume2D computes the rectangle for a single point", () => {
+  // (200 - 150) * (8000 - 5000)
+  assert.equal(hypervolume2D([150], [8000], 200, 5000), 150000);
+});
+
+test("hypervolume2D computes a hand-checked two-step staircase", () => {
+  // Front: (100, 6000) then (150, 8000); ref (200, 5000).
+  //   x in [100,150): ceiling 6000 -> 50 * 1000 = 50000
+  //   x in [150,200): ceiling 8000 -> 50 * 3000 = 150000
+  assert.equal(hypervolume2D([100, 150], [6000, 8000], 200, 5000), 200000);
+});
+
+test("hypervolume2D ignores dominated points", () => {
+  const without = hypervolume2D([100, 150], [6000, 8000], 200, 5000);
+  const withDominated = hypervolume2D([100, 150, 180], [6000, 8000, 5500], 200, 5000);
+  assert.equal(withDominated, without);
+});
+
+test("hypervolume2D is exactly zero when every point is outside the reference box", () => {
+  // The real case at iteration 0 with CONCRETE_REFERENCE_POINT: seeds are
+  // often too weak or too carbon-intensive to contribute anything. Must be a
+  // hard 0, never NaN, or the learning curve axis breaks.
+  const hv = hypervolume2D([250, 300], [4000, 4500], 200, 5000);
+  assert.equal(hv, 0);
+  assert.ok(!Number.isNaN(hv));
+});
+
+test("hypervolume2D is zero for a point exactly on the reference point", () => {
+  assert.equal(hypervolume2D([200], [5000], 200, 5000), 0);
+});
+
+test("hypervolume2D clips a point that is better than the reference on only one axis", () => {
+  // Strong enough but too much GWP -> contributes nothing.
+  assert.equal(hypervolume2D([250], [9000], 200, 5000), 0);
+  // Low GWP but too weak -> contributes nothing.
+  assert.equal(hypervolume2D([100], [4000], 200, 5000), 0);
+});
+
+test("hypervolume2D never decreases when a point is added", () => {
+  const xs = [180, 140, 120, 160, 110];
+  const ys = [5500, 6500, 7000, 6000, 9000];
+  let prev = 0;
+  for (let k = 1; k <= xs.length; k++) {
+    const hv = hypervolume2D(xs.slice(0, k), ys.slice(0, k), 200, 5000);
+    assert.ok(hv >= prev, `hypervolume dropped at k=${k}: ${hv} < ${prev}`);
+    prev = hv;
+  }
 });
 
 // ---------------------------------------------------------------------------
