@@ -1456,6 +1456,13 @@ a.ref-link {
   .site-header h1 { font-size: 1.1rem; }
   .header-tagline { display: none; }
   .site-header .cite-group { display: none; }
+  /* Same reasoning as the cite group: the mobile header sheds non-essential
+     controls. BO mode also needs the scatter, the learning curve and the
+     narration visible together, which the single-column mobile layout (where
+     the scatter panel doubles as the slider host) does not provide. A mobile
+     BO experience has not been designed or tested, so the entry point is
+     desktop-only rather than leading somewhere cramped and unverified. */
+  .site-header .bo-toggle { display: none; }
   #filter-clear { display: none; }
 
   .layout {
@@ -1768,4 +1775,89 @@ a.ref-link {
   .toggle-btn[data-previewing]::after {
     animation: none !important;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   BO mode
+   --------------------------------------------------------------------------- */
+
+/* Sized to sit alongside the existing header controls (cite 21.5px, theme
+   toggle 28px) rather than the 44px HIG target -- touch-targets.spec.ts scopes
+   that requirement to mobile sliders, not the header.
+   This is load-bearing, not cosmetic. A 44px min-height grew the header from
+   50.4px to 63px, which pushed the layout down far enough that focusing the
+   Material Source button scrolled the first slider's centre to y=22, under the
+   sticky header. mouse.move then landed on .header-tagline instead of the
+   slider, and preview-curve.spec.ts's control-handoff test failed. */
+.bo-toggle {
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 0.3rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent, #2563eb);
+  background: transparent;
+  color: var(--accent, #2563eb);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.bo-toggle:hover { background: rgba(37, 99, 235, 0.1); }
+.bo-toggle[aria-pressed="true"] {
+  background: var(--accent, #2563eb);
+  color: #fff;
+}
+
+.bo-panel { margin-top: 0.6rem; }
+.bo-panel.hidden { display: none; }
+
+.bo-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+}
+.bo-controls button {
+  font-family: inherit;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.6rem;
+  min-height: 44px;
+  min-width: 44px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #cbd5e1);
+  background: var(--panel-bg, #fff);
+  color: inherit;
+  cursor: pointer;
+}
+.bo-controls button:hover { border-color: var(--accent, #2563eb); }
+.bo-speed { display: inline-flex; align-items: center; gap: 0.35rem; opacity: 0.85; }
+.bo-iter { margin-left: auto; font-variant-numeric: tabular-nums; opacity: 0.75; }
+
+.bo-caveat {
+  margin: 0.5rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.45;
+  opacity: 0.65;
+}
+
+.bo-hv-canvas { width: 100%; height: 130px; display: block; }
+.bo-hv-canvas.hidden { display: none; }
+
+/* The stylesheet has no bare `.hidden` rule -- every other use is a compound
+   selector -- so BO mode needs its own to swap the mix-insight prose out for
+   the learning curve. */
+.mix-insight-text.hidden { display: none; }
+.pareto-pill.hidden { display: none; }
+
+/* The axis toggles and filter controls are locked while a run is in flight:
+   a run is tied to one objective pair, and switching mid-run would silently
+   compare hypervolumes computed against different reference points. */
+.bo-locked {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bo-toggle { transition: none; }
 }

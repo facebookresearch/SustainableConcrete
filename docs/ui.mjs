@@ -5,6 +5,23 @@
  */
 
 import { predictStrengthCurve, predictStrengthMeanOnly, predictGWP, predictCost, initStrengthModel, initWASM } from "./gp.mjs";
+import {
+  buildCandidateSet,
+  createBOState,
+  stepBO,
+  observedHypervolume,
+  randomArmTraces,
+  chooseSeeds,
+  referenceFor,
+  predictStrengthCurveSubset,
+} from "./bo.mjs";
+import {
+  easingFactor,
+  easeMeans,
+  buildScatterDrawList,
+  buildLearningCurveDrawList,
+  narrate,
+} from "./bo_view.mjs";
 import { stepPreviewComposition } from "./preview_state.mjs";
 import { makeComputedFilters, matchesFilters } from "./filters.mjs";
 import {
@@ -13,6 +30,191 @@ import {
   compFromDisplay,
   sliderUnitLabel as sliderUnitLabelFor,
 } from "./units.mjs";
+
+// --- BO mode -------------------------------------------------------------
+// All of the logic lives in bo.mjs (engine) and bo_view.mjs (draw-lists);
+// everything here is DOM wiring and canvas calls, which is why those two
+// modules can be held to 100% unit coverage while this file is covered by
+// Playwright instead.
+const BO_SEED = 0;
+const BO_SEED_COUNT = 3;
+const BO_MAX_ITERS = 60;
+const BO_SPEEDS = [1, 2, 0.5];
+const BO_BASE_CADENCE_MS = 700;
+
+let boState = null;         // null whenever BO mode is off
+let boBands = null;         // precomputed random-search percentile bands
+let boTrace = null;         // hypervolume achieved by the BO arm so far
+let boDisplayY = null;      // eased posterior means, what the scatter draws
+let boPlaying = false;
+let boSpeedIdx = 0;
+let boLastStepAt = 0;
+let boNarration = "";
+let boCandidates = null;
+
+function boActive() { return boState !== null; }
+
+function boLockControls(locked) {
+  for (const id of ["toggle-x", "toggle-day", "filter-add", "filter-clear"]) {
+    document.getElementById(id)?.classList.toggle("bo-locked", locked);
+  }
+  document.getElementById("filter-rows")?.classList.toggle("bo-locked", locked);
+}
+
+function boEnter() {
+  if (!strengthParams || !compositionsData) return;   // model still resolving
+  boCandidates = buildCandidateSet(strengthParams, compositionsData, scatterDay);
+  const ref = referenceFor(scatterXAxis, scatterDay);
+  const objectiveX = scatterXAxis === "cost" ? boCandidates.cost : boCandidates.gwp;
+  const seedMixes = chooseSeeds(boCandidates.mix.length, BO_SEED_COUNT, BO_SEED);
+
+  boState = createBOState({
+    strengthParams, candidates: boCandidates, objectiveX,
+    refX: ref.refX, refY: ref.refY, seedMixes,
+  });
+  // The random arm needs no model, so the whole distribution is affordable up
+  // front: 200 restarts is a few milliseconds. Same seed mixes as the BO arm.
+  boBands = randomArmTraces({
+    candidates: boCandidates, objectiveX, refX: ref.refX, refY: ref.refY,
+    seedMixes, nIters: BO_MAX_ITERS, nRestarts: 200, seed: 1,
+  });
+  boTrace = [observedHypervolume(boState)];
+  boDisplayY = Float64Array.from(boState.mu);
+  boPlaying = false;
+  boLastStepAt = 0;
+  boNarration = narrate({
+    iteration: 0, label: null, ehvi: 0,
+    hypervolume: boTrace[0], previousHypervolume: boTrace[0], poolExhausted: false,
+  });
+
+  document.getElementById("bo-panel")?.classList.remove("hidden");
+  document.getElementById("bo-hv-canvas")?.classList.remove("hidden");
+  document.getElementById("mix-insight-text")?.classList.add("hidden");
+  // The panel is showing a hypervolume chart, so the mix-specific header and
+  // the Pareto pill (which describes the selected mix) would both mislead.
+  const title = document.querySelector(".mix-insight-title");
+  if (title) { title.dataset.boPrev = title.textContent; title.textContent = "Optimization Progress"; }
+  document.getElementById("pareto-pill")?.classList.add("hidden");
+  document.getElementById("bo-toggle")?.setAttribute("aria-pressed", "true");
+  boLockControls(true);
+  boRenderPanels();
+  startAnimLoop();
+}
+
+function boExit() {
+  boState = null;
+  boBands = null;
+  boTrace = null;
+  boDisplayY = null;
+  boCandidates = null;
+  boPlaying = false;
+  document.getElementById("bo-panel")?.classList.add("hidden");
+  document.getElementById("bo-hv-canvas")?.classList.add("hidden");
+  document.getElementById("mix-insight-text")?.classList.remove("hidden");
+  const title = document.querySelector(".mix-insight-title");
+  if (title && title.dataset.boPrev) { title.textContent = title.dataset.boPrev; delete title.dataset.boPrev; }
+  document.getElementById("pareto-pill")?.classList.remove("hidden");
+  document.getElementById("bo-toggle")?.setAttribute("aria-pressed", "false");
+  document.getElementById("bo-play").textContent = "Play";
+  boLockControls(false);
+  update();
+}
+
+function boAdvance() {
+  if (!boState || boState.pool.length === 0 || boState.iteration >= BO_MAX_ITERS - 1) {
+    boPlaying = false;
+    document.getElementById("bo-play").textContent = "Play";
+    if (boState && boState.pool.length === 0) {
+      boNarration = narrate({
+        iteration: boState.iteration, label: null, ehvi: 0,
+        hypervolume: boTrace[boTrace.length - 1],
+        previousHypervolume: boTrace[boTrace.length - 1], poolExhausted: true,
+      });
+      boRenderPanels();
+    }
+    return;
+  }
+  const prevHv = boTrace[boTrace.length - 1];
+  const poolBefore = [...boState.pool];
+  const { picked, acqValues, hypervolume } = stepBO(boState);
+  boTrace.push(hypervolume);
+  const ehvi = acqValues[poolBefore.indexOf(picked)] ?? 0;
+
+  boNarration = narrate({
+    iteration: boState.iteration,
+    label: mixLabel(boCandidates.mix[picked]),
+    ehvi,
+    hypervolume,
+    previousHypervolume: prevHv,
+    poolExhausted: false,
+  });
+
+  // Re-point the composition (and therefore the strength curve) at the mix
+  // just acquired, reusing the existing transition machinery.
+  animateToComposition(compositionsData.compositions[boCandidates.mix[picked]]);
+  boRenderPanels();
+}
+
+function mixLabel(mixIdx) {
+  const analysis = mixAnalyses && mixAnalyses[String(mixIdx)];
+  const m = analysis && /\*\*(.+?)\*\*/.exec(analysis);
+  return m ? m[1] : `mix #${mixIdx}`;
+}
+
+function boRenderPanels() {
+  document.getElementById("bo-iter").textContent =
+    `Iteration ${boState ? boState.iteration : 0}`;
+  const narrationEl = document.getElementById("ingredient-insight-text");
+  if (narrationEl) narrationEl.textContent = boNarration;
+  drawLearningCurve();
+}
+
+function drawLearningCurve() {
+  const canvas = document.getElementById("bo-hv-canvas");
+  if (!canvas || !boState) return;
+  const { ctx, W, H } = setupHiDPICanvas(canvas);
+  const clr = getCanvasColors();
+  const dl = buildLearningCurveDrawList({
+    boTrace, bands: boBands, nIters: BO_MAX_ITERS,
+  });
+  const pad = { top: 8, right: 8, bottom: 18, left: 40 };
+  const xs = (i) => pad.left + (i / (BO_MAX_ITERS - 1)) * (W - pad.left - pad.right);
+  const ys = (v) => H - pad.bottom - (v / dl.yMax) * (H - pad.top - pad.bottom);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Random-search p10-p90 band.
+  ctx.beginPath();
+  ctx.moveTo(xs(0), ys(dl.band[0].lo));
+  for (const b of dl.band) ctx.lineTo(xs(b.i), ys(b.lo));
+  for (let k = dl.band.length - 1; k >= 0; k--) ctx.lineTo(xs(dl.band[k].i), ys(dl.band[k].hi));
+  ctx.closePath();
+  ctx.fillStyle = clr.point;
+  ctx.globalAlpha = 0.18;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  const line = (pts, stroke, dash) => {
+    if (!pts.length) return;
+    ctx.beginPath();
+    ctx.setLineDash(dash);
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1.6;
+    ctx.moveTo(xs(pts[0].i), ys(pts[0].v));
+    for (const p of pts) ctx.lineTo(xs(p.i), ys(p.v));
+    ctx.stroke();
+    ctx.setLineDash([]);
+  };
+  line(dl.median, clr.point, [4, 3]);
+  line(dl.bo, clr.pareto, []);
+
+  ctx.fillStyle = clr.axis ?? clr.point;
+  ctx.font = "10px system-ui, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("Hypervolume", pad.left, pad.top + 8);
+  ctx.textAlign = "right";
+  ctx.fillText(`${BO_MAX_ITERS} iters`, W - pad.right, H - 4);
+}
 
 // --- Shared Helpers ---
 function easeInOutCubic(t) {
@@ -1362,6 +1564,11 @@ let _currentInsightIdx = null; // track which mix is currently displayed
 const _placeholderHTML = '<span class="mix-insight-placeholder">Click a data point to see mix analysis.</span>';
 
 function updateMixInsight() {
+  // In BO mode this panel shows the hypervolume learning curve instead of mix
+  // prose. Bail out rather than repopulating text nobody can see -- the
+  // acquisition path calls animateToComposition every iteration, which would
+  // otherwise fight the swap.
+  if (boActive()) return;
   const textEl = document.getElementById("mix-insight-text");
   const bodyEl = document.querySelector(".mix-insight-body");
   const paretoPill = document.getElementById("pareto-pill");
@@ -1692,9 +1899,13 @@ function drawStrengthCurve() {
     const isInteracting = _sliderActive || isAnimating || showPreview;
     nPts = isInteracting ? 32 : 64;
     times = logSpacedTimes(nPts);
-    const { means: m, variances } = predictStrengthCurve(
-      currentComposition, times, strengthParams
-    );
+    // In BO mode the curve must come from the CURRENT conditioning set. Leaving
+    // it on the full-data model would draw a confident band beside a scatter
+    // driven by a handful of observations -- contradictory, not just a missed
+    // opportunity.
+    const { means: m, variances } = boActive()
+      ? predictStrengthCurveSubset(boState, currentComposition, times)
+      : predictStrengthCurve(currentComposition, times, strengthParams);
     means = m;
     stds = computeStds(variances, strengthParams);
   }
@@ -2009,8 +2220,41 @@ function drawScatter() {
   let xPreds = scatterXAxis === "cost" ? costPreds : gwpPreds;
   let strPreds = compositionsData.strength_predictions[String(scatterDay)].map(v => v * yFactor);
 
-  // Use cached Pareto mask (scale-invariant, keyed by scatterDay + scatterXAxis)
-  let paretoMask = getCachedParetoMask(xPreds, strPreds);
+  // In BO mode the y values are the CURRENT subset model's eased posterior
+  // means for the candidate mixes, not the shipped full-data predictions.
+  let boDraw = null;
+  if (boActive()) {
+    const cand = boCandidates;
+    const perMix = new Float64Array(compositionsData.n_compositions);
+    const sdPerMix = new Float64Array(compositionsData.n_compositions);
+    const obsPerMix = new Float64Array(compositionsData.n_compositions);
+    const acquiredMixes = [];
+    for (let k = 0; k < cand.mix.length; k++) {
+      perMix[cand.mix[k]] = boDisplayY[k] * yFactor;
+      sdPerMix[cand.mix[k]] = Math.sqrt(boState.variance[k]) * yFactor;
+      obsPerMix[cand.mix[k]] = cand.observedY[k] * yFactor;
+    }
+    for (const k of boState.acquired) acquiredMixes.push(cand.mix[k]);
+    const ref = referenceFor(scatterXAxis, scatterDay);
+    boDraw = buildScatterDrawList({
+      xs: xPreds,
+      displayY: Array.from(perMix),
+      sd: Array.from(sdPerMix),
+      observedY: Array.from(obsPerMix),
+      acquired: acquiredMixes,
+      newest: boState.lastPicked === null ? null : cand.mix[boState.lastPicked],
+      refX: ref.refX * (scatterXAxis === "cost" ? df.costFactor : df.gwpFactor),
+      refY: ref.refY * yFactor,
+    });
+    strPreds = Array.from(perMix);
+  }
+
+  // Use cached Pareto mask (scale-invariant, keyed by scatterDay + scatterXAxis).
+  // Bypassed in BO mode: the cache key ignores the values, which is safe only
+  // while they are static, and here they move every frame.
+  let paretoMask = boActive()
+    ? computeParetoMask(xPreds, strPreds)
+    : getCachedParetoMask(xPreds, strPreds);
 
   // If animating between objectives, interpolate positions
   let transT = 1;
@@ -2101,8 +2345,50 @@ function drawScatter() {
     ctx.globalAlpha = 1.0;
   }
 
+  // BO mode: ghost the unacquired, halo by posterior sd, and draw the observed
+  // staircase solid on top of the dashed predicted one already drawn above.
+  if (boDraw) {
+    for (const p of boDraw.points) {
+      const px = xScale(xVals[p.i]);
+      const py = yScale(Math.max(0, p.y));
+      if (p.halo > 0) {
+        ctx.beginPath();
+        ctx.arc(px, py, 4 + p.halo * 14, 0, 2 * Math.PI);
+        ctx.fillStyle = clr.point;
+        ctx.globalAlpha = 0.09;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      ctx.beginPath();
+      const r = p.kind === "newest" ? 6.5 : p.kind === "acquired" ? 4.5 : 3;
+      ctx.arc(px, py, r, 0, 2 * Math.PI);
+      ctx.globalAlpha = p.alpha;
+      ctx.fillStyle = p.kind === "ghost" ? clr.point : clr.pareto;
+      ctx.fill();
+      if (p.kind === "newest") {
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = clr.pareto;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (boDraw.observedFront.length) {
+      ctx.beginPath();
+      ctx.strokeStyle = clr.pareto;
+      ctx.lineWidth = 2;
+      const f = boDraw.observedFront;
+      ctx.moveTo(xScale(f[0].x), yScale(f[0].y));
+      for (let k = 1; k < f.length; k++) {
+        ctx.lineTo(xScale(f[k].x), yScale(f[k - 1].y));
+        ctx.lineTo(xScale(f[k].x), yScale(f[k].y));
+      }
+      ctx.stroke();
+    }
+  }
+
   // Draw points (apply filter if active)
-  for (let i = 0; i < xVals.length; i++) {
+  for (let i = 0; i < xVals.length && !boDraw; i++) {
     // Check all filter conditions
     if (scatterFilter && scatterFilter.length > 0) {
       const comp = compositionsData.compositions[i];
@@ -2516,6 +2802,20 @@ function animLoop(now) {
     _firstAnimFrameDone = true;
   }
 
+  // BO mode: ease the drawn posterior towards the model's current belief, and
+  // advance an iteration when the cadence timer is due.
+  let boConverged = true;
+  if (boActive()) {
+    boConverged = easeMeans(boDisplayY, boState.mu, easingFactor(dt, _reduceMotion));
+    if (boPlaying) {
+      const cadence = BO_BASE_CADENCE_MS / BO_SPEEDS[boSpeedIdx];
+      if (now - boLastStepAt >= cadence) {
+        boLastStepAt = now;
+        boAdvance();
+      }
+    }
+  }
+
   // Redraw. A disappearing preview gets one additional frame so the solid
   // curve immediately returns from the 32-point interaction grid to 64 points.
   drawScatter();
@@ -2528,7 +2828,8 @@ function animLoop(now) {
   const hasCurveAnim = Math.abs(curveObsHoverScale - curveHoverTarget) > 0.01;
   const hasObsAnim = Math.abs(obsOpacity - obsTarget) > 0.01;
   const hasYAxisAnim = _curveYMaxTarget !== null && Math.abs(_curveYMax - _curveYMaxTarget) > 0.5;
-  if (!previewConverged || hasHoverAnim || hasCurveAnim || hasObsAnim || hasYAxisAnim || animationId !== null || scatterTransition !== null || unitTransition !== null || _curveTransition !== null || _previewCurveTransition !== null || _previewIdleRedrawPending) {
+  const hasBoAnim = boActive() && (boPlaying || !boConverged);
+  if (!previewConverged || hasHoverAnim || hasCurveAnim || hasObsAnim || hasYAxisAnim || hasBoAnim || animationId !== null || scatterTransition !== null || unitTransition !== null || _curveTransition !== null || _previewCurveTransition !== null || _previewIdleRedrawPending) {
     animLoopId = requestAnimationFrame(animLoop);
   } else {
     animLoopId = null;
@@ -2850,6 +3151,34 @@ function setupEventListeners() {
     drawScatter();
   }
 
+  // --- BO mode controls ---
+  document.getElementById("bo-toggle")?.addEventListener("click", () => {
+    if (boActive()) boExit(); else boEnter();
+  });
+  document.getElementById("bo-play")?.addEventListener("click", (e) => {
+    if (!boActive()) return;
+    boPlaying = !boPlaying;
+    e.currentTarget.textContent = boPlaying ? "Pause" : "Play";
+    boLastStepAt = performance.now();
+    startAnimLoop();
+  });
+  document.getElementById("bo-step")?.addEventListener("click", () => {
+    if (!boActive()) return;
+    boPlaying = false;
+    document.getElementById("bo-play").textContent = "Play";
+    boAdvance();
+    startAnimLoop();
+  });
+  document.getElementById("bo-reset")?.addEventListener("click", () => {
+    if (!boActive()) return;
+    boExit();
+    boEnter();
+  });
+  document.getElementById("bo-speed-btn")?.addEventListener("click", (e) => {
+    boSpeedIdx = (boSpeedIdx + 1) % BO_SPEEDS.length;
+    e.currentTarget.textContent = `${BO_SPEEDS[boSpeedIdx]}\u00d7`;
+  });
+
   document.getElementById("filter-add").addEventListener("click", () => {
     addFilterRow();
   });
@@ -2969,6 +3298,24 @@ document.addEventListener("invalidate-scatter", () => {
 if (typeof location !== "undefined" &&
     new URLSearchParams(location.search).get("test") === "1") {
   window.__test = {
+    // --- BO mode ---
+    get boActive() { return boActive(); },
+    get boIteration() { return boState ? boState.iteration : null; },
+    get boAcquiredCount() { return boState ? boState.acquired.length : null; },
+    get boHypervolume() { return boTrace ? boTrace[boTrace.length - 1] : null; },
+    get boHypervolumeTrace() { return boTrace ? [...boTrace] : null; },
+    get boPlaying() { return boPlaying; },
+    get boPoolSize() { return boState ? boState.pool.length : null; },
+    // Sum of the drawn posterior means: a cheap scalar that must change as the
+    // model learns, so a spec can assert the frontier actually moves.
+    get boDisplaySum() {
+      if (!boDisplayY) return null;
+      let acc = 0;
+      for (const v of boDisplayY) acc += v;
+      return acc;
+    },
+    boStep() { boAdvance(); startAnimLoop(); },
+
     get currentComposition() { return currentComposition ? [...currentComposition] : null; },
     get displayPreviewComp() { return displayPreviewComp ? [...displayPreviewComp] : null; },
     get previewSource() { return previewSource; },

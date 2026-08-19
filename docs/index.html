@@ -108,6 +108,10 @@
       <a href="https://github.com/facebookresearch/SustainableConcrete" target="_blank" rel="noopener">GitHub</a>
     </nav>
     <div class="header-actions">
+      <button class="bo-toggle" id="bo-toggle" aria-pressed="false"
+              title="Replay multi-objective Bayesian optimization over the mix catalogue">
+        Run Optimization
+      </button>
       <div class="cite-group">
         <span class="cite-label">Cite</span>
         <button class="cite-btn" id="cite-bibtex" data-format="bibtex">BibTeX</button>
@@ -200,6 +204,23 @@
           </span>
         </div>
         <div id="filter-rows"></div>
+        <div class="bo-panel hidden" id="bo-panel">
+          <div class="bo-controls">
+            <button id="bo-play" aria-label="Play or pause the optimization">Play</button>
+            <button id="bo-step" aria-label="Advance one iteration">Step</button>
+            <button id="bo-reset" aria-label="Reset the optimization">Reset</button>
+            <span class="bo-speed">
+              Speed
+              <button id="bo-speed-btn" aria-label="Change playback speed">1&times;</button>
+            </span>
+            <span class="bo-iter" id="bo-iter">Iteration 0</span>
+          </div>
+          <p class="bo-caveat">
+            Retrospective replay: hyperparameters stay fixed at the full-data fit and
+            outcomes come from measurements already in the dataset. Both arms are scored
+            on those measurements, never on the model&rsquo;s own predictions.
+          </p>
+        </div>
         </div>
         <div class="mobile-sliders-view hidden"></div>
         </div>
@@ -213,6 +234,8 @@
         </div>
         <div class="mix-insight-body">
           <p class="mix-insight-text" id="mix-insight-text"><span class="mix-insight-placeholder">Click a data point to see mix analysis.</span></p>
+          <canvas id="bo-hv-canvas" class="bo-hv-canvas hidden"
+                  aria-label="Hypervolume achieved per iteration, Bayesian optimization versus random search"></canvas>
         </div>
       </div>
 
