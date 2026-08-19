@@ -24,7 +24,22 @@ import {
   choleskySmall,
   extendCholeskyBlock,
   appendCholeskyBlock,
+  kernelBlock,
+  selfKernel,
+  buildCandidateSet,
 } from "../docs/bo.mjs";
+import { kernel as gpKernel } from "../docs/gp.mjs";
+import { readFileSync } from "node:fs";
+
+// The deployed model and catalogue, exactly as the browser fetches them.
+const strengthParams = JSON.parse(
+  readFileSync(new URL("../docs/model/strength.json", import.meta.url), "utf8"),
+);
+const compositionsData = JSON.parse(
+  readFileSync(new URL("../docs/model/compositions.json", import.meta.url), "utf8"),
+);
+const D_AUG = strengthParams.d_aug;
+const X_FLAT = Float64Array.from(strengthParams.X_train.flat());
 
 // Deterministic uniform stream, shared by the linear-algebra fixtures.
 function makeUniform(seed) {
@@ -492,6 +507,166 @@ test("extendCholeskyBlock from an empty conditioning set is a plain factorisatio
   assert.equal(Lb.length, 0);
   appendCholeskyBlock(L, ld, 0, Lb, Lnn, b);
   assert.ok(reconstructionError(L, ld, b, A) < 1e-9);
+});
+
+// ---------------------------------------------------------------------------
+// Kernel evaluation on post-transform rows.
+//
+// bo.mjs needs K between rows that are ALREADY in X_train's post-transform
+// space -- an access pattern neither gp.mjs (scalar, arbitrary vectors) nor
+// gp_v2_fast.mjs (one composition across many times) has. Rather than perform
+// surgery on gp_v2_fast's deliberately-inlined hot loop, bo.mjs has its own
+// block builder, and these tests pin it to gp.mjs's canonical scalar kernel so
+// the two cannot silently diverge on a schema change.
+// ---------------------------------------------------------------------------
+
+test("kernelBlock agrees with gp.mjs's canonical scalar kernel", () => {
+  const rowsA = [0, 5, 100, 331, 669];
+  const rowsB = [1, 42, 500];
+  const A = Float64Array.from(rowsA.flatMap((r) => strengthParams.X_train[r]));
+  const B = Float64Array.from(rowsB.flatMap((r) => strengthParams.X_train[r]));
+  const K = kernelBlock(A, rowsA.length, B, rowsB.length, D_AUG, strengthParams);
+
+  for (let c = 0; c < rowsB.length; c++) {
+    for (let i = 0; i < rowsA.length; i++) {
+      const want = gpKernel(
+        strengthParams.X_train[rowsA[i]],
+        strengthParams.X_train[rowsB[c]],
+        strengthParams,
+      );
+      const got = K[c * rowsA.length + i]; // column-major
+      assert.ok(
+        Math.abs(got - want) <= 1e-12 * Math.max(1, Math.abs(want)),
+        `row ${rowsA[i]} vs ${rowsB[c]}: ${got} != ${want}`,
+      );
+    }
+  }
+});
+
+test("kernelBlock is symmetric on the diagonal block", () => {
+  const rows = [3, 77, 400];
+  const A = Float64Array.from(rows.flatMap((r) => strengthParams.X_train[r]));
+  const K = kernelBlock(A, rows.length, A, rows.length, D_AUG, strengthParams);
+  for (let i = 0; i < rows.length; i++) {
+    for (let j = 0; j < rows.length; j++) {
+      assert.ok(Math.abs(K[j * rows.length + i] - K[i * rows.length + j]) < 1e-15);
+    }
+  }
+});
+
+test("selfKernel matches the full kernel evaluated at a point against itself", () => {
+  // gp_v2_fast.mjs shortcuts k(x,x) to (blindOS + specificOS + rbfOS) * h(t)^2
+  // because every squared distance vanishes. Confirm the shortcut is exact.
+  for (const r of [0, 17, 250, 669]) {
+    const row = Float64Array.from(strengthParams.X_train[r]);
+    const want = gpKernel(strengthParams.X_train[r], strengthParams.X_train[r], strengthParams);
+    const got = selfKernel(row, 0, strengthParams);
+    assert.ok(Math.abs(got - want) <= 1e-12 * want, `row ${r}: ${got} != ${want}`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Candidate set: mapping training rows back onto catalogue mixes.
+// ---------------------------------------------------------------------------
+
+test("buildCandidateSet maps every training row to a catalogue mix", () => {
+  const cs = buildCandidateSet(strengthParams, compositionsData, 28);
+  assert.equal(cs.rowMix.length, strengthParams.n_train);
+  for (let r = 0; r < cs.rowMix.length; r++) {
+    assert.ok(
+      cs.rowMix[r] >= 0 && cs.rowMix[r] < compositionsData.n_compositions,
+      `row ${r} did not map to a mix`,
+    );
+  }
+});
+
+test("buildCandidateSet finds 147 day-28 candidates out of 149 mixes", () => {
+  const cs = buildCandidateSet(strengthParams, compositionsData, 28);
+  assert.equal(cs.mix.length, 147);
+  assert.equal(new Set(cs.mix).size, 147, "each mix must appear at most once");
+});
+
+test("buildCandidateSet also works for day 1", () => {
+  const cs = buildCandidateSet(strengthParams, compositionsData, 1);
+  assert.equal(cs.mix.length, 147);
+});
+
+test("buildCandidateSet excludes mixes lacking an observation at the target day", () => {
+  const at28 = new Set(buildCandidateSet(strengthParams, compositionsData, 28).mix);
+  for (let m = 0; m < compositionsData.n_compositions; m++) {
+    const hasDay28 = compositionsData.observations[String(m)].some(([d]) => d === 28);
+    assert.equal(at28.has(m), hasDay28, `mix ${m} inclusion disagrees with its observations`);
+  }
+});
+
+test("buildCandidateSet groups every observation row under its mix", () => {
+  const cs = buildCandidateSet(strengthParams, compositionsData, 28);
+  let total = 0;
+  for (let k = 0; k < cs.mix.length; k++) {
+    const rows = cs.rowsOfCandidate[k];
+    total += rows.length;
+    assert.ok(rows.length >= 3 && rows.length <= 5, `mix ${cs.mix[k]} has ${rows.length} rows`);
+    for (const r of rows) assert.equal(cs.rowMix[r], cs.mix[k]);
+  }
+  // 147 of the 149 mixes, so a little short of the full 670 rows.
+  assert.ok(total > 640 && total <= strengthParams.n_train, `grouped ${total} rows`);
+});
+
+test("buildCandidateSet recovers the measured strength at the target day", () => {
+  const cs = buildCandidateSet(strengthParams, compositionsData, 28);
+  for (let k = 0; k < cs.mix.length; k += 17) {
+    const obs = compositionsData.observations[String(cs.mix[k])].filter(([d]) => d === 28);
+    const want = Math.max(...obs.map(([, psi]) => psi));
+    assert.ok(Math.abs(cs.observedY[k] - want) < 1e-6, `mix ${cs.mix[k]}`);
+  }
+});
+
+test("buildCandidateSet carries the exact GWP and cost for each candidate", () => {
+  const cs = buildCandidateSet(strengthParams, compositionsData, 28);
+  for (let k = 0; k < cs.mix.length; k += 23) {
+    assert.ok(Math.abs(cs.gwp[k] + compositionsData.gwp_predictions[cs.mix[k]]) < 1e-9);
+    assert.ok(Math.abs(cs.cost[k] + compositionsData.cost_predictions[cs.mix[k]]) < 1e-9);
+    assert.ok(cs.gwp[k] > 0 && cs.cost[k] > 0, "stored negated in JSON, positive here");
+  }
+});
+
+test("buildCandidateSet rejects an unsupported day rather than returning an empty set", () => {
+  assert.throws(() => buildCandidateSet(strengthParams, compositionsData, 7), /day/i);
+});
+
+test("buildCandidateSet defaults log_time_offset to 1.0 when absent", () => {
+  // gp.mjs and gp_v2_fast.mjs both read this field as `|| 1.0`, treating it as
+  // optional in the schema; bo.mjs matches so the three cannot disagree about
+  // what a missing field means. The deployed model happens to ship 1.0, so
+  // dropping it must be a no-op.
+  const noOffset = JSON.parse(JSON.stringify(strengthParams));
+  delete noOffset.log_time_offset;
+  const a = buildCandidateSet(strengthParams, compositionsData, 28);
+  const b = buildCandidateSet(noOffset, compositionsData, 28);
+  assert.deepEqual(b.mix, a.mix);
+});
+
+test("buildCandidateSet fails loudly if the two artifacts have drifted apart", () => {
+  // strength.json's X_train and compositions.json must describe the same mixes.
+  // If a regeneration updates one and not the other, rows stop matching, and
+  // silently dropping them would corrupt every posterior in the run.
+  const drifted = JSON.parse(JSON.stringify(compositionsData));
+  drifted.compositions = drifted.compositions.map((c) => c.map((v) => v + 1));
+  assert.throws(
+    () => buildCandidateSet(strengthParams, drifted, 28),
+    /does not match any catalogue mix/,
+  );
+});
+
+test("buildCandidateSet fails loudly on a degenerate normalisation range", () => {
+  // hi == lo would make the un-normalisation divide by zero and every row map
+  // to the wrong mix, silently.
+  const broken = JSON.parse(JSON.stringify(strengthParams));
+  broken.normalize_upper[0] = broken.normalize_lower[0];
+  assert.throws(
+    () => buildCandidateSet(broken, compositionsData, 28),
+    /normalis|normaliz|degenerate/i,
+  );
 });
 
 // ---------------------------------------------------------------------------

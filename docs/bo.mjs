@@ -326,3 +326,204 @@ export function appendCholeskyBlock(L, ld, n, Lb, Lnn, b) {
   }
   return n + b;
 }
+
+// ---------------------------------------------------------------------------
+// Kernel evaluation on post-transform rows.
+//
+// The composite kernel is
+//     K(x1,x2) = h(t1) * [ M_blind + M_specific * hamming(s1,s2) + RBF_time ] * h(t2)
+// exactly as in gp.mjs::kernel, which is the canonical definition.
+//
+// bo.mjs needs K between rows that are ALREADY in X_train's post-transform
+// space, an access pattern neither gp.mjs (scalar, arbitrary vectors) nor
+// gp_v2_fast.mjs (one composition across many times) provides. Rather than
+// perform surgery on gp_v2_fast's deliberately-inlined hot loop -- its header
+// records measured timings for that inlining -- this is a separate block
+// builder, pinned to gp.mjs's scalar kernel by a parity test so the two cannot
+// diverge on a schema change.
+// ---------------------------------------------------------------------------
+
+const SQRT5 = 2.23606797749979;
+
+function unpackKernel(params) {
+  return {
+    blindDims: params.matern_blind.active_dims,
+    blindLS: params.matern_blind.lengthscales,
+    blindOS: params.matern_blind.outputscale,
+    specDims: params.matern_specific.active_dims,
+    specLS: params.matern_specific.lengthscales,
+    specOS: params.matern_specific.outputscale,
+    isHamming: params.matern_specific.source_kernel_kind === "hamming",
+    srcCorr: params.matern_specific.source_correlation,
+    srcDim: params.source_dim_raw,
+    rbfIdx: params.rbf_time.active_dims[0],
+    rbfLS: params.rbf_time.lengthscale,
+    rbfOS: params.rbf_time.outputscale,
+    gateTau: params.gate_tau,
+    timeDim: params.time_dim_aug,
+  };
+}
+
+function gate(t, tau) {
+  return 1.0 - Math.exp(-Math.max(0.0, t) / tau);
+}
+
+/** k(x, x), which collapses to the summed outputscales times h(t)^2. */
+export function selfKernel(rows, off, params) {
+  const p = unpackKernel(params);
+  const h = gate(rows[off + p.timeDim], p.gateTau);
+  return (p.blindOS + p.specOS + p.rbfOS) * h * h;
+}
+
+/**
+ * Cross-covariance block, returned column-major as [nA x nB]:
+ * entry (i, c) lives at `out[c * nA + i]`.
+ */
+export function kernelBlock(A, nA, B, nB, dAug, params) {
+  const p = unpackKernel(params);
+  const nBlind = p.blindDims.length;
+  const nSpec = p.specDims.length;
+
+  const hA = new Float64Array(nA);
+  for (let i = 0; i < nA; i++) hA[i] = gate(A[i * dAug + p.timeDim], p.gateTau);
+  const hB = new Float64Array(nB);
+  for (let c = 0; c < nB; c++) hB[c] = gate(B[c * dAug + p.timeDim], p.gateTau);
+
+  const out = new Float64Array(nA * nB);
+  for (let c = 0; c < nB; c++) {
+    const bOff = c * dAug;
+    const colOff = c * nA;
+    for (let i = 0; i < nA; i++) {
+      const aOff = i * dAug;
+
+      let r2 = 0;
+      for (let k = 0; k < nBlind; k++) {
+        const d = p.blindDims[k];
+        const dd = (A[aOff + d] - B[bOff + d]) / p.blindLS[k];
+        r2 += dd * dd;
+      }
+      let r = Math.sqrt(r2);
+      let s5r = SQRT5 * r;
+      const kBlind = p.blindOS * (1 + s5r + (5 * r2) / 3) * Math.exp(-s5r);
+
+      r2 = 0;
+      for (let k = 0; k < nSpec; k++) {
+        const d = p.specDims[k];
+        const dd = (A[aOff + d] - B[bOff + d]) / p.specLS[k];
+        r2 += dd * dd;
+      }
+      r = Math.sqrt(r2);
+      s5r = SQRT5 * r;
+      let kSpec = p.specOS * (1 + s5r + (5 * r2) / 3) * Math.exp(-s5r);
+      if (p.isHamming && A[aOff + p.srcDim] !== B[bOff + p.srcDim]) kSpec *= p.srcCorr;
+
+      const dt = (A[aOff + p.rbfIdx] - B[bOff + p.rbfIdx]) / p.rbfLS;
+      const kRbf = p.rbfOS * Math.exp(-0.5 * dt * dt);
+
+      out[colOff + i] = (kBlind + kSpec + kRbf) * hA[i] * hB[c];
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Candidate set.
+//
+// The browser already has everything needed to map each training row back to
+// its catalogue mix: un-normalising X_train with normalize_lower/upper recovers
+// the 9 raw columns verbatim, and the time column comes back as
+// 10^u[timeDim] - log_time_offset. Verified against the shipped artifacts: all
+// 670 rows match exactly one of the 149 compositions. No new export required.
+// ---------------------------------------------------------------------------
+
+const SUPPORTED_DAYS = [1, 28];
+
+/**
+ * Index the training rows by mix and assemble the candidate set for one day.
+ *
+ * Candidates are the mixes that actually have an observation at `day`, and
+ * each candidate's test row is lifted straight out of X_train rather than
+ * rebuilt through appendFeatures -- it is the same point, already transformed.
+ */
+export function buildCandidateSet(strengthParams, compositionsData, day) {
+  if (!SUPPORTED_DAYS.includes(day)) {
+    throw new Error(
+      `buildCandidateSet: unsupported day ${day} (expected one of ${SUPPORTED_DAYS.join(", ")})`,
+    );
+  }
+  const lo = strengthParams.normalize_lower;
+  const hi = strengthParams.normalize_upper;
+  for (let k = 0; k < lo.length; k++) {
+    if (hi[k] === lo[k]) {
+      throw new Error(
+        `buildCandidateSet: degenerate normalisation range at dim ${k} ` +
+        `(lower === upper === ${lo[k]}); un-normalising would divide by zero.`,
+      );
+    }
+  }
+
+  const dAug = strengthParams.d_aug;
+  const nTrain = strengthParams.n_train;
+  const timeDim = strengthParams.time_dim_raw;
+  const offset = strengthParams.log_time_offset || 1.0;
+  const X = strengthParams.X_train;
+
+  // Catalogue lookup keyed on the 9 rounded raw columns.
+  const nRaw = compositionsData.column_names.length;
+  const key = (v) => v.map((z) => z.toFixed(4)).join("|");
+  const lookup = new Map();
+  compositionsData.compositions.forEach((comp, m) => lookup.set(key(comp), m));
+
+  const rowMix = new Int32Array(nTrain);
+  const rowTime = new Float64Array(nTrain);
+  for (let r = 0; r < nTrain; r++) {
+    const raw = [];
+    for (let k = 0; k < nRaw; k++) raw.push(X[r][k] * (hi[k] - lo[k]) + lo[k]);
+    const m = lookup.get(key(raw));
+    if (m === undefined) {
+      throw new Error(
+        `buildCandidateSet: training row ${r} does not match any catalogue mix. ` +
+        "strength.json and compositions.json are out of sync; re-run " +
+        "experiments/regenerate_all_artifacts.sh.",
+      );
+    }
+    rowMix[r] = m;
+    rowTime[r] = Math.pow(10, X[r][timeDim] * (hi[timeDim] - lo[timeDim]) + lo[timeDim]) - offset;
+  }
+
+  const rowsByMix = new Map();
+  for (let r = 0; r < nTrain; r++) {
+    if (!rowsByMix.has(rowMix[r])) rowsByMix.set(rowMix[r], []);
+    rowsByMix.get(rowMix[r]).push(r);
+  }
+
+  const mix = [];
+  const rowsOfCandidate = [];
+  const testRowIdx = [];
+  for (const [m, rows] of [...rowsByMix.entries()].sort((a, b) => a[0] - b[0])) {
+    const atDay = rows.filter((r) => Math.abs(rowTime[r] - day) < 1e-6);
+    if (atDay.length === 0) continue;
+    mix.push(m);
+    rowsOfCandidate.push(rows);
+    testRowIdx.push(atDay[0]);
+  }
+
+  const m = mix.length;
+  const candX = new Float64Array(m * dAug);
+  const kSelf = new Float64Array(m);
+  const observedY = new Float64Array(m);
+  const gwp = new Float64Array(m);
+  const cost = new Float64Array(m);
+  for (let k = 0; k < m; k++) {
+    const src = X[testRowIdx[k]];
+    for (let d = 0; d < dAug; d++) candX[k * dAug + d] = src[d];
+    kSelf[k] = selfKernel(candX, k * dAug, strengthParams);
+    const obs = compositionsData.observations[String(mix[k])].filter(([d]) => d === day);
+    observedY[k] = Math.max(...obs.map(([, psi]) => psi));
+    // JSON stores -GWP and -Cost (Python maximises everything).
+    gwp[k] = -compositionsData.gwp_predictions[mix[k]];
+    cost[k] = -compositionsData.cost_predictions[mix[k]];
+  }
+
+  return { day, mix, rowMix, rowTime, rowsOfCandidate, candX, kSelf, observedY, gwp, cost, dAug };
+}
