@@ -118,3 +118,115 @@ export function hypervolume2D(xs, ys, refX, refY) {
   }
   return total;
 }
+
+// ---------------------------------------------------------------------------
+// Gaussian helpers.
+// ---------------------------------------------------------------------------
+
+const SQRT2 = Math.SQRT2;
+const INV_SQRT_2PI = 0.3989422804014327;
+
+/**
+ * Complementary error function, Numerical Recipes' Chebyshev form.
+ *
+ * Chosen over the more commonly copied Abramowitz & Stegun 7.1.26 because this
+ * one is accurate in a RELATIVE sense, whereas A&S 7.1.26 is only accurate in
+ * an ABSOLUTE sense (~1.5e-7). That distinction decides the far tail, which we
+ * care about: Phi(-5) is 2.87e-7, so an absolute 1.5e-7 error there is ~50%
+ * relative, and a candidate several sigma below the Pareto ceiling would get a
+ * meaningless acquisition value.
+ *
+ * Numerical Recipes quotes fractional error < 1.2e-7, but that is the bound for
+ * the truncated 7-coefficient form. With all 24 coefficients, as here, measured
+ * relative error against known values is ~1e-15 from z=0 out to z=-7 -- see
+ * "normalCdf keeps RELATIVE accuracy in the far tail" in test_js_bo.mjs.
+ */
+function erfc(x) {
+  const z = Math.abs(x);
+  const t = 2.0 / (2.0 + z);
+  const ty = 4.0 * t - 2.0;
+  const cof = [
+    -1.3026537197817094, 6.4196979235649026e-1, 1.9476473204185836e-2,
+    -9.561514786808631e-3, -9.46595344482036e-4, 3.66839497852761e-4,
+    4.2523324806907e-5, -2.0278578112534e-5, -1.624290004647e-6,
+    1.303655835580e-6, 1.5626441722e-8, -8.5238095915e-8,
+    6.529054439e-9, 5.059343495e-9, -9.91364156e-10,
+    -2.27365122e-10, 9.6467911e-11, 2.394038e-12,
+    -6.886027e-12, 8.94487e-13, 3.13092e-13,
+    -1.12708e-13, 3.81e-16, 7.106e-15,
+  ];
+  let d = 0.0;
+  let dd = 0.0;
+  for (let j = cof.length - 1; j > 0; j--) {
+    const tmp = d;
+    d = ty * d - dd + cof[j];
+    dd = tmp;
+  }
+  const ans = t * Math.exp(-z * z + 0.5 * (cof[0] + ty * d) - dd);
+  return x >= 0.0 ? ans : 2.0 - ans;
+}
+
+/** Standard normal density. */
+export function normalPdf(z) {
+  return INV_SQRT_2PI * Math.exp(-0.5 * z * z);
+}
+
+/** Standard normal CDF. */
+export function normalCdf(z) {
+  return 0.5 * erfc(-z / SQRT2);
+}
+
+/**
+ * E[max(0, Y - threshold)] for Y ~ N(mu, sd^2) — ordinary expected improvement.
+ *
+ * The `sd <= 0` branch is not defensive padding: a mix that has already been
+ * acquired has (numerically) zero posterior variance at its observed times,
+ * and `z` would be +/-Infinity.
+ */
+export function expectedImprovement(mu, sd, threshold) {
+  const gap = mu - threshold;
+  if (sd <= 0) return Math.max(0, gap);
+  const z = gap / sd;
+  return sd * normalPdf(z) + gap * normalCdf(z);
+}
+
+// ---------------------------------------------------------------------------
+// Expected hypervolume improvement — closed form.
+//
+// Only strength is uncertain here; GWP and cost come from deterministic linear
+// models, so a candidate's x is known exactly. With x fixed at g, the
+// hypervolume improvement from observing y is
+//
+//     HVI(y) = integral over [g, refX] of max(0, y - ceiling(x)) dx
+//
+// which is piecewise-LINEAR in y, with one piece per staircase segment right
+// of g. Expectation therefore passes straight through the sum:
+//
+//     E[HVI] = sum over segments of  width * EI(mu, sd; segment ceiling)
+//
+// Exact, O(P) per candidate, no quadrature and no sampling.
+// ---------------------------------------------------------------------------
+
+/**
+ * @param front Ascending non-dominated staircase from `paretoStaircase`.
+ *              Points outside the reference box are ignored, so the caller
+ *              may pass an unclipped front.
+ */
+export function expectedHVI(mu, sd, g, front, refX, refY) {
+  if (g > refX) return 0;
+
+  let total = 0;
+  let cursor = g;
+  let ceiling = refY;
+  for (const p of front) {
+    if (p.x > refX || p.y < refY) continue;
+    if (p.x > g) {
+      total += (p.x - cursor) * expectedImprovement(mu, sd, ceiling);
+      cursor = p.x;
+    }
+    // Left of the candidate the staircase only raises the ceiling it must beat.
+    ceiling = Math.max(ceiling, p.y);
+  }
+  total += (refX - cursor) * expectedImprovement(mu, sd, ceiling);
+  return total;
+}

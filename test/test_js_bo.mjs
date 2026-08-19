@@ -16,7 +16,23 @@ import {
   referenceFor,
   paretoStaircase,
   hypervolume2D,
+  normalPdf,
+  normalCdf,
+  expectedImprovement,
+  expectedHVI,
 } from "../docs/bo.mjs";
+
+// Deterministic normal sampler for the Monte-Carlo cross-checks. A flaky
+// statistical test is worse than none, so this is a fixed-seed LCG + Box-Muller
+// rather than Math.random().
+function makeNormalSampler(seed) {
+  let s = seed >>> 0;
+  const u01 = () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return (s + 0.5) / 4294967296;
+  };
+  return () => Math.sqrt(-2 * Math.log(u01())) * Math.cos(2 * Math.PI * u01());
+}
 
 // ---------------------------------------------------------------------------
 // Reference point — mirrors boxcrete.CONCRETE_REFERENCE_POINT.
@@ -176,6 +192,151 @@ test("hypervolume2D never decreases when a point is added", () => {
     assert.ok(hv >= prev, `hypervolume dropped at k=${k}: ${hv} < ${prev}`);
     prev = hv;
   }
+});
+
+// ---------------------------------------------------------------------------
+// Gaussian helpers and the closed-form acquisition function.
+// ---------------------------------------------------------------------------
+
+test("normalPdf matches known values and is symmetric", () => {
+  assert.ok(Math.abs(normalPdf(0) - 0.3989422804014327) < 1e-15);
+  assert.ok(Math.abs(normalPdf(1) - 0.24197072451914337) < 1e-15);
+  assert.equal(normalPdf(-2), normalPdf(2));
+});
+
+test("normalCdf matches known values to near machine precision", () => {
+  // Not exact equality: erfc(0) is 1 only to within rounding, so Phi(0) lands
+  // 1.6e-15 off 0.5. Measured relative error across these points is ~1e-15.
+  const rel = (got, want) => Math.abs(got - want) / Math.abs(want);
+  assert.ok(rel(normalCdf(0), 0.5) < 1e-14);
+  assert.ok(rel(normalCdf(1), 0.8413447460685429) < 1e-14);
+  assert.ok(rel(normalCdf(-1), 0.15865525393145707) < 1e-14);
+  assert.ok(rel(normalCdf(1.96), 0.9750021048517795) < 1e-14);
+});
+
+test("normalCdf keeps RELATIVE accuracy in the far tail", () => {
+  // The regime that matters: a candidate several sigma below the ceiling still
+  // needs a sensibly-scaled EHVI. An erf approximation with only ABSOLUTE
+  // accuracy (e.g. A&S 7.1.26 at 1.5e-7) returns garbage here -- Phi(-5) is
+  // 2.87e-7, so absolute 1.5e-7 is a ~50% relative error.
+  const rel = (got, want) => Math.abs(got - want) / want;
+  // Measured: ~4e-15 and ~3e-15 respectively, i.e. this form holds full
+  // double precision into the tail, not just the 1.2e-7 NR advertises.
+  assert.ok(rel(normalCdf(-5), 2.866515718791939e-7) < 1e-13);
+  assert.ok(rel(normalCdf(-7), 1.279812543885835e-12) < 1e-13);
+});
+
+test("normalCdf saturates without overflowing", () => {
+  assert.equal(normalCdf(40), 1);
+  assert.equal(normalCdf(-40), 0);
+  assert.ok(normalCdf(-10) > 0, "must underflow to 0 only when truly negligible");
+});
+
+test("normalCdf is monotone", () => {
+  let prev = -Infinity;
+  for (let z = -6; z <= 6; z += 0.25) {
+    const v = normalCdf(z);
+    assert.ok(v >= prev, `not monotone at z=${z}`);
+    prev = v;
+  }
+});
+
+test("expectedImprovement is the deterministic gap when sd is zero", () => {
+  assert.equal(expectedImprovement(5000, 0, 3000), 2000);
+  assert.equal(expectedImprovement(2000, 0, 3000), 0);
+});
+
+test("expectedImprovement at the threshold is sd/sqrt(2*pi)", () => {
+  const got = expectedImprovement(3000, 500, 3000);
+  assert.ok(Math.abs(got - 500 * 0.3989422804014327) < 1e-9);
+});
+
+test("expectedImprovement approaches the gap when the mean dominates", () => {
+  const got = expectedImprovement(9000, 100, 3000);
+  assert.ok(Math.abs(got - 6000) < 1e-6);
+});
+
+test("expectedImprovement is never negative, even far below the threshold", () => {
+  const got = expectedImprovement(1000, 200, 9000);
+  assert.ok(got >= 0, `EI must not go negative, got ${got}`);
+  assert.ok(got < 1e-6, "and should be negligible this far below");
+});
+
+test("expectedImprovement increases with both the mean and the uncertainty", () => {
+  assert.ok(expectedImprovement(3100, 500, 3000) > expectedImprovement(3000, 500, 3000));
+  assert.ok(expectedImprovement(3000, 800, 3000) > expectedImprovement(3000, 500, 3000));
+});
+
+test("expectedHVI reduces to the exact hypervolume improvement as sd -> 0", () => {
+  const xs = [100, 150];
+  const ys = [6000, 8000];
+  const front = paretoStaircase(xs, ys);
+  const base = hypervolume2D(xs, ys, 200, 5000);
+  for (const [g, mu] of [[120, 9000], [90, 7000], [180, 8500], [130, 5500]]) {
+    const exact = hypervolume2D([...xs, g], [...ys, mu], 200, 5000) - base;
+    const got = expectedHVI(mu, 0, g, front, 200, 5000);
+    assert.ok(Math.abs(got - exact) < 1e-9, `g=${g} mu=${mu}: ${got} vs ${exact}`);
+  }
+});
+
+test("expectedHVI agrees with Monte Carlo", () => {
+  const xs = [100, 150];
+  const ys = [6000, 8000];
+  const front = paretoStaircase(xs, ys);
+  const base = hypervolume2D(xs, ys, 200, 5000);
+  const randn = makeNormalSampler(12345);
+  const N = 200000;
+  for (const [g, mu, sd] of [[120, 7000, 1500], [90, 5200, 2000], [175, 9000, 800]]) {
+    let sum = 0;
+    for (let k = 0; k < N; k++) {
+      const y = mu + sd * randn();
+      sum += hypervolume2D([...xs, g], [...ys, y], 200, 5000) - base;
+    }
+    const mc = sum / N;
+    const cf = expectedHVI(mu, sd, g, front, 200, 5000);
+    // 1% is far outside MC noise at N=2e5 but well inside formula-error scale.
+    assert.ok(Math.abs(cf - mc) / Math.max(mc, 1) < 0.01, `g=${g}: cf=${cf} mc=${mc}`);
+  }
+});
+
+test("expectedHVI is zero for a candidate worse than the reference on x", () => {
+  const front = paretoStaircase([100, 150], [6000, 8000]);
+  assert.equal(expectedHVI(20000, 500, 250, front, 200, 5000), 0);
+});
+
+test("expectedHVI is zero when the candidate cannot beat the ceiling", () => {
+  const front = paretoStaircase([100], [9000]);
+  // g=150 sits under a ceiling of 9000; a mean of 2000 with sd 100 is ~70 sigma
+  // short, so the expectation underflows to exactly zero.
+  assert.equal(expectedHVI(2000, 100, 150, front, 200, 5000), 0);
+});
+
+test("expectedHVI treats an empty front as the bare reference box", () => {
+  // With nothing observed the ceiling is refY across the whole width.
+  const got = expectedHVI(8000, 1000, 150, [], 200, 5000);
+  const want = (200 - 150) * expectedImprovement(8000, 1000, 5000);
+  assert.ok(Math.abs(got - want) < 1e-9);
+});
+
+test("expectedHVI is never negative and increases with the mean", () => {
+  const front = paretoStaircase([100, 150], [6000, 8000]);
+  let prev = -1;
+  for (let mu = 3000; mu <= 12000; mu += 500) {
+    const v = expectedHVI(mu, 700, 130, front, 200, 5000);
+    assert.ok(v >= 0, `negative EHVI at mu=${mu}`);
+    assert.ok(v >= prev, `not monotone at mu=${mu}`);
+    prev = v;
+  }
+});
+
+test("expectedHVI ignores front points outside the reference box", () => {
+  const clean = paretoStaircase([100, 150], [6000, 8000]);
+  // Same front plus two points the reference point excludes.
+  const dirty = paretoStaircase([100, 150, 260, 80], [6000, 8000, 12000, 100]);
+  assert.equal(
+    expectedHVI(9000, 600, 130, dirty, 200, 5000),
+    expectedHVI(9000, 600, 130, clean, 200, 5000),
+  );
 });
 
 // ---------------------------------------------------------------------------
