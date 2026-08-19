@@ -60,7 +60,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       # Run each JS test individually rather than via a globbing wrapper
       # so a single test failure surfaces with its own step in the CI UI

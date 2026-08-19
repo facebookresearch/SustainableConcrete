@@ -32,7 +32,7 @@ PYTHON ?= python
 .PHONY: help \
         lint format \
         test-py test-js test-notebook-fmt test-notebooks \
-        test-e2e test-lighthouse \
+        test-e2e test-lighthouse test-js-bo \
         test check check-all
 
 help:
@@ -128,6 +128,45 @@ test-js:
 	  node "$$t" > /dev/null || { echo "FAILED: $$t"; node "$$t"; exit 1; }; \
 	done
 	@echo "All $(words $(JS_TESTS)) JS tests passed."
+	@$(MAKE) --no-print-directory test-js-bo
+
+# --- BO engine tests, with a hard 100% coverage gate -----------------
+# The BO feature's logic lives in pure modules (docs/bo.mjs, docs/bo_view.mjs)
+# precisely so it can be held to 100% coverage; anything that cannot be
+# unit-tested belongs in ui.mjs and is covered by Playwright instead.
+#
+# Uses node:test + --experimental-test-coverage rather than a new devDependency
+# (c8). Requires Node >= 22.8 for the --test-coverage-* threshold flags, which
+# is why package.json engines and the CI workflows pin 22. Verified: the gate
+# exits 1 when a threshold is unmet.
+#
+# --test-coverage-include scopes the report to the BO modules. Without it the
+# report would also cover gp.mjs, feature_registry.mjs and the test files
+# themselves, and 100% would be neither meaningful nor achievable.
+BO_TESTS = test/test_js_bo.mjs test/test_js_bo_view.mjs
+BO_MODULES = bo.mjs bo_view.mjs
+BO_COVERAGE_FLAGS = \
+  --experimental-test-coverage \
+  --test-coverage-include='docs/bo.mjs' \
+  --test-coverage-include='docs/bo_view.mjs' \
+  --test-coverage-lines=100 \
+  --test-coverage-branches=100 \
+  --test-coverage-functions=100
+
+test-js-bo:
+	@out=$$(node --test $(BO_COVERAGE_FLAGS) $(BO_TESTS) 2>&1); status=$$?; \
+	echo "$$out"; \
+	if [ $$status -ne 0 ]; then \
+	  echo "BO coverage gate FAILED (threshold unmet or test failure)."; exit 1; \
+	fi; \
+	for m in $(BO_MODULES); do \
+	  echo "$$out" | grep -qE "[ /]$$m[ ]+\|" || { \
+	    echo "BO coverage gate FAILED: $$m never appeared in the coverage report."; \
+	    echo "Node only reports files it actually loaded, so a module that no test"; \
+	    echo "imports is invisible and vacuously 'passes'. Import it from its suite."; \
+	    exit 1; }; \
+	done; \
+	echo "BO coverage gate passed: 100% lines/branches/functions on $(BO_MODULES)."
 
 # --- Notebook format validation ------------------------------------
 # Mirrors .github/workflows/notebooks.yml :notebook-lint. Just validates
@@ -177,9 +216,18 @@ test-notebooks:
 # --- E2E (Playwright) ----------------------------------------------
 # Mirrors .github/workflows/e2e.yml. Requires `npm ci` + a one-time
 # `npx playwright install --with-deps chromium` to set up browsers.
+#
+# CI=1 is load-bearing, not cosmetic. playwright.config.ts keys both the
+# worker count and the retry count off it: CI runs 1 worker with 2 retries,
+# while locally it defaults to fullyParallel with 0 retries. Without CI=1 a
+# clean checkout reports ~9 spurious desktop failures (unit-toggle,
+# scatter-toggle, font-uniformity, pre-model-shell, preview-curve) that are
+# pure timing flakiness under parallel load -- measured: 9 failed / 85 passed
+# unset, versus 0 failed / 94 passed with CI=1 on the same commit. Since this
+# target exists to predict the PR result, it has to reproduce CI's scheduling.
 test-e2e:
-	npx playwright test --project=desktop
-	npx playwright test --project=mobile
+	CI=1 npx playwright test --project=desktop
+	CI=1 npx playwright test --project=mobile
 
 # --- Lighthouse CI -------------------------------------------------
 # Mirrors .github/workflows/lighthouse.yml.
