@@ -41,8 +41,10 @@ property on a PR, add a spec for it before merging.
 | `font-uniformity.spec.ts`     | `.mix-insight-text`, `.ingredient-insight-text`, `.ref-desc` share computed font size | desktop+mobile |
 | `og-meta.spec.ts`             | Required Open Graph + Twitter Card meta tags present with expected content | desktop |
 | `og-meta.spec.ts`             | `og-image.jpg` is reachable, JPEG, and within 50–250 KB budget            | desktop |
-| `readouts-strip.spec.ts`      | Desktop: GWP, Cost, and W/B readouts are all visible                      | desktop |
-| `readouts-strip.spec.ts`      | Mobile: W/B is hidden and remaining readouts stay on one line             | mobile |
+| `readouts-strip.spec.ts`      | Desktop: GWP, Cost, and Slump readouts are all visible with ±2σ           | desktop |
+| `readouts-strip.spec.ts`      | Mobile: ±2σ suffixes and the GWP unit are hidden so readouts stay on one line | mobile |
+| `readouts-strip.spec.ts`      | Mortar (Source A) shows "n/a" — no slump data for that material source    | desktop+mobile |
+| `readouts-strip.spec.ts`      | Unit toggle rescales the slump value 25.4x, not just its label            | desktop+mobile |
 | `seo.spec.ts`                 | `<meta name="description">`, canonical link, and JSON-LD WebApplication present | desktop |
 | `seo.spec.ts`                 | `/robots.txt` and `/sitemap.xml` reachable and well-formed                | desktop |
 | `mobile-slider-layout.spec.ts`| Label, slider, and info-row stack vertically without overlap              | mobile |

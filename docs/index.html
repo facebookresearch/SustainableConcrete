@@ -246,12 +246,11 @@
         <!-- Static caveat, deliberately OUTSIDE the live region: it never
              changes, so re-speaking it on every update would add ~9 words to
              each announcement for no information. -->
-        <div id="curve-summary-note" class="sr-only">Strength figures are model predictions with a 95 percent interval.</div>
+        <div id="curve-summary-note" class="sr-only">Strength and slump figures are model predictions with a 95 percent interval.</div>
         <div class="readouts" id="readouts">
           <div>GWP: <span class="value" id="gwp-value">–</span> <span class="unit" id="gwp-unit">kg CO₂e/m³</span></div>
           <div>Cost: <span class="value" id="cost-value">–</span> <span id="cost-uncertainty"></span> <span class="unit" id="cost-unit">$/m³</span></div>
-          <div class="wb-readout">W/B: <span class="value" id="wb-value">–</span></div>
-          <!-- TODO: Add Slump readout once model/slump.json is available. -->
+          <div class="slump-readout">Slump: <span class="value" id="slump-value">–</span> <span id="slump-uncertainty"></span> <span class="unit" id="slump-unit">in</span></div>
         </div>
       </div>
 

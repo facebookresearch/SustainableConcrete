@@ -29,6 +29,7 @@ on:
       - 'docs/gp_v2_fast.mjs'
       - 'docs/feature_registry.mjs'
       - 'docs/units.mjs'
+      - 'docs/slump.mjs'
       - 'docs/model/**'
       - 'boxcrete/features.py'
       - 'package.json'
@@ -44,6 +45,12 @@ on:
       - 'test/fixtures/feature_parity_fixture.json'
       - 'test/test_curve_monotonicity.mjs'
       - 'test/test_data_freshness.mjs'
+      - 'test/test_js_slump.mjs'
+      # Kept in lockstep with the Makefile's JS_TESTS list. These three were
+      # missing, so PRs touching only them skipped their own CI job.
+      - 'test/test_js_preview_state.mjs'
+      - 'test/test_js_categorical_source.mjs'
+      - 'test/test_js_filters.mjs'
       - '.github/workflows/js-sync.yml'
   pull_request:
     branches: [main, master]
@@ -103,3 +110,6 @@ jobs:
 
       - name: Scatter filter predicate + derived quantities
         run: node test/test_js_filters.mjs
+
+      - name: Slump GP Python ↔ JS parity (slump_test_vectors.json)
+        run: node test/test_js_slump.mjs

@@ -864,6 +864,15 @@ h2 {
   color: var(--accent);
 }
 
+/* Below ~1440px the three readouts no longer fit on one line and the flex
+   items start wrapping mid-value (breaking "kg CO₂e/m³" across two rows),
+   which also steals height from the strength curve canvas. The slump ±2σ
+   suffix is the widest droppable token; the uncertainty is still shown by
+   the curve's shaded band. Above this width the full strip fits. */
+@media (max-width: 1439px) {
+  #slump-uncertainty { display: none; }
+}
+
 /* Toggle buttons for Material Source */
 .toggle-row {
   display: flex;
@@ -1687,15 +1696,27 @@ a.ref-link {
   }
   .readouts {
     /* Override the earlier `font-size: 0.78rem` block above with a more
-       legible 0.88rem for the GWP / Cost / W/B readout strip. */
+       legible 0.88rem for the GWP / Cost / Slump readout strip. */
     font-size: 0.88rem;
   }
-  /* Hide the W/B (water-to-binder ratio) readout on mobile. With the bumped
-     0.88rem font, GWP + Cost already fill the strip; adding W/B forces a
-     wrap that steals vertical space from the strength curve canvas above.
-     Power users on mobile still have the slider readouts to infer water/
-     binder; W/B remains visible on desktop where there's room. */
-  .wb-readout { display: none; }
+  /* Mobile readout strip: three outcome values on one line at 412px.
+     Measured on Pixel 7 (370px usable): the three items need 297px plus
+     25.6px of gaps, leaving ~47px headroom. Getting there costs two things,
+     chosen as the least informative tokens:
+
+       1. Both ±2σ suffixes. The uncertainty is still shown by the strength
+          curve's shaded band and in full on desktop.
+       2. The GWP unit. It is the single widest token (79px) and is static;
+          the slump and cost units are kept because slump's flips between
+          "mm" and "in" with the unit toggle, so a bare number would be
+          ambiguous by 25.4x.
+
+     Wrapping to two rows costs 27px of the strength curve canvas above,
+     which is why this is worth the trade. Pinned by
+     test/e2e/readouts-strip.spec.ts. */
+  .readouts #cost-uncertainty,
+  .readouts #slump-uncertainty,
+  .readouts #gwp-unit { display: none; }
   .mobile-hint {
     /* Italic instructional hint inside the unified mobile panel header. */
     font-size: 0.8rem;

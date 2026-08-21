@@ -5,6 +5,7 @@
  */
 
 import { predictStrengthCurve, predictStrengthMeanOnly, predictGWP, predictCost, initStrengthModel, initWASM } from "./gp.mjs";
+import { predictSlump, initSlumpModel, slumpSupportsSource } from "./slump.mjs";
 import { stepPreviewComposition } from "./preview_state.mjs";
 import { makeComputedFilters, matchesFilters } from "./filters.mjs";
 import {
@@ -80,6 +81,7 @@ let COL_TEMP = -1; // "Temp (C)" column index
 let strengthParams = null;
 let gwpParams = null;
 let costParams = null;
+let slumpParams = null;
 let compositionsData = null;
 let currentComposition = null; // current slider values (without time)
 let scatterDay = 28;
@@ -186,6 +188,13 @@ document.addEventListener("toggle-units", () => {
   }
   document.getElementById("gwp-unit").textContent = U().gwp;
   document.getElementById("cost-unit").textContent = U().cost;
+  // Readout VALUES are unit-scaled, so relabelling alone leaves them
+  // numerically stale (a 6.8 in slump would render as "6.8 mm"). Re-render the
+  // strip, which also keeps #slump-unit and the mortar "n/a" state consistent
+  // — unlike a blind textContent write, which would print a bare "mm" next to
+  // "n/a". This also fixes the same latent staleness on GWP and Cost.
+  // Guarded: both unit toggles are live in the DOM before init() resolves.
+  if (compositionsData && currentComposition) updateReadouts();
   document.getElementById("sliders-title").textContent =
     unitSystem === "metric" ? "Composition (kg/m³)" : "Composition (lb/yd³)";
   updateSliderLabels();
@@ -261,14 +270,17 @@ async function initStrengthModelAsync(rawParams) {
 }
 
 async function init() {
-  const [rawStrength, gwp, cost, compositions] = await Promise.all([
+  const [rawStrength, gwp, cost, compositions, slump] = await Promise.all([
     loadJSON("model/strength.json"),
     loadJSON("model/gwp.json"),
     loadJSON("model/cost.json"),
     loadJSON("model/compositions.json"),
+    loadJSON("model/slump.json"),
   ]);
   gwpParams = gwp;
   costParams = cost;
+  initSlumpModel(slump);
+  slumpParams = slump;
   compositionsData = compositions;
 
   // Load mix analyses (non-blocking, optional). Warn loudly on failure
@@ -1437,20 +1449,35 @@ function updateReadouts() {
   document.getElementById("cost-uncertainty").textContent =
     `± ${(2 * costStd).toFixed(1)} (2σ)`;
 
-  // W/B ratio
-  const cols = compositionsData.column_names;
-  const cement = currentComposition[colIdx(cols, "Cement (kg/m3)")];
-  const flyAsh = currentComposition[colIdx(cols, "Fly Ash (kg/m3)")];
-  const slag = currentComposition[colIdx(cols, "Slag (kg/m3)")];
-  const water = currentComposition[colIdx(cols, "Water (kg/m3)")];
-  const binder = cement + flyAsh + slag;
-  const wb = binder > 0 ? (water / binder).toFixed(3) : "–";
-  document.getElementById("wb-value").textContent = wb;
-
-  // TODO: Slump prediction — requires model/slump.json with trained GP params.
-  // Once available: load slumpParams in init(), add predictSlump to gp.mjs,
-  // then: const slump = predictSlump(compForGWP, slumpParams);
-  // Display in "slump-value" element with unit conversion (mm ↔ in).
+  // Slump. Uses the real composition (not compForGWP's reference-temperature
+  // override) because the slump GP takes Temp as an input and slump is
+  // measured at the mix's actual temperature.
+  const slumpValueEl = document.getElementById("slump-value");
+  const slumpUncEl = document.getElementById("slump-uncertainty");
+  const slumpUnitEl = document.getElementById("slump-unit");
+  if (slumpParams && slumpSupportsSource(ms, slumpParams)) {
+    const slump = predictSlump(currentComposition, slumpParams);
+    const slumpMean = slump.mean * u.slumpFactor;
+    const slumpStd = Math.sqrt(slump.variance) * u.slumpFactor;
+    slumpValueEl.textContent = slumpMean.toFixed(1);
+    slumpUncEl.textContent = `± ${(2 * slumpStd).toFixed(1)} (2σ)`;
+    slumpUnitEl.textContent = u.slump;
+  } else {
+    // Mortar (Material Source 0) has no slump data at all — workability there
+    // is measured with a flow table, not a slump cone. Say so rather than
+    // extrapolating a stationary GP into a region with zero support.
+    slumpValueEl.textContent = "n/a";
+    slumpUncEl.textContent = "";
+    slumpUnitEl.textContent = "";
+  }
+  document
+    .querySelector(".slump-readout")
+    .setAttribute(
+      "title",
+      slumpParams && slumpSupportsSource(ms, slumpParams)
+        ? "Predicted slump (workability), 95% interval."
+        : "Mortar workability is measured with a flow table, not a slump cone, so the model has no slump data for this material source."
+    );
 }
 
 // --- HiDPI Canvas Helpers ---

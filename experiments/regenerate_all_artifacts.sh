@@ -50,11 +50,15 @@ echo "==> 4. Recomputing compositions.json strength_predictions + gwp + pareto_m
 node experiments/regenerate_compositions_strength_predictions.mjs | tail -5
 
 echo ""
-echo "==> 5. Running freshness tests …"
+echo "==> 5. Re-exporting slump.json + slump_test_vectors.json …"
+python -u experiments/regenerate_slump_json.py | tail -6
+
+echo ""
+echo "==> 6. Running freshness tests …"
 node test/test_data_freshness.mjs
 
 echo ""
-echo "==> 6. Running full JS test suite …"
+echo "==> 7. Running full JS test suite …"
 for t in test_js_strength_v2.mjs test_js_physical_constraints.mjs test_js_gp.mjs test_js_ui_smoke.mjs test_lengthscales_v2.mjs test_curve_monotonicity.mjs; do
   echo "  -- $t --"
   node "test/$t" | tail -3

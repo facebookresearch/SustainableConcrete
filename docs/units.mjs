@@ -22,6 +22,11 @@ export const UNITS = {
     gwpFactor: 1,
     cost: "$/m³",
     costFactor: 1,
+    // Slump is the one quantity stored in IMPERIAL (inches), so its factors
+    // run inverted relative to mass/gwp/cost: metric converts, imperial is
+    // the no-op.
+    slump: "mm",
+    slumpFactor: 25.4, // in → mm
     temp: "°C",
   },
   imperial: {
@@ -33,6 +38,8 @@ export const UNITS = {
     gwpFactor: 1.6856,
     cost: "$/yd³",
     costFactor: 1 / 1.30795, // $/m³ → $/yd³  (1 yd³ = 0.7646 m³)
+    slump: "in",
+    slumpFactor: 1, // already inches
     temp: "°F",
   },
 };

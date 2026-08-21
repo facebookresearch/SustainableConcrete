@@ -36,6 +36,11 @@ const I_TEMP = 8, I_TIME = 9;
  * `x[..., _IDX["water"]:_IDX["water"]+1]`, we read `xRaw[I_WATER]`.
  */
 export const FEATURE_FNS = {
+  // NOTE: these all guard division with `+ 1.0`, matching the V2 STRENGTH
+  // model's feature transform. The SLUMP model clamps instead —
+  // hrwr / max(binder, 1.0), per boxcrete.features.AppendDerivedFeatures —
+  // and so implements its own copy in docs/slump.mjs. The two disagree by
+  // ~0.3% on real mixes; do not "deduplicate" them.
   wb_ratio: (x) => x[I_WATER] / (x[I_CEMENT] + x[I_FLYASH] + x[I_SLAG] + 1.0),
   scm_frac: (x) => (x[I_FLYASH] + x[I_SLAG]) / (x[I_CEMENT] + x[I_FLYASH] + x[I_SLAG] + 1.0),
   hrwr_binder: (x) => x[I_HRWR] / (x[I_CEMENT] + x[I_FLYASH] + x[I_SLAG] + 1.0),

@@ -3,18 +3,24 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Slump GP — single-Matern + appended HRWR/binder ratio.
+"""Slump GP — BoTorch-default ARD kernel + appended HRWR/binder ratio.
 
 Hosts the public fit API for the slump model (concrete workability). The
 slump GP is intentionally simpler than the V2 strength GP: it's
-time-independent (slump is measured pre-cure), uses a single Matern
-kernel rather than the multi-Matern + gated-time decomposition, and
-appends the HRWR/binder ratio as a derived feature so the kernel can
+time-independent (slump is measured pre-cure), uses BoTorch's stock
+``SingleTaskGP`` covariance (an ARD kernel with no explicit
+``ScaleKernel``) rather than the multi-Matern + gated-time decomposition,
+and appends the HRWR/binder ratio as a derived feature so the kernel can
 exploit a key admixture-dosage non-linearity that stationary kernels
 otherwise cannot represent.
 
 Public API:
   * :func:`fit_slump_gp` — fit a slump GP on raw (X, Y, Yvar) data.
+
+The exact covariance module is whatever BoTorch's ``SingleTaskGP`` default
+is for this input dimension; ``experiments/regenerate_slump_json.py`` reads
+it off the fitted model and refuses to export a kernel it cannot reproduce
+in JS.
 
 The HRWR/binder ratio is appended via :class:`AppendDerivedFeatures`
 from :mod:`boxcrete.features` (the same transform

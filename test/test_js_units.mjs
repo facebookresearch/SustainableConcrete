@@ -32,6 +32,13 @@ let passed = 0;
 let failed = 0;
 
 function assertClose(actual, expected, name) {
+  // A missing field yields NaN here, and `NaN > RTOL` is false — without this
+  // guard an absent UNITS key would be scored as a PASS.
+  if (!Number.isFinite(actual)) {
+    failed++;
+    console.error(`✗ ${name}: expected ${expected}, got non-finite ${actual}`);
+    return;
+  }
   const absErr = Math.abs(actual - expected);
   const denom = Math.abs(expected) > ATOL ? Math.abs(expected) : 1;
   const relErr = absErr / denom;
@@ -135,6 +142,16 @@ assertEqual(sliderUnitLabel("Cement (kg/m3)", "metric"), "kg/m³", "label cement
 assertEqual(sliderUnitLabel("Cement (kg/m3)", "imperial"), "lb/yd³", "label cement imperial");
 assertEqual(sliderUnitLabel("Temp (C)", "metric"), "°C", "label temp metric");
 assertEqual(sliderUnitLabel("Temp (C)", "imperial"), "°F", "label temp imperial");
+
+// --- Slump units ---
+// Slump is stored in INCHES (unlike everything else, which is metric-native),
+// so the factors run the other way: metric display multiplies, imperial is 1.
+assertEqual(UNITS.metric.slump, "mm", "metric slump label");
+assertEqual(UNITS.imperial.slump, "in", "imperial slump label");
+assertEqual(UNITS.imperial.slumpFactor, 1, "imperial slumpFactor (no-op)");
+assertEqual(UNITS.metric.slumpFactor, 25.4, "metric slumpFactor (in -> mm)");
+// 6 * 25.4 === 152.39999999999998, so this one genuinely needs a tolerance.
+assertClose(6 * UNITS.metric.slumpFactor, 152.4, "6 in reads as 152.4 mm");
 
 // --- Summary ---
 console.log(`\n${passed} passed, ${failed} failed`);

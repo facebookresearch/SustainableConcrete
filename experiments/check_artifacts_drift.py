@@ -125,19 +125,20 @@ class DriftCollector:
         committed: float,
         fresh: float,
         *,
-        psi_floor: float,
+        floor: float,
         rtol: float,
+        unit: str = "psi",
         label: str,
     ) -> None:
         self.checks += 1
         diff = abs(fresh - committed)
-        delta = max(psi_floor, rtol * abs(committed))
+        delta = max(floor, rtol * abs(committed))
         if diff > delta:
             rel = diff / max(abs(committed), 1.0)
             self.failures.append(
                 f"  {label}: committed={committed:.4f}, fresh={fresh:.4f}, "
-                f"abs={diff:.2f} psi ({rel * 100:.2f}% rel; tol="
-                f"max({psi_floor:.0f}, {rtol * 100:.1f}%)={delta:.2f})"
+                f"abs={diff:.2f} {unit} ({rel * 100:.2f}% rel; tol="
+                f"max({floor:.4g}, {rtol * 100:.1f}%)={delta:.2f})"
             )
 
     def assert_variance_close(
@@ -145,18 +146,21 @@ class DriftCollector:
         committed: float,
         fresh: float,
         *,
+        floor: float = VARIANCE_PSI2_FLOOR,
+        rtol: float = VARIANCE_RTOL,
+        unit: str = "psi^2",
         label: str,
     ) -> None:
         self.checks += 1
         diff = abs(fresh - committed)
-        delta = max(VARIANCE_PSI2_FLOOR, VARIANCE_RTOL * abs(committed))
+        delta = max(floor, rtol * abs(committed))
         if diff > delta:
             rel = diff / max(abs(committed), 1.0)
             self.failures.append(
                 f"  {label}: committed={committed:.4f}, fresh={fresh:.4f}, "
-                f"abs={diff:.2f} psi^2 ({rel * 100:.2f}% rel; tol="
-                f"max({VARIANCE_PSI2_FLOOR:.0f}, "
-                f"{VARIANCE_RTOL * 100:.1f}%)={delta:.2f})"
+                f"abs={diff:.2f} {unit} ({rel * 100:.2f}% rel; tol="
+                f"max({floor:.4g}, "
+                f"{rtol * 100:.1f}%)={delta:.2f})"
             )
 
 
@@ -267,7 +271,7 @@ def check_test_vectors_json(
         drift.assert_prediction_close(
             cv["expected_mean"],
             fv["expected_mean"],
-            psi_floor=PREDICTION_PSI_FLOOR,
+            floor=PREDICTION_PSI_FLOOR,
             rtol=PREDICTION_RTOL,
             label=f"test_vectors[{i}].expected_mean",
         )
@@ -288,7 +292,7 @@ def check_test_vectors_json(
             drift.assert_prediction_close(
                 c_day["mean"],
                 f_day["mean"],
-                psi_floor=PREDICTION_PSI_FLOOR,
+                floor=PREDICTION_PSI_FLOOR,
                 rtol=PREDICTION_RTOL,
                 label=f"test_vectors[{i}].strength[{day}].mean",
             )
@@ -321,7 +325,7 @@ def check_compositions_json(
             drift.assert_prediction_close(
                 c,
                 f,
-                psi_floor=PREDICTION_PSI_FLOOR,
+                floor=PREDICTION_PSI_FLOOR,
                 rtol=PREDICTION_RTOL,
                 label=lbl,
             )
@@ -330,6 +334,99 @@ def check_compositions_json(
 # ---------------------------------------------------------------------------
 # Main.
 # ---------------------------------------------------------------------------
+
+
+def check_slump_json(committed: dict, fresh: dict, drift: DriftCollector) -> None:
+    """Compare hyperparameters in ``docs/model/slump.json``."""
+    # Data-derived fields must match bit-for-bit: they do not depend on where
+    # the non-convex MLL fit lands, so any change is a real semantic change
+    # (and docs/slump.mjs hardcodes column indices consistent with them).
+    for key in (
+        "schema_version",
+        "kernel_kind",
+        "mean_kind",
+        "d_in",
+        "d_aug",
+        "n_train",
+        "supported_source_classes",
+        "source_dim_raw",
+        "raw_feature_names",
+        "normalize_lower",
+        "normalize_upper",
+    ):
+        if committed.get(key) != fresh.get(key):
+            drift.checks += 1
+            drift.failures.append(
+                f"  slump.json[{key}]: committed={committed.get(key)!r}, "
+                f"fresh={fresh.get(key)!r}"
+            )
+
+    c_ls = committed.get("lengthscales", [])
+    f_ls = fresh.get("lengthscales", [])
+    if len(c_ls) != len(f_ls):
+        drift.checks += 1
+        drift.failures.append(
+            f"  slump.json[lengthscales]: length {len(c_ls)} vs {len(f_ls)}"
+        )
+    else:
+        for i, (c, f) in enumerate(zip(c_ls, f_ls)):
+            drift.assert_within_ratio(
+                c,
+                f,
+                lo=LENGTHSCALE_RATIO_LO,
+                hi=LENGTHSCALE_RATIO_HI,
+                atol=1e-9,
+                label=f"slump.json[lengthscales][{i}]",
+            )
+
+    for key in ("noise", "y_mean", "y_std"):
+        drift.assert_within_ratio(
+            committed.get(key, 0.0),
+            fresh.get(key, 0.0),
+            lo=SCALAR_PARAM_RATIO_LO,
+            hi=SCALAR_PARAM_RATIO_HI,
+            atol=1e-9,
+            label=f"slump.json[{key}]",
+        )
+
+
+def check_slump_test_vectors_json(
+    committed: dict, fresh: dict, drift: DriftCollector
+) -> None:
+    """Compare golden posteriors in ``docs/model/slump_test_vectors.json``.
+
+    Slump is in INCHES, so the psi-scaled defaults would be vacuous here:
+    posterior variances land around 2-11 in^2 against a 2000 psi^2 floor.
+    The floors below are set from the data — slump spans 0.8-11.1 in with a
+    fitted noise std near 1.5 in, so 0.1 in on the mean (and 0.25 in^2, about
+    0.5 in on the sigma scale) catches a genuinely stale export while
+    tolerating cross-architecture basin divergence.
+    """
+    c_tv = committed.get("test_vectors", [])
+    f_tv = fresh.get("test_vectors", [])
+    if len(c_tv) != len(f_tv):
+        drift.checks += 1
+        drift.failures.append(
+            f"  slump_test_vectors.json: {len(c_tv)} vs {len(f_tv)} vectors"
+        )
+        return
+    for i, (cv, fv) in enumerate(zip(c_tv, f_tv)):
+        drift.assert_prediction_close(
+            cv["expected_mean"],
+            fv["expected_mean"],
+            floor=0.1,
+            rtol=0.05,
+            unit="in",
+            label=f"slump_test_vectors[{i}].expected_mean",
+        )
+        drift.assert_variance_close(
+            cv["expected_variance"],
+            fv["expected_variance"],
+            floor=0.25,
+            rtol=0.10,
+            unit="in^2",
+            label=f"slump_test_vectors[{i}].expected_variance",
+        )
 
 
 def main() -> int:
@@ -344,10 +441,23 @@ def main() -> int:
         ("strength.json", check_strength_json),
         ("test_vectors.json", check_test_vectors_json),
         ("compositions.json", check_compositions_json),
+        ("slump.json", check_slump_json),
+        ("slump_test_vectors.json", check_slump_test_vectors_json),
     ]:
         c_path = args.committed_dir / fname
         f_path = args.fresh_dir / fname
         if not c_path.exists() or not f_path.exists():
+            # A file present in --fresh-dir but absent from --committed-dir
+            # means the workflow forgot to snapshot a newly-added artifact,
+            # which would silently give that artifact zero drift coverage.
+            # That is a wiring bug, not a benign absence.
+            if f_path.exists() and not c_path.exists():
+                print(
+                    f"::error::{fname} exists in --fresh-dir but was not "
+                    "snapshotted into --committed-dir; add it to the "
+                    "'Save committed docs/model/' workflow step."
+                )
+                return 1
             print(
                 f"::warning::skipping {fname}: missing on at least one side "
                 f"(committed={c_path.exists()}, fresh={f_path.exists()})"
