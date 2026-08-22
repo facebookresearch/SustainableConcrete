@@ -1,16 +1,38 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const desktopWebKitSmoke = new RegExp([
+  "starts with Cement selected",
+  "ingredient controls expose button semantics",
+  "desktop columns are top-aligned",
+  "each managed panel cap",
+  "References uses a stable viewport",
+  "short desktop preserves useful plots",
+  "scroll regions enter sequential focus",
+  "Scatter omits instructional copy",
+  "desktop plots stay landscape",
+  "canvas backing stores track CSS geometry",
+  "keeps bibliography and citation actions visible",
+  "native summaries toggle with Enter and Space",
+  "oversized References stop at the usable cap",
+  "both axis objectives remain visible",
+  "CSS and JavaScript share the same responsive plot inset contract",
+  "filter and reference edge controls reserve outward focus",
+].join("|"));
+
 /**
  * Playwright configuration for the BOxCrete interactive web explorer.
  *
  * Tests live in test/e2e/*.spec.ts and run against a local http-server
  * serving the docs/ folder.
  *
- * Two projects:
+ * Projects:
  *   - desktop: 1280×800 Chromium
- *   - mobile:  iPhone 14 emulation (touch + 390×844 viewport)
+ *   - mobile: Pixel 7 emulation in Chromium
+ *   - mobile-webkit: iPhone 14 emulation for engine-sensitive geometry and page chrome
+ *   - desktop-webkit: desktop Safari/WebKit for engine-sensitive layout contracts
  *
- * Each test runs once per project unless skipped via testInfo.project.name.
+ * Tests run in desktop and mobile unless scoped by project name. The WebKit
+ * projects intentionally match only engine-sensitive integration specs.
  *
  * See test/e2e/README.md for the catalogue of invariants.
  */
@@ -25,15 +47,15 @@ export default defineConfig({
   // CI: serial workers for stable timing; local: full parallelism
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI
-    ? [["html", { open: "never" }], ["github"], ["list"]]
+    ? [["html", { open: "never" }], ["github"]]
     : [["html", { open: "never" }], ["list"]],
 
   use: {
     baseURL: "http://127.0.0.1:4173",
-    // Capture diagnostics only on failure to keep artifacts small
-    trace: "retain-on-failure",
+    // Record expensive diagnostics only when a failure triggers a retry.
+    trace: "on-first-retry",
     screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    video: "on-first-retry",
     // Wait for actions to complete before timing out (animations, etc.)
     actionTimeout: 10_000,
     navigationTimeout: 30_000,
@@ -49,11 +71,30 @@ export default defineConfig({
     },
     {
       name: "mobile",
-      // Use Chrome with iPhone-like viewport instead of devices['iPhone 14']
-      // (which defaults to WebKit). This keeps CI fast (Chromium only) and
-      // matches the engine real Android Chrome users will hit.
+      // Keep the broad mobile suite on Chromium to match Android Chrome.
       use: {
         ...devices["Pixel 7"],
+      },
+    },
+    {
+      name: "mobile-webkit",
+      // Sticky positioning, overflow clipping, and responsive canvas sizing
+      // have engine-specific iOS behavior. Exercise only those integration
+      // contracts in WebKit so Safari coverage does not duplicate the full suite.
+      testMatch: /(background-coverage|canvas-scheduling|filter-motion|ingredient-insight|mobile-panel-toggle|mobile-slider-layout|panel-geometry|plot-geometry|reduced-motion|references|scatter-toggle|touch-targets|visual-effects)\.spec\.ts/,
+      use: {
+        ...devices["iPhone 14"],
+      },
+    },
+    {
+      name: "desktop-webkit",
+      // Keep desktop Safari as a focused compatibility smoke lane. The broader
+      // interaction and timing matrices run in Chromium and mobile WebKit.
+      testMatch: /(ingredient-insight|panel-geometry|plot-geometry|references|scatter-toggle|visual-effects)\.spec\.ts/,
+      grep: desktopWebKitSmoke,
+      use: {
+        ...devices["Desktop Safari"],
+        viewport: { width: 1280, height: 800 },
       },
     },
   ],

@@ -8,9 +8,10 @@ import { test, expect } from "@playwright/test";
 test.describe("font uniformity across insight panels", () => {
   test("mix-insight, ingredient-insight, ref-desc share computed fontSize", async ({ page }) => {
     await page.goto("/");
-    // Ensure all three text elements are present
+    // Reference descriptions are collapsed by default; open one before measuring it.
     await expect(page.locator(".mix-insight-text").first()).toBeVisible();
     await expect(page.locator(".ingredient-insight-text").first()).toBeVisible();
+    await page.locator(".ref-details > summary").first().click();
     await expect(page.locator(".ref-desc").first()).toBeVisible();
 
     const sizes = await page.evaluate(() => {

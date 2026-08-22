@@ -23,7 +23,7 @@ import { test, expect } from "@playwright/test";
  */
 test.describe("mobile slider multi-row layout", () => {
   test.beforeEach(async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== "mobile", "mobile-only layout");
+    test.skip(!testInfo.project.name.startsWith("mobile"), "mobile-only layout");
     await page.goto("/");
     // Switch to the Composition view (sliders are hidden by default on mobile)
     await page.locator("#mobile-show-sliders").click();
@@ -36,7 +36,7 @@ test.describe("mobile slider multi-row layout", () => {
       .locator(".mobile-sliders-view .slider-group")
       .first()
       .evaluate((group) => {
-        const label = group.querySelector("label") as HTMLElement | null;
+        const label = group.querySelector(".slider-label") as HTMLElement | null;
         const slider = group.querySelector("input[type=range]") as HTMLElement | null;
         const info = group.querySelector(".info-row") as HTMLElement | null;
         if (!label || !slider || !info) return null;
@@ -106,7 +106,7 @@ test.describe("mobile slider multi-row layout", () => {
   });
 
   test("ingredient name and value input share a vertical centerline", async ({ page }) => {
-    // Pinned by `align-items: center` on `.slider-group label`. Without it
+    // Pinned by `align-items: center` on `.slider-label`. Without it
     // the default flex `stretch` makes the value-input fill the row's
     // height while the name's text sits at the line-box top — visually
     // offset. Asserting the children share a center y-coordinate within
@@ -131,27 +131,34 @@ test.describe("mobile slider multi-row layout", () => {
     ).toBeLessThanOrEqual(2);
   });
 
-  test("ingredient name shows a dashed underline as click affordance (no border-bottom)", async ({ page }) => {
-    // Pinned because we replaced `border-bottom: 1px dashed` with
-    // `text-decoration: underline dashed` to save vertical space (border
-    // sits below the descender; underline sits at font-natural offset and
-    // doesn't expand the line box). The visual click affordance must
-    // remain — assert both the absence of a border AND the presence of
-    // the dashed underline.
-    const verdict = await page
-      .locator(".mobile-sliders-view .ingredient-name")
-      .first()
-      .evaluate((el) => {
+  test("ingredient controls stay compact while the selected item reads as a pill", async ({ page }) => {
+    const selected = page.locator('.mobile-sliders-view .ingredient-name[aria-pressed="true"]');
+    const inactive = page.locator('.mobile-sliders-view .ingredient-name[aria-pressed="false"]').first();
+
+    await expect(selected).toHaveCount(1);
+    const styles = await Promise.all([
+      selected.evaluate((el) => {
         const cs = getComputedStyle(el);
         return {
-          borderBottomWidth: cs.borderBottomWidth,
-          textDecorationLine: cs.textDecorationLine,
-          textDecorationStyle: cs.textDecorationStyle,
+          borderWidth: parseFloat(cs.borderWidth),
+          background: cs.backgroundColor,
+          height: el.getBoundingClientRect().height,
         };
-      });
-    expect(parseFloat(verdict.borderBottomWidth) || 0, "border-bottom must not contribute to row height").toBe(0);
-    expect(verdict.textDecorationLine, "ingredient names must show underline as click affordance").toContain("underline");
-    expect(verdict.textDecorationStyle, "underline should be dashed when not active").toBe("dashed");
+      }),
+      inactive.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return {
+          background: cs.backgroundColor,
+          height: el.getBoundingClientRect().height,
+        };
+      }),
+    ]);
+
+    expect(styles[0].borderWidth).toBeGreaterThan(0);
+    expect(styles[0].background).not.toBe("rgba(0, 0, 0, 0)");
+    expect(styles[1].background).toBe("rgba(0, 0, 0, 0)");
+    expect(styles[0].height).toBeLessThanOrEqual(32);
+    expect(styles[1].height).toBeLessThanOrEqual(32);
   });
 
   test("font-size hierarchy on mobile: label ≥ info-row (legibility)", async ({ page }) => {
@@ -163,7 +170,7 @@ test.describe("mobile slider multi-row layout", () => {
       .locator(".mobile-sliders-view .slider-group")
       .first()
       .evaluate((group) => {
-        const label = group.querySelector("label") as HTMLElement | null;
+        const label = group.querySelector(".slider-label") as HTMLElement | null;
         const info = group.querySelector(".info-row") as HTMLElement | null;
         if (!label || !info) return null;
         return {
@@ -206,10 +213,10 @@ test.describe("mobile slider multi-row layout", () => {
     expect(maxR - minR).toBeLessThanOrEqual(1);
   });
 
-  test("slider is centered in the panel and narrower than full panel width", async ({ page }) => {
-    // The slider should sit in the middle of the panel (equal margins to
-    // both panel edges) and be less than the full panel content width so
-    // there's visible breathing room on either side.
+  test("slider uses the panel width while preserving a fixed effect gutter", async ({ page }) => {
+    // The slider should use its owner rather than a viewport-relative cap.
+    // A small symmetric gutter protects the 5px focus envelope and preview
+    // marker without wasting tablet-width panel space.
     const verdict = await page
       .locator(".mobile-sliders-view .slider-group")
       .first()
@@ -243,11 +250,9 @@ test.describe("mobile slider multi-row layout", () => {
       Math.abs(verdict!.marginLeft - verdict!.marginRight),
       `slider not centered: marginLeft=${verdict!.marginLeft}, marginRight=${verdict!.marginRight}`,
     ).toBeLessThanOrEqual(2);
-    // Narrower than full width: at least a little visible breathing room
-    // on each side. With the CSS cap of `min(60vw, 220px)` and a 412 px
-    // panel, this is ~37 px on each side.
-    expect(verdict!.marginLeft).toBeGreaterThanOrEqual(8);
-    expect(verdict!.sliderWidth).toBeLessThan(verdict!.innerWidth * 0.9);
+    expect(verdict!.marginLeft, "focus and preview paint need a local gutter").toBeGreaterThanOrEqual(5);
+    expect(verdict!.marginLeft, "viewport-based caps must not waste panel width").toBeLessThanOrEqual(8);
+    expect(verdict!.sliderWidth / verdict!.innerWidth).toBeGreaterThanOrEqual(0.94);
   });
 
   test("value input offsetHeight is ≥ 32px (tap target)", async ({ page }) => {
@@ -267,11 +272,30 @@ test.describe("mobile slider multi-row layout", () => {
     const ms = page.locator(".mobile-sliders-view .material-source-group").first();
     await expect(ms).toBeVisible();
     const buttons = ms.locator(".toggle-btn");
+    await expect(buttons).toHaveCount(3);
     await expect(buttons.nth(0)).toBeVisible();
     await expect(buttons.nth(1)).toBeVisible();
+    await expect(buttons.nth(2)).toHaveText("Source C");
+    const buttonGeometry = await buttons.evaluateAll((items) => items.map((item) => {
+      const rect = item.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(item);
+      return {
+        width: rect.width,
+        height: rect.height,
+        textLines: range.getClientRects().length,
+        overflow: item.scrollWidth - item.clientWidth,
+      };
+    }));
+    expect(new Set(buttonGeometry.map(({ height }) => Math.round(height))).size).toBe(1);
+    for (const geometry of buttonGeometry) {
+      expect(geometry.textLines).toBe(1);
+      expect(geometry.overflow).toBeLessThanOrEqual(1);
+      expect(geometry.height).toBeGreaterThanOrEqual(44);
+    }
     // The duplicate label-span is the second child of the inner <label>
     const valSpanIsHidden = await ms.evaluate((group) => {
-      const label = group.querySelector("label");
+      const label = group.querySelector(".slider-label");
       if (!label) return true;
       const span = label.querySelector("span:last-child");
       return !span || (span as HTMLElement).offsetParent === null;

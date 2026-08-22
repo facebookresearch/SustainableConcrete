@@ -1,4 +1,23 @@
 :root, [data-theme="light"] {
+  --plot-width-max: 28rem;
+  --plot-height-max: 19rem;
+  --plot-inset-left: 84px;
+  --plot-inset-right: 20px;
+  --plot-inset-top: 15px;
+  --plot-inset-bottom: 70px;
+  --plot-canvas-width: 34.5rem;
+  --plot-canvas-height: 24.3125rem;
+  --axis-transition-duration: 350ms;
+  --axis-transition-easing: cubic-bezier(0.645, 0.045, 0.355, 1);
+  --mix-insight-cap: 14rem;
+  --ingredient-insight-cap: 18rem;
+  --references-usable-cap: min(34rem, calc(100svh - 5rem));
+  --strength-cap: 34rem;
+  --filter-row-slot: 2rem;
+  --filter-row-gap: 0.3rem;
+  /* Outward focus, hover, preview, selected, shadow, and transform paint must
+     fit inside the nearest intentional clipping ancestor on all four sides. */
+  --effect-gutter: 0.5rem;
   --bg: #e8edf3;
   --card-bg-rgb: 255, 255, 255;
   --border: rgba(255, 255, 255, 0.4);
@@ -40,7 +59,7 @@
   --pareto-on: #4c0519;
   --observation: #94a3b8;
   --point: #94a3b8;
-  --glass-bg: rgba(var(--card-bg-rgb), 0.7);
+  --glass-bg: rgba(var(--card-bg-rgb), 0.86);
   --glass-blur: 6px;
   --canvas-axis: #e2e8f0;
   --canvas-text: #e2e8f0;
@@ -50,7 +69,7 @@
 
 /* Global theme transition — ensures all color changes are smooth */
 body, .panel, .site-header, .theme-toggle, .unit-toggle,
-.toggle-btn, .controls, .readouts, .filter-row select,
+.toggle-btn, .ingredient-name, .controls, .readouts, .filter-row select,
 .filter-row input, .filter-row button, #filter-clear {
   transition: background-color 0.5s ease, color 0.5s ease, border-color 0.5s ease,
               backdrop-filter 0.5s ease;
@@ -73,14 +92,20 @@ html {
   background-color: #0f0f1a;
 }
 
-/* Fixed background layer — doesn't resize with content */
+/* The photograph is framed by the viewport, not by document height. Stable
+   large-viewport units prevent mobile browser chrome from continuously
+   reframing the image while the page scrolls. */
 .bg-layer {
   position: fixed;
   inset: 0;
-  z-index: -1;
+  width: 100vw;
+  height: 100vh;
+  height: 100lvh;
+  z-index: 0;
+  pointer-events: none;
   background-image: url('Q1000572_opt.jpg');
   background-size: cover;
-  background-position: center;
+  background-position: center top;
   background-repeat: no-repeat;
   transition: opacity 0.5s ease;
 }
@@ -90,6 +115,8 @@ html {
 
 body {
   font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
   font-weight: 400;
   background: transparent;
   color: var(--text);
@@ -97,6 +124,7 @@ body {
   padding: 0 1rem 1rem;
   min-height: 100vh;
   position: relative;
+  isolation: isolate;
   /* Same horizontal lock as <html> — belt-and-braces for iOS Safari which
      sometimes ignores html overflow when the body is the scroll container.
      Use `clip` (not `hidden`) so the body doesn't become a scroll container
@@ -105,6 +133,9 @@ body {
   overscroll-behavior-x: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+body > :where(:not(.bg-layer)) {
+  z-index: 1;
 }
 
 /* Frosted glass header */
@@ -491,28 +522,30 @@ body {
 
 h2 {
   font-family: "DM Sans", "Inter", sans-serif;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   margin-bottom: 0.4rem;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   line-height: 1.15;
   color: var(--text);
 }
 
 .layout {
   display: grid;
-  grid-template-columns: 280px 1fr 1fr;
+  grid-template-columns: 280px minmax(0, 1fr) minmax(0, 1fr);
   align-items: start;
   gap: 0.75rem;
-  max-width: 1400px;
+  max-width: 1550px;
   margin: 0 auto;
+  min-block-size: 0;
 }
 
-/* Each column flows independently — panels size to content */
 .column-flow {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 0.75rem;
+  min-inline-size: 0;
 }
 
 /*
@@ -534,7 +567,7 @@ h2 {
  * Current approach: accept the artifact (subtle, device-dependent) and keep
  * the simplest implementation with full blur support.
  *
- * Values: 70% opacity (--glass-bg), light=4px / dark=6px blur (--glass-blur)
+ * Values: light=70% / dark=86% opacity (--glass-bg), with 4px / 6px blur
  */
 .panel {
   position: relative;
@@ -544,17 +577,75 @@ h2 {
   border-radius: 12px;
   padding: 1rem 1.25rem;
   overflow: hidden;
+  min-block-size: 0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), inset 0 0 0 1px var(--border);
 }
 
-/* Sliders panel
-   Note: no `max-height` / `overflow-y` here — the panel grows to fit all
-   ingredient rows naturally on desktop. The references panel in column 3 is
-   typically taller, so the composition panel still ends within the page flow. */
+#sliders-panel,
+#filters-panel,
+#tradeoffs-panel,
+#mix-insight,
+#ingredient-insight,
+#strength-panel,
+#references-panel {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+#sliders,
+.mobile-scroll-content,
+.mix-insight-body,
+.ingredient-insight-body,
+.curve-body,
+.ref-list,
+#filter-rows {
+  min-block-size: 0;
+  overscroll-behavior-y: auto;
+  scroll-padding-block: 0.5rem;
+}
+#sliders,
+.mix-insight-body,
+.ingredient-insight-body,
+.curve-body,
+.ref-list,
+#filter-rows {
+  overflow-y: auto;
+}
+#sliders,
+.mix-insight-body,
+.ingredient-insight-body,
+.ref-list,
+#filter-rows {
+  scrollbar-gutter: stable;
+}
+#sliders:focus-visible,
+.mobile-scroll-content:focus-visible,
+.mix-insight-body:focus-visible,
+.ingredient-insight-body:focus-visible,
+.curve-body:focus-visible,
+.ref-list:focus-visible,
+#filter-rows:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+/* Intrinsic shells grow with their content until their semantic cap. */
 .sliders {
   grid-column: 1;
   position: relative;
   transition: box-shadow 180ms ease-out;
+}
+#mix-insight { max-block-size: var(--mix-insight-cap); }
+#ingredient-insight { max-block-size: var(--ingredient-insight-cap); }
+#strength-panel { max-block-size: var(--strength-cap); }
+#references-panel { max-block-size: var(--references-usable-cap); }
+.sliders > #sliders,
+.mix-insight-body,
+.ingredient-insight-body,
+.ref-list {
+  flex: 1 1 auto;
 }
 .sliders-header {
   display: flex;
@@ -564,7 +655,7 @@ h2 {
 }
 .sliders-header h2 { margin: 0; }
 .slider-group { margin-bottom: 0.55rem; }
-.slider-group label {
+.slider-label {
   display: flex;
   /* Vertically align name text with the value-input's text. Without
      `align-items: center` the default `stretch` makes the name span and
@@ -577,7 +668,7 @@ h2 {
   font-size: 0.8rem;
   margin-bottom: 2px;
 }
-.slider-group label span { font-weight: 600; }
+.slider-label > span { font-weight: 600; }
 
 /* Per-row unit suffix in the composition setter (e.g. `kg/m³` / `lb/yd³`,
    or `°C` for the temperature row). The wrap container packs the value
@@ -593,7 +684,7 @@ h2 {
   gap: 0.15ch;
   padding-right: 2px;
 }
-/* Override `.slider-group label span { font-weight: 600 }` — the unit
+/* Override `.slider-label > span { font-weight: 600 }` — the unit
    should read as a quiet suffix, not as bold as the value. Same
    selector specificity (0,2,1) as the bold rule, declared after it so
    the cascade order picks this one up.
@@ -602,7 +693,7 @@ h2 {
    the value column on metric ↔ imperial toggle (`kg/m³` 5ch vs `lb/yd³`
    6ch) — much less noticeable than a permanent empty gap in the
    default (metric) view. */
-.slider-group label .slider-unit {
+.slider-label .slider-unit {
   font-weight: 400;
   font-size: 0.72rem;
   opacity: 0.65;
@@ -724,27 +815,39 @@ h2 {
      sat 1 px off-track on mobile. */
   --thumb-half: 9px;
 }
-/* Clickable ingredient names.
-   Use `text-decoration` instead of `border-bottom` for the dashed
-   underline so the line sits at the font's natural baseline-offset
-   (just under the glyphs) rather than below the descender — saves a
-   few pixels of vertical space per row, especially noticeable on
-   mobile where every ingredient row is stacked. */
+/* Ingredient names form a compact single-select control. Inactive buttons
+   stay visually quiet so the dense composition list remains easy to scan;
+   the current insight receives the pill treatment. */
 .ingredient-name {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.25;
   cursor: pointer;
-  text-decoration: underline dashed var(--text-secondary);
-  text-decoration-thickness: 1px;
-  text-underline-offset: 4px;
-  transition: color 0.15s, text-decoration-color 0.15s;
+  white-space: nowrap;
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s;
 }
-.ingredient-name:hover {
+.ingredient-name:hover:not(.active) {
   color: var(--accent);
-  text-decoration-color: var(--accent);
+  background: rgba(var(--card-bg-rgb), 0.45);
+  border-color: var(--border);
 }
 .ingredient-name.active {
-  color: var(--accent);
-  text-decoration-style: solid;
-  text-decoration-color: var(--accent);
+  color: var(--accent-on);
+  background: var(--accent);
+  border-color: var(--accent);
+  /* Keep the text/background pair atomic during theme changes; interpolating
+     both colors crosses through low-contrast intermediate values. */
+  transition: none;
+}
+.ingredient-name:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* Ingredient insight panel */
@@ -753,12 +856,16 @@ h2 {
 }
 .ingredient-insight-body {
   position: relative;
-  overflow: hidden;
-  transition: height 0.3s ease;
+}
+.content-swap-ghost.content-swap-ghost {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  pointer-events: none;
 }
 .ingredient-insight-title {
   font-family: "DM Sans", "Inter", sans-serif;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--accent);
@@ -766,8 +873,9 @@ h2 {
   font-weight: 700;
 }
 .ingredient-insight-text {
-  font-size: 0.82rem;
-  line-height: 1.5;
+  position: relative;
+  font-size: 0.9rem;
+  line-height: 1.55;
   color: var(--text);
   transition: opacity 0.3s ease, transform 0.3s ease;
 }
@@ -810,17 +918,42 @@ h2 {
 .info-row {
   display: flex;
   justify-content: space-between;
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   color: var(--text-secondary);
   padding: 0 2px;
 }
 
 /* Charts */
 .chart-panel { position: relative; }
+#tradeoffs-panel {
+  inline-size: 100%;
+}
+.scatter-plot-wrap {
+  --axis-selector-x-center: calc(var(--plot-inset-left) + (100% - var(--plot-inset-left) - var(--plot-inset-right)) / 2);
+  --axis-selector-x-top: calc(100% - var(--plot-inset-bottom) + 22px);
+  --axis-selector-y-left: 0px;
+  --axis-selector-y-top: calc(var(--plot-inset-top) + (100% - var(--plot-inset-top) - var(--plot-inset-bottom)) / 2 - 111px);
+  position: relative;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+}
 .chart-panel canvas {
-  width: 100%;
-  height: 380px;
+  inline-size: var(--plot-canvas-width);
+  block-size: var(--plot-canvas-height);
+  max-inline-size: 100%;
   display: block;
+  flex: 0 0 auto;
+}
+.mobile-scroll-content,
+.curve-body {
+  flex: 1;
+}
+.curve-body {
+  display: flex;
+  flex-direction: column;
+}
+.curve-body #curve-canvas {
+  flex: 0 0 auto;
 }
 
 /* Extrapolation warning — absolute positioned top-right */
@@ -857,7 +990,7 @@ h2 {
   justify-content: space-around;
   gap: 0.5rem;
   padding: 0.6rem 0 0;
-  font-size: 0.82rem;
+  font-size: 0.88rem;
 }
 .readouts .value {
   font-weight: 700;
@@ -870,11 +1003,23 @@ h2 {
   gap: 4px;
   margin-top: 4px;
 }
+.material-source-group .toggle-row {
+  position: relative;
+  z-index: 1;
+}
+.material-source-group .toggle-btn[data-previewing] {
+  z-index: 2;
+}
 .toggle-btn {
   position: relative;
-  flex: 1;
-  padding: 4px 8px;
-  font-size: 0.78rem;
+  flex: 1 1 0;
+  min-inline-size: 0;
+  appearance: none;
+  padding: 3px 5px;
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1rem;
+  white-space: nowrap;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: rgba(var(--card-bg-rgb), 0.6);
@@ -908,29 +1053,6 @@ h2 {
   50% { opacity: 0.55; transform: scale(1.06); }
 }
 
-/* Controls */
-.controls {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  font-size: 0.8rem;
-  margin-top: 0.5rem;
-}
-.controls select, .controls button {
-  font-size: 0.8rem;
-  padding: 3px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: rgba(var(--card-bg-rgb), 0.6);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: var(--text);
-  transition: border-color 0.15s;
-}
-.controls select:hover, .controls button:hover {
-  border-color: var(--accent);
-}
-
 /* Tooltip */
 .tooltip {
   position: fixed;
@@ -956,17 +1078,44 @@ h2 {
 }
 
 /* Filter panel */
-.filter-label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-secondary);
+.filters-panel {
+  padding-block: 0.75rem;
+}
+.filter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.filter-header h2 {
+  margin: 0;
+}
+.filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+#filter-rows {
+  max-block-size: calc(
+    2 * var(--filter-row-slot) + var(--filter-row-gap) + 2 * var(--effect-gutter)
+  );
+  margin-inline: calc(-1 * var(--effect-gutter));
+  margin-block-start: 0;
+  padding-inline: var(--effect-gutter);
+  padding-block: 0;
+  touch-action: pan-y;
+}
+#filter-rows:has(.filter-row-wrapper:not(.collapsed):not([data-exiting])) {
+  margin-block-start: 0.4rem;
+  padding-block: var(--effect-gutter);
 }
 .filter-row-wrapper {
-  overflow: hidden;
-  margin-bottom: 0.3rem;
+  overflow: visible;
+  margin-bottom: var(--filter-row-gap);
 }
-#filter-rows:not(:empty) {
-  margin-top: 0.4rem;
+.filter-row-wrapper[data-exiting],
+.filter-row-wrapper:not([data-exiting]):not(:has(~ .filter-row-wrapper:not([data-exiting]))) {
+  margin-bottom: 0;
 }
 .filter-row-wrapper.collapsed {
   display: none;
@@ -986,17 +1135,19 @@ h2 {
 }
 
 .filter-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(6rem, 1fr) minmax(7rem, auto) 1.75rem;
   align-items: center;
   gap: 0.3rem;
+  min-block-size: var(--filter-row-slot);
   font-size: 0.78rem;
   padding: 2px 0;
   max-width: 100%;
-  overflow: hidden;
 }
 .filter-row select {
   flex: 1;
   min-width: 0;
+  min-block-size: 24px;
   max-width: 120px;
   font-size: 0.72rem;
   padding: 2px 4px;
@@ -1004,6 +1155,11 @@ h2 {
   border: 1px solid var(--border);
   background: rgba(var(--card-bg-rgb), 0.5);
   color: var(--text);
+}
+.filter-row select:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .filter-row input[type=number] {
   width: 40px;
@@ -1118,10 +1274,10 @@ h2 {
   font-weight: 700;
   font-size: 0.9rem;
   border-color: #16a34a;
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
-  min-height: 22px;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
   border-radius: 50% !important;
   padding: 0;
   display: inline-flex;
@@ -1167,7 +1323,7 @@ h2 {
   padding: 0.75rem 1rem;
 }
 .references-panel h3 {
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-secondary);
@@ -1177,6 +1333,8 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  margin-inline: calc(-1 * var(--effect-gutter));
+  padding: var(--effect-gutter);
 }
 .ref-item {
   display: flex;
@@ -1186,9 +1344,18 @@ h2 {
 .ref-content {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ref-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.4rem;
+  min-inline-size: 0;
 }
 .ref-title {
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   font-weight: 600;
   color: var(--accent);
   text-decoration: none;
@@ -1198,14 +1365,41 @@ h2 {
   text-decoration: underline;
 }
 .ref-authors {
-  font-size: 0.75rem;
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+  font-size: 0.8rem;
   color: var(--text-secondary);
   margin: 0.1rem 0;
 }
+.ref-details {
+  inline-size: 100%;
+  margin-top: 0.2rem;
+}
+.ref-details > summary {
+  display: list-item;
+  min-block-size: 24px;
+  padding-block: 2px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.25;
+  cursor: pointer;
+}
+.ref-details > summary:hover {
+  color: var(--accent);
+}
+.ref-details > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.ref-description-motion {
+  overflow: visible;
+}
 .ref-desc {
-  font-size: 0.82rem;
+  font-size: 0.9rem;
   color: var(--text);
-  line-height: 1.4;
+  line-height: 1.55;
   margin: 0.2rem 0 0;
 }
 .ref-desc a {
@@ -1217,9 +1411,12 @@ h2 {
 }
 .ref-actions-row {
   display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
   align-items: stretch;
+  justify-content: flex-end;
   gap: 0.4rem;
-  margin-top: 0.4rem;
+  margin-inline-start: auto;
 }
 a.ref-link {
   text-decoration: none;
@@ -1245,13 +1442,10 @@ a.ref-link {
 }
 .mix-insight-body {
   position: relative;
-  max-height: 150px;
-  overflow-y: auto;
-  transition: height 0.3s ease;
 }
 .mix-insight-title {
   font-family: "DM Sans", "Inter", sans-serif;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--accent);
@@ -1288,8 +1482,9 @@ a.ref-link {
   transform: scale(1);
 }
 .mix-insight-text {
-  font-size: 0.82rem;
-  line-height: 1.5;
+  position: relative;
+  font-size: 0.9rem;
+  line-height: 1.55;
   color: var(--text);
   transition: opacity 0.3s ease, transform 0.3s ease;
 }
@@ -1312,29 +1507,136 @@ a.ref-link {
   transform: translateY(-6px);
 }
 
-/* Scatter hint */
-.scatter-hint {
-  font-size: 0.75rem;
-  font-style: italic;
-  color: var(--text-secondary);
-  margin-top: 0.4rem;
-  text-align: center;
+.tradeoffs-heading {
+  min-inline-size: 0;
 }
 
-/* Clickable axis labels */
-.axis-toggle {
-  display: inline-block;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--accent);
-  cursor: pointer;
-  border-bottom: 1.5px dashed var(--accent);
-  padding-bottom: 1px;
-  user-select: none;
-  transition: opacity 0.15s;
+/* Two stable option faces exchange plot-near and outward slots. The radios
+   remain native for one-tab-stop arrow-key behavior; only their visual boxes
+   are hidden. */
+.axis-selector {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  inline-size: max-content;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(var(--card-bg-rgb), 0.5);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
-.axis-toggle:hover {
-  opacity: 0.7;
+.axis-selector-x {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+  inset-inline-start: var(--axis-selector-x-center);
+  inset-block-start: var(--axis-selector-x-top);
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+.axis-selector-y-wrap {
+  position: absolute;
+  z-index: 2;
+  inset-inline-start: var(--axis-selector-y-left);
+  inset-block-start: var(--axis-selector-y-top);
+  inline-size: 40px;
+  block-size: max-content;
+}
+.axis-selector-y {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  inset: 0 auto auto 0;
+  inline-size: 100%;
+  padding: 0;
+}
+.axis-option-face {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 26px;
+  min-inline-size: 4.75rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    transform var(--axis-transition-duration) var(--axis-transition-easing),
+    background-color 150ms ease,
+    color 150ms ease;
+}
+.axis-selector-y .axis-option-face {
+  inline-size: 38px;
+  min-inline-size: 38px;
+  block-size: 6.875rem;
+  min-block-size: 6.875rem;
+  padding: 0;
+  transition: transform var(--axis-transition-duration) var(--axis-transition-easing);
+}
+.axis-selector-y .axis-option-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 6.75rem;
+  min-block-size: 30px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgb(var(--card-bg-rgb));
+  transform: rotate(-90deg);
+  transition:
+    background-color var(--axis-transition-duration) var(--axis-transition-easing),
+    color var(--axis-transition-duration) var(--axis-transition-easing);
+}
+.axis-option-face:has(input:checked) {
+  z-index: 2;
+  background: var(--accent);
+  color: var(--accent-on);
+}
+.axis-selector-y .axis-option-face:has(input:checked) {
+  background: transparent;
+}
+.axis-selector-y .axis-option-face:has(input:checked) .axis-option-pill {
+  background: var(--accent);
+  color: var(--accent-on);
+}
+.axis-option-face input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.axis-option-face:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.axis-selector-y .axis-option-face:has(input:focus-visible) {
+  outline: none;
+}
+.axis-selector-y .axis-option-face:has(input:focus-visible) .axis-option-pill {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.axis-selector-x:has(.axis-option-face:nth-of-type(2) input:checked) .axis-option-face:nth-of-type(1) {
+  transform: translateX(100%);
+}
+.axis-selector-x:has(.axis-option-face:nth-of-type(2) input:checked) .axis-option-face:nth-of-type(2) {
+  transform: translateX(-100%);
+}
+.axis-selector-y:has(.axis-option-face:nth-of-type(2) input:checked) .axis-option-face:nth-of-type(1) {
+  transform: translateY(100%);
+}
+.axis-selector-y:has(.axis-option-face:nth-of-type(2) input:checked) .axis-option-face:nth-of-type(2) {
+  transform: translateY(-100%);
 }
 
 /* Page load animation */
@@ -1398,7 +1700,10 @@ a.ref-link {
   transition: opacity 0.15s ease;
 }
 .mobile-sliders-view.fading { opacity: 0; }
-.mobile-scroll-content { display: contents; }
+.mobile-scroll-content {
+  display: flex;
+  flex-direction: column;
+}
 
 /* Site footer — subtle credit with frosted glass pill.
    `padding: 0.75rem 0` matches `.layout { gap: 0.75rem }` so the pill sits
@@ -1434,11 +1739,116 @@ a.ref-link {
   opacity: 0.7;
 }
 
+/* Desktop keeps useful panel geometry and lets the document scroll when needed. */
+@media (min-width: 1051px) {
+  :root {
+    --plot-width-max: 30rem;
+    --plot-height-max: 20rem;
+    --plot-inset-left: 80px;
+    --plot-inset-right: 20px;
+    --plot-inset-top: 15px;
+    --plot-inset-bottom: 54px;
+    --plot-canvas-width: 36.25rem;
+    --plot-canvas-height: 24.3125rem;
+  }
+  html,
+  body {
+    min-block-size: 100vh;
+    min-block-size: 100svh;
+  }
+  .site-header {
+    margin-bottom: 0.75rem;
+  }
+  .layout {
+    width: 100%;
+  }
+  .site-footer {
+    flex: 0 0 auto;
+    margin-top: auto;
+    padding: 0;
+  }
+  .scatter-content {
+    display: flex;
+    flex-direction: column;
+  }
+  #tradeoffs-panel .tradeoffs-heading,
+  #strength-panel .strength-heading {
+    display: flex;
+    align-items: flex-end;
+    min-block-size: 2.1rem;
+    margin-block-end: 2px;
+  }
+  .tradeoffs-heading #tradeoffs-title,
+  .strength-heading #strength-title {
+    margin-block-end: 0;
+  }
+  .axis-option-face {
+    min-block-size: 22px;
+    padding-block: 2px;
+  }
+  .axis-selector-y-wrap {
+    inline-size: 36px;
+  }
+  .axis-selector-y .axis-option-face {
+    inline-size: 34px;
+    min-inline-size: 34px;
+  }
+  .axis-selector-y .axis-option-pill {
+    min-block-size: 26px;
+    padding-block: 2px;
+  }
+  #composition-column,
+  #sliders-panel,
+  #sliders-panel > #sliders {
+    align-self: start;
+    block-size: auto;
+    max-block-size: none;
+  }
+  #sliders-panel {
+    flex: 0 0 auto;
+  }
+  #sliders-panel > #sliders {
+    flex: 0 0 auto;
+    min-block-size: auto;
+    overflow: visible;
+    scrollbar-gutter: auto;
+  }
+  .mobile-scroll-content {
+    overflow: visible;
+    flex: 0 0 auto;
+  }
+}
+
+/* Taller desktops reveal one additional filter row. The document and columns
+   remain in natural flow so intrinsic Composition controls stay reachable. */
+@media (min-width: 1200px) and (min-height: 900px) {
+  #filter-rows {
+    max-block-size: calc(
+      3 * var(--filter-row-slot) + 2 * var(--filter-row-gap) + 2 * var(--effect-gutter)
+    );
+  }
+}
+
+@media (min-width: 1200px) and (min-height: 1080px) {
+  #filter-rows {
+    max-block-size: calc(
+      4 * var(--filter-row-slot) + 3 * var(--filter-row-gap) + 2 * var(--effect-gutter)
+    );
+  }
+}
+  #tradeoffs-title,
+  #strength-title {
+    min-block-size: 1.3rem;
+  }
+  .scatter-content #scatter-canvas {
+    flex: 0 0 auto;
+  }
+
 /* Responsive — switch to mobile at 1050px to prevent title/warning overlap in panels */
 @media (max-width: 1050px) {
   body {
     padding: 0 0.5rem 1rem;
-    padding-bottom: env(safe-area-inset-bottom, 1rem);
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
   }
 
   .site-header {
@@ -1455,8 +1865,16 @@ a.ref-link {
   }
   .site-header h1 { font-size: 1.1rem; }
   .header-tagline { display: none; }
-  .site-header .cite-group { display: none; }
-  #filter-clear { display: none; }
+  .site-header .cite-group {
+    display: inline-flex;
+  }
+  .site-header .cite-label {
+    display: none;
+  }
+  .site-header .cite-group .cite-btn {
+    min-width: 0;
+    padding-inline: 7px;
+  }
 
   .layout {
     display: flex;
@@ -1469,9 +1887,7 @@ a.ref-link {
     display: contents;
   }
 
-  /* Chart panels fill the viewport (each ~half of available space) */
   .chart-panel {
-    height: calc((100dvh - 46px - 0.4rem) / 2);
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -1479,24 +1895,39 @@ a.ref-link {
     padding: 0.6rem 0.8rem;
   }
   .chart-panel canvas {
-    flex: 1;
-    min-height: 0;
-    height: auto !important;
+    flex: 0 0 auto;
+    max-inline-size: 100%;
   }
 
   /* Reorder: strength curve first, unified scatter/sliders panel second */
   .chart-panel:has(#curve-canvas) { order: 1; }
   .chart-panel:has(#scatter-canvas) { order: 2; }
   .mobile-panel-header { display: flex; align-items: center; }
-  .sliders { display: none !important; } /* hidden on mobile — content moved into unified panel */
+  .sliders,
+  .filters-panel { display: none !important; } /* content moves into unified panel */
 
   /* Below-the-fold panels */
-  .mix-insight-panel { order: 4; width: 100%; }
-  .ingredient-insight-panel { order: 5; width: 100%; }
-  .references-panel { order: 6; width: 100%; }
+  .mix-insight-panel {
+    order: 4;
+    width: 100%;
+    max-block-size: clamp(14rem, 38svh, 22rem);
+  }
+  .ingredient-insight-panel {
+    order: 5;
+    width: 100%;
+    max-block-size: clamp(16rem, 44svh, 25rem);
+  }
+  .references-panel {
+    order: 6;
+    width: 100%;
+  }
+  .site-footer {
+    order: 7;
+    width: 100%;
+  }
 
   /* Unified panel mobile elements */
-  .mobile-hint {
+  .mobile-hint:not([hidden]) {
     display: block;
     font-size: 0.72rem;
     font-style: italic;
@@ -1514,22 +1945,109 @@ a.ref-link {
   .mobile-scroll-content {
     display: flex;
     flex-direction: column;
-    flex: 1;
     min-height: 0;
+    margin: calc(-1 * var(--effect-gutter)) -0.8rem -0.6rem;
+    padding: var(--effect-gutter) 0.8rem calc(0.6rem + var(--effect-gutter));
+  }
+  #tradeoffs-panel[data-active-view="scatter"] .mobile-scroll-content {
+    overflow-y: clip;
+    flex: 0 0 auto;
+  }
+  #tradeoffs-panel[data-active-view="composition"] {
+    max-block-size: clamp(20rem, 54svh, 34rem);
+  }
+  #tradeoffs-panel[data-active-view="composition"] .mobile-scroll-content {
     overflow-y: auto;
-    margin: 0 -0.8rem -0.6rem;
-    padding: 0 0.8rem 0.6rem;
+    flex: 1 1 auto;
+    scrollbar-gutter: stable;
   }
   .mobile-scroll-content .scatter-content {
     display: flex;
     flex-direction: column;
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow-y: visible;
+  }
+  .mobile-scroll-content .mobile-sliders-view,
+  .mobile-scroll-content #sliders {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow-y: visible;
+    scrollbar-gutter: auto;
+    overscroll-behavior-y: auto;
+  }
+  .mobile-scroll-content #sliders {
+    overflow: visible;
   }
   .mobile-scroll-content .scatter-content canvas {
-    min-height: 180px;
     flex-shrink: 0;
+  }
+  :root {
+    --filter-row-slot: 5rem;
+  }
+  #filter-controls {
+    margin-top: 0.45rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
+  }
+  .filter-header h2 {
+    font-size: 0.85rem;
+  }
+  .axis-option-face,
+  .axis-selector-y .axis-option-face {
+    min-inline-size: 44px;
+    min-block-size: 44px;
+  }
+  .ref-details > summary {
+    min-block-size: 44px;
+    display: list-item;
+    padding-block: 10px;
+  }
+  .axis-selector-x {
+    padding: 0;
+  }
+  .filter-row {
+    grid-template-columns: minmax(0, 1fr) 2.75rem;
+    grid-template-areas:
+      "column remove"
+      "value value";
+    align-items: center;
+    row-gap: 0.25rem;
+    padding-block: 0.25rem;
+  }
+  .filter-row .filter-col {
+    grid-area: column;
+    max-width: none;
+    height: 24px;
+    min-height: 24px;
+  }
+  .filter-row .filter-value {
+    grid-area: value;
+    min-width: 0;
+  }
+  .filter-row .filter-remove-btn {
+    grid-area: remove;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    margin: 0;
+  }
+  .filter-row input[type="number"] {
+    width: min(6rem, 40%);
+    min-height: 24px;
+  }
+  .filter-cat-btn {
+    min-height: 24px;
+  }
+  #filter-clear {
+    min-block-size: 24px;
+  }
+  .filter-add-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
   }
   .mobile-sliders-view {
     display: block;
@@ -1544,11 +2062,10 @@ a.ref-link {
     padding: 0.6rem 0.8rem 0.3rem;
   }
 
-  /* Hide scatter panel h2 on mobile — toggle buttons replace it */
-  .scatter-content > h2 { display: none; }
+  /* Toggle buttons replace the fixed Tradeoffs heading on mobile. */
+  .tradeoffs-heading { display: none; }
   .scatter-content.hidden { display: none; }
-  /* Hide scatter hint and panel-hint on mobile — unified hint replaces them */
-  .scatter-hint { display: none; }
+  /* Composition guidance lives in the mobile view switcher. */
   .panel-hint { display: none; }
 
   /* Mobile unit toggle pushed to the right */
@@ -1583,7 +2100,7 @@ a.ref-link {
     /* `.slider-group` is `position: relative` for the slider preview marker
        (set globally above). */
   }
-  .mobile-sliders-view .slider-group label {
+  .mobile-sliders-view .slider-label {
     /* Inherits `display: flex; justify-content: space-between` from the base
        rule — name on the left, value-input on the right. 0.85rem matches
        the mobile h2 size and bumps legibility on touch devices; both the
@@ -1607,14 +2124,10 @@ a.ref-link {
     padding-right: 7px;
   }
   .mobile-sliders-view .slider-group input[type=range] {
-    /* Constrain the slider track to a centered, fixed-but-responsive width
-       so it sits in the middle of the panel rather than spanning the full
-       width. `min(60vw, 220px)` is comfortable on phones from 320 px up:
-         320 px viewport → 60vw = 192 px (capped to 192 px)
-         412 px viewport → 60vw = 247 px (capped to 220 px)
-       `display: block; margin: 4px auto;` centers horizontally and adds a
-       small breathing margin from the label above and info-row below. */
-    width: min(60vw, 220px);
+    /* Use the owning panel rather than a viewport-relative cap. Six pixels
+       per side contain the 5px focus outline and the endpoint preview pulse
+       without wasting tablet-width Composition space. */
+    width: calc(100% - 12px);
     display: block;
     /* 56 px hit area; the visible bar stays 6 px via the track
        pseudo-element. Margin drops to 0 so the row grows by less than the
@@ -1651,8 +2164,11 @@ a.ref-link {
   /* Material Source row on mobile: hide the redundant value-span (the active
      toggle button is self-labeling). The toggle row sits below the label as
      a normal block-flow child, just like an `input[type=range]` would. */
-  .mobile-sliders-view .material-source-group label > span:last-child {
+  .mobile-sliders-view .material-source-group .slider-label > span:last-child {
     display: none;
+  }
+  .mobile-sliders-view .material-source-group .toggle-btn {
+    min-block-size: 44px;
   }
 
   /* --- Mobile legibility tuning ---
@@ -1690,12 +2206,7 @@ a.ref-link {
        legible 0.88rem for the GWP / Cost / W/B readout strip. */
     font-size: 0.88rem;
   }
-  /* Hide the W/B (water-to-binder ratio) readout on mobile. With the bumped
-     0.88rem font, GWP + Cost already fill the strip; adding W/B forces a
-     wrap that steals vertical space from the strength curve canvas above.
-     Power users on mobile still have the slider readouts to infer water/
-     binder; W/B remains visible on desktop where there's room. */
-  .wb-readout { display: none; }
+  .wb-readout { display: block; }
   .mobile-hint {
     /* Italic instructional hint inside the unified mobile panel header. */
     font-size: 0.8rem;
@@ -1703,14 +2214,60 @@ a.ref-link {
 }
 
 /* Landscape mobile — panels side by side */
-@media (max-width: 1050px) and (orientation: landscape) {
+@media (min-width: 700px) and (max-width: 1050px) {
   .layout {
     flex-direction: row;
     flex-wrap: wrap;
   }
   .chart-panel {
-    height: calc(100dvh - 46px);
-    width: calc(50% - 0.2rem);
+    flex: 0 0 calc((100vw - 1.4rem) / 2);
+    width: calc((100vw - 1.4rem) / 2);
+  }
+}
+
+/* Keep every named header action inside a 320px viewport. The wider mobile
+   layout already flattens the wrappers into one row; this breakpoint only
+   trims intrinsic width and preserves the same controls and ordering. */
+@media (max-width: 360px) {
+  .site-header {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    padding: 0.2rem 0.35rem;
+    gap: 0 0.1rem;
+  }
+  .site-header h1 {
+    grid-column: 1 / -1;
+    justify-self: start;
+    font-size: 0.88rem;
+  }
+  .site-header .header-links {
+    font-size: 0.65rem;
+  }
+  .site-header .header-links a {
+    display: inline-flex;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+  }
+  .site-header .cite-group {
+    grid-column: span 2;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+    border: 0;
+    background: transparent;
+  }
+  .site-header .cite-group .cite-btn {
+    min-width: 44px;
+    min-height: 44px;
+    padding-inline: 2px;
+    font-size: 0.61rem;
+  }
+  .site-header .theme-toggle {
+    width: 44px;
+    height: 44px;
+    justify-self: end;
   }
 }
 
@@ -1750,6 +2307,11 @@ a.ref-link {
     transition-duration: 0.01ms !important;
     transition-delay: 0ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .axis-option-face,
+  .axis-option-pill {
+    transition: none !important;
   }
 
   /* The two infinite decorative animations: stop outright, and pin the title

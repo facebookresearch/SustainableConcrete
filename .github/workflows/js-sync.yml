@@ -28,6 +28,7 @@ on:
       - 'docs/gp.mjs'
       - 'docs/gp_v2_fast.mjs'
       - 'docs/feature_registry.mjs'
+      - 'docs/plot-geometry.mjs'
       - 'docs/units.mjs'
       - 'docs/model/**'
       - 'boxcrete/features.py'
@@ -37,6 +38,7 @@ on:
       - 'test/test_js_strength_v2.mjs'
       - 'test/test_js_predictor_parity.mjs'
       - 'test/test_js_physical_constraints.mjs'
+      - 'test/test_js_plot_geometry.mjs'
       - 'test/test_js_ui_smoke.mjs'
       - 'test/test_js_units.mjs'
       - 'test/test_lengthscales_v2.mjs'
@@ -82,6 +84,9 @@ jobs:
 
       - name: Explorer UI smoke
         run: node test/test_js_ui_smoke.mjs
+
+      - name: Plot geometry contracts
+        run: node test/test_js_plot_geometry.mjs
 
       - name: JS unit conversions
         run: node test/test_js_units.mjs

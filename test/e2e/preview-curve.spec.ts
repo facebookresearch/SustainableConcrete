@@ -20,7 +20,11 @@ async function openPreviewTestPage(page: import("@playwright/test").Page) {
   await page.waitForFunction(() => (window as any).__test?.modelReady === true, null, {
     timeout: 20000,
   });
-  await expect(page.locator("#sliders input[type=range]").first()).toBeVisible();
+  const firstSlider = page.locator("#sliders input[type=range]").first();
+  if (!(await firstSlider.isVisible())) {
+    await page.locator("#mobile-show-sliders").click();
+  }
+  await expect(firstSlider).toBeVisible();
 }
 
 async function hoverRenderedScatterPoint(page: import("@playwright/test").Page) {
@@ -55,6 +59,35 @@ async function waitForPreviewToSettle(page: import("@playwright/test").Page) {
     .toBe(true);
 }
 
+async function getVisibleCompositionSlider(page: import("@playwright/test").Page) {
+  const visibleIdx = await page.evaluate(() => {
+    const owner = document.getElementById("sliders");
+    if (!owner) return null;
+
+    const ownerRect = owner.getBoundingClientRect();
+    const sliders = [
+      ...owner.querySelectorAll<HTMLInputElement>('input[type="range"]'),
+    ];
+
+    return sliders.findLast((slider) => {
+      const rect = slider.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      return rect.top >= ownerRect.top &&
+        rect.bottom <= ownerRect.bottom &&
+        document.elementFromPoint(centerX, centerY) === slider;
+    })?.dataset.idx ?? null;
+  });
+
+  if (visibleIdx === null) {
+    throw new Error("Composition has no fully visible, hittable slider");
+  }
+
+  return page.locator(
+    `#sliders input[type="range"][data-idx="${visibleIdx}"]`,
+  );
+}
+
 test.describe("preview curve composition sync", () => {
   test("displayPreviewComp matches currentComposition after Material Source toggle", async ({
     page,
@@ -84,6 +117,36 @@ test.describe("preview curve composition sync", () => {
 });
 
 test.describe("mix insight refreshes on Material Source toggle", () => {
+  test("first asynchronous Mix population is immediate initial layout", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "one initial-layout project is enough");
+    await page.addInitScript(() => {
+      (window as any).__initialMixMotion = null;
+      document.addEventListener("DOMContentLoaded", () => {
+        const text = document.getElementById("mix-insight-text");
+        if (!text) return;
+        new MutationObserver(() => {
+          if ((window as any).__initialMixMotion !== null) return;
+          const body = text.closest(".mix-insight-body")!;
+          const shell = text.closest("#mix-insight")!;
+          (window as any).__initialMixMotion = {
+            ghosts: body.querySelectorAll(".content-swap-ghost").length,
+            structuralAnimations: shell.getAnimations({ subtree: true }).filter((animation) =>
+              animation.effect?.getKeyframes().some((frame) =>
+                Object.prototype.hasOwnProperty.call(frame, "blockSize"),
+              ),
+            ).length,
+          };
+        }).observe(text, { childList: true, subtree: true, characterData: true });
+      });
+    });
+    await page.goto("/?test=1");
+    await expect.poll(() => page.evaluate(() => (window as any).__initialMixMotion)).not.toBeNull();
+    expect(await page.evaluate(() => (window as any).__initialMixMotion)).toEqual({
+      ghosts: 0,
+      structuralAnimations: 0,
+    });
+  });
+
   test("does not retain previous mix's description after toggle", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "mix insight only visible on desktop");
     await page.goto("/");
@@ -467,6 +530,58 @@ test.describe("control-scoped predictive preview", () => {
     expect(Number.isInteger(state.materialSource)).toBe(true);
   });
 
+  test("edge class preview pulses remain fully inside the nearest Composition clip", async ({ page }) => {
+    await openPreviewTestPage(page);
+    const buttons = page.locator(".material-source-group .toggle-btn");
+    const activeIndex = await buttons.evaluateAll((items) =>
+      items.findIndex((item) => item.classList.contains("active")),
+    );
+    const edgeIndices = [0, (await buttons.count()) - 1].filter((index) => index !== activeIndex);
+    expect(edgeIndices.length, "an edge class must be inactive for containment coverage").toBeGreaterThan(0);
+
+    for (const index of edgeIndices) {
+      const button = buttons.nth(index);
+      await button.focus();
+      await expect(button).toHaveAttribute("data-previewing", "");
+      const state = await button.evaluate((element) => {
+        const owner = element.closest<HTMLElement>("#sliders")!;
+        const clippingOwner = (() => {
+          const ancestors = [];
+          let ancestor = element.parentElement;
+          while (ancestor && ancestor !== document.body) {
+            ancestors.push(ancestor);
+            ancestor = ancestor.parentElement;
+          }
+          return ancestors;
+        })().find((candidate) => {
+          const style = getComputedStyle(candidate);
+          return /(hidden|clip|auto|scroll)/.test(style.overflowX);
+        }) ?? owner;
+        const buttonRect = element.getBoundingClientRect();
+        const ownerRect = clippingOwner.getBoundingClientRect();
+        const pulseStyle = getComputedStyle(element, "::after");
+        const pulseInset = Math.abs(parseFloat(pulseStyle.insetInlineStart || pulseStyle.left));
+        const pulseWidth = buttonRect.width + 2 * pulseInset;
+        const pulseScaleExcursion = pulseWidth * 0.03;
+        return {
+          ownerOverflowX: getComputedStyle(owner).overflowX,
+          clipOverflowX: getComputedStyle(clippingOwner).overflowX,
+          pulseLeft: buttonRect.left - pulseInset - pulseScaleExcursion,
+          pulseRight: buttonRect.right + pulseInset + pulseScaleExcursion,
+          ownerLeft: ownerRect.left,
+          ownerRight: ownerRect.right,
+          zIndex: Number.parseInt(getComputedStyle(element).zIndex, 10) || 0,
+        };
+      });
+      expect(state.ownerOverflowX).toBe("visible");
+      expect(["auto", "hidden", "scroll", "clip"]).toContain(state.clipOverflowX);
+      expect(state.pulseLeft).toBeGreaterThanOrEqual(state.ownerLeft - 1);
+      expect(state.pulseRight).toBeLessThanOrEqual(state.ownerRight + 1);
+      expect(state.zIndex).toBeGreaterThan(0);
+      await button.blur();
+    }
+  });
+
   test("committing a previewed class holds its approved target through the solid transition", async ({
     page,
   }, testInfo) => {
@@ -624,7 +739,7 @@ test.describe("control-scoped predictive preview", () => {
     await inactive.hover();
     const initialPreviewTransition = await page.evaluate(() =>
       (window as any).__test.previewCurveTransitionSequence);
-    const slider = page.locator("#sliders input[type=range]").first();
+    const slider = await getVisibleCompositionSlider(page);
     await slider.focus();
     await page.keyboard.press("ArrowRight");
     await expect.poll(() => page.evaluate(() =>
@@ -670,37 +785,19 @@ test.describe("control-scoped predictive preview", () => {
   }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "one project is enough");
     await openPreviewTestPage(page);
-    await page.evaluate(() => {
-      (window as any).__curveDrawCount = 0;
-      const canvas = document.getElementById("curve-canvas") as HTMLCanvasElement;
-      let width = canvas.width;
-      Object.defineProperty(canvas, "width", {
-        get: () => width,
-        set: (value) => { (window as any).__curveDrawCount++; width = value; },
-        configurable: true,
-      });
-    });
 
     const inactive = page.locator(".material-source-group .toggle-btn:not(.active)");
     await inactive.nth(0).hover();
-    const parkedCount = await page.evaluate(async () => {
-      let last = (window as any).__curveDrawCount;
-      let stableFrames = 0;
-      for (let frame = 0; frame < 240; frame++) {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        const count = (window as any).__curveDrawCount;
-        stableFrames = count === last ? stableFrames + 1 : 0;
-        last = count;
-        if (stableFrames >= 5) return count;
-      }
-      return null;
-    });
-    expect(parkedCount, "preview loop never parked after convergence").not.toBeNull();
+    await expect.poll(
+      () => page.evaluate(() => (window as any).__test.isAnimLoopActive),
+      { timeout: 5000 },
+    ).toBe(false);
+    const parkedSequence = await page.evaluate(() =>
+      (window as any).__test.curveDrawSequence);
 
     await inactive.nth(1).hover();
-    await expect.poll(() => page.evaluate(() => (window as any).__curveDrawCount)).toBeGreaterThan(
-      parkedCount!,
-    );
+    await expect.poll(() => page.evaluate(() =>
+      (window as any).__test.curveDrawSequence)).toBeGreaterThan(parkedSequence);
   });
 
   test("moving from a focused class button to a slider transfers the affordance", async ({
@@ -712,7 +809,7 @@ test.describe("control-scoped predictive preview", () => {
     await inactive.focus();
     await expect(inactive).toHaveAttribute("data-previewing", "");
 
-    const slider = page.locator("#sliders input[type=range]").first();
+    const slider = await getVisibleCompositionSlider(page);
     const box = await slider.boundingBox();
     if (!box) throw new Error("slider has no bounding box");
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -725,6 +822,39 @@ test.describe("control-scoped predictive preview", () => {
         markers.filter((marker) => getComputedStyle(marker).display !== "none").length
       ),
     ).toBe(1);
+  });
+
+  test("opening mobile Composition clears a hidden scatter preview", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "mobile view-switch ownership");
+    await page.goto("/?test=1");
+    await page.waitForFunction(() => (window as any).__test?.modelReady === true, null, {
+      timeout: 20_000,
+    });
+    await expect(page.locator("#sliders input[type=range]").first()).toBeAttached();
+    await hoverRenderedScatterPoint(page);
+    await expect.poll(() => page.evaluate(() => (window as any).__test.previewSource)).toBe(
+      "scatter",
+    );
+    await expect.poll(() => page.evaluate(() => (window as any).__test.isAnimLoopActive)).toBe(false);
+
+    await page.locator("#mobile-show-sliders").click();
+    await expect(page.locator(".mobile-sliders-view")).toBeVisible();
+    await expect.poll(() => page.evaluate(() => (window as any).__test.previewSource)).toBeNull();
+    await expect.poll(() => page.evaluate(() => {
+      const t = (window as any).__test;
+      return t.displayPreviewComp.every(
+        (value: number, idx: number) =>
+          Math.abs(value - t.currentComposition[idx]) <= 1e-6,
+      );
+    })).toBe(true);
+    expect(
+      await page.locator(".slider-preview-marker").evaluateAll((markers) =>
+        markers.filter((marker) => getComputedStyle(marker).display !== "none").length
+      ),
+    ).toBe(0);
+    await expect(page.locator("#sliders-panel")).not.toHaveClass(/\bpreviewing\b/);
   });
 
   test("focused class restoration waits for scatter composition completion", async ({

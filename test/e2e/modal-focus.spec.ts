@@ -42,6 +42,34 @@ test.describe("modal focus management", () => {
     expect(id, "focus should return to the element that opened the dialog").toBe("about-link");
   });
 
+  test("opening a second modal transfers exclusive ownership", async ({ page }) => {
+    await page.locator("#about-link").click();
+    await expect(page.locator("#about-overlay")).toHaveClass(/visible/);
+
+    await page.evaluate(() => {
+      (document.getElementById("video-link") as HTMLElement).click();
+    });
+
+    await expect(page.locator("#about-overlay")).not.toHaveClass(/visible/);
+    await expect(page.locator("#video-overlay")).toHaveClass(/visible/);
+    await expect(page.locator(".about-overlay.visible, .video-overlay.visible")).toHaveCount(1);
+  });
+
+  test("reopening video before fade cleanup keeps the player source", async ({ page }) => {
+    await page.locator("#video-link").click();
+    const overlay = page.locator("#video-overlay");
+    const iframe = page.locator("#video-iframe");
+    await expect(overlay).toHaveClass(/visible/);
+    await expect(iframe).toHaveAttribute("src", /youtube-nocookie/);
+
+    await overlay.locator("[data-modal-close]").click();
+    await page.locator("#video-link").click();
+    await page.waitForTimeout(300);
+
+    await expect(overlay).toHaveClass(/visible/);
+    await expect(iframe).toHaveAttribute("src", /youtube-nocookie/);
+  });
+
   test("Tab is trapped inside the open dialog", async ({ page }) => {
     await page.locator("#about-link").click();
     await expect(page.locator("#about-overlay")).toHaveClass(/visible/);

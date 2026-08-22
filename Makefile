@@ -14,6 +14,7 @@
 # === Slow (minutes) ===
 #   make test-notebooks     - execute every notebook     (notebooks.yml :mode-*)
 #   make test-e2e           - Playwright desktop+mobile  (e2e.yml)
+#   make test-plot-geometry - focused Chromium/WebKit plot contracts
 #   make test-lighthouse    - Lighthouse CI              (lighthouse.yml)
 #
 # === Aggregates ===
@@ -32,7 +33,7 @@ PYTHON ?= python
 .PHONY: help \
         lint format \
         test-py test-js test-notebook-fmt test-notebooks \
-        test-e2e test-lighthouse \
+        test-e2e test-plot-geometry test-lighthouse \
         test check check-all
 
 help:
@@ -48,6 +49,7 @@ help:
 	@echo "  Slow:"
 	@echo "    make test-notebooks     - execute every notebook"
 	@echo "    make test-e2e           - Playwright (desktop + mobile)"
+	@echo "    make test-plot-geometry - focused plot geometry in Chromium + WebKit"
 	@echo "    make test-lighthouse    - Lighthouse CI"
 	@echo ""
 	@echo "  Aggregates:"
@@ -120,7 +122,8 @@ JS_TESTS = \
   test/test_data_freshness.mjs \
   test/test_js_preview_state.mjs \
   test/test_js_categorical_source.mjs \
-  test/test_js_filters.mjs
+  test/test_js_filters.mjs \
+  test/test_js_plot_geometry.mjs
 
 test-js:
 	@for t in $(JS_TESTS); do \
@@ -180,6 +183,11 @@ test-notebooks:
 test-e2e:
 	npx playwright test --project=desktop
 	npx playwright test --project=mobile
+
+test-plot-geometry:
+	npx playwright test test/e2e/plot-geometry.spec.ts test/e2e/scatter-toggle.spec.ts \
+	  --project=desktop --project=mobile --project=desktop-webkit --project=mobile-webkit \
+	  --workers=1
 
 # --- Lighthouse CI -------------------------------------------------
 # Mirrors .github/workflows/lighthouse.yml.
