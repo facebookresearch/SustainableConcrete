@@ -34,13 +34,7 @@ export async function installCanvasFrameProbe(page: Page): Promise<void> {
     if (window.__canvasFrameProbe) return;
 
     const nativeRequestAnimationFrame = window.requestAnimationFrame.bind(window);
-    const widthDescriptor = Object.getOwnPropertyDescriptor(
-      HTMLCanvasElement.prototype,
-      "width",
-    );
-    if (!widthDescriptor?.get || !widthDescriptor.set) {
-      throw new Error("HTMLCanvasElement.width accessors are unavailable");
-    }
+    const nativeClearRect = CanvasRenderingContext2D.prototype.clearRect;
 
     let events: CanvasDrawEvent[] = [];
     let activeFrameTime: number | null = null;
@@ -59,23 +53,27 @@ export async function installCanvasFrameProbe(page: Page): Promise<void> {
         }
       });
 
-    Object.defineProperty(HTMLCanvasElement.prototype, "width", {
-      ...widthDescriptor,
-      set(this: HTMLCanvasElement, value: number) {
-        widthDescriptor.set!.call(this, value);
-        const canvas = this.id === "curve-canvas"
-          ? "curve"
-          : this.id === "scatter-canvas"
-            ? "scatter"
-            : null;
-        if (canvas === null) return;
+    CanvasRenderingContext2D.prototype.clearRect = function(
+      this: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+    ): void {
+      const canvas = this.canvas.id === "curve-canvas"
+        ? "curve"
+        : this.canvas.id === "scatter-canvas"
+          ? "scatter"
+          : null;
+      if (canvas !== null) {
         events.push({
           canvas,
           frameTime: rafDepth > 0 ? activeFrameTime : null,
           phase: rafDepth > 0 ? "raf" : "sync",
         });
-      },
-    });
+      }
+      nativeClearRect.call(this, x, y, width, height);
+    };
 
     window.__canvasFrameProbe = {
       reset() {

@@ -24,7 +24,7 @@ test.describe("slider touch targets", () => {
   }
 
   test("mobile sliders meet the Apple HIG 44px target height", async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== "mobile", "mobile touch sizing");
+    test.skip(!testInfo.project.name.startsWith("mobile"), "mobile touch sizing");
     await page.goto("/");
     await page.locator("#mobile-show-sliders").click();
     await expect(page.locator(".mobile-sliders-view")).toBeVisible({ timeout: 2000 });
@@ -44,7 +44,7 @@ test.describe("slider touch targets", () => {
   });
 
   test("mobile slider thumbs are at least 22px", async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== "mobile", "mobile thumb sizing");
+    test.skip(!testInfo.project.name.startsWith("mobile"), "mobile thumb sizing");
     await page.goto("/");
     const thumbSize = await page.evaluate(() => {
       for (const sheet of Array.from(document.styleSheets)) {
@@ -69,7 +69,7 @@ test.describe("slider touch targets", () => {
   });
 
   test("desktop sliders meet the WCAG 2.2 AA 24px minimum", async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== "desktop", "desktop pointer sizing");
+    test.skip(!testInfo.project.name.startsWith("desktop"), "desktop pointer sizing");
     await page.goto("/");
     await waitForSliders(page, "#sliders input[type=range]");
     const heights = await page.evaluate(() =>
@@ -86,7 +86,7 @@ test.describe("slider touch targets", () => {
   });
 
   test("the visible track stays thin while the hit area is tall", async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== "desktop", "one project is enough");
+    test.skip(!testInfo.project.name.startsWith("desktop"), "desktop pointer sizing");
     await page.goto("/");
     // The bar the user sees must remain the slim 6px line; growing the hit
     // area must not fatten the visual.
@@ -104,5 +104,47 @@ test.describe("slider touch targets", () => {
       return null;
     });
     expect(trackHeight, "runnable-track rule not found — visual moved back onto the input?").toBe("6px");
+  });
+});
+
+test.describe("mobile Scatter and filter touch targets", () => {
+  test("axis and filter controls meet the 44px mobile target", async ({ page }, testInfo) => {
+    test.skip(!testInfo.project.name.startsWith("mobile"), "mobile touch sizing");
+    await page.goto("/?test=1");
+    await page.locator("#filter-add").click();
+    await expect(page.locator(".filter-row")).toBeVisible();
+
+    const selectors = [
+      "#axis-selector-x .axis-option-face",
+      "#axis-selector-y .axis-option-face",
+      "#filter-add",
+      ".filter-remove-btn",
+    ];
+    for (const selector of selectors) {
+      const box = await page.locator(selector).first().boundingBox();
+      expect(box, `${selector} must have a box`).not.toBeNull();
+      expect(box!.width, `${selector} width`).toBeGreaterThanOrEqual(HIG_MIN);
+      expect(box!.height, `${selector} height`).toBeGreaterThanOrEqual(HIG_MIN);
+    }
+
+    await page.locator("#mobile-show-sliders").click();
+    await expect(page.locator(".mobile-sliders-view")).toBeVisible();
+    const materialSource = await page
+      .locator(".mobile-sliders-view .material-source-group .toggle-btn")
+      .first()
+      .boundingBox();
+    expect(materialSource, "Material Source button must have a box").not.toBeNull();
+    expect(materialSource!.width).toBeGreaterThanOrEqual(HIG_MIN);
+    expect(materialSource!.height).toBeGreaterThanOrEqual(HIG_MIN);
+
+    await page.locator("#mobile-show-scatter").click();
+    await expect(page.locator(".scatter-content")).toBeVisible();
+    await expect(page.locator(".filter-row")).toBeVisible();
+    for (const selector of [".filter-col", ".filter-min", ".filter-max"]) {
+      const box = await page.locator(selector).first().boundingBox();
+      expect(box, `${selector} must have a box`).not.toBeNull();
+      expect(box!.width, `${selector} width`).toBeGreaterThanOrEqual(WCAG_MIN);
+      expect(box!.height, `${selector} height`).toBeGreaterThanOrEqual(WCAG_MIN);
+    }
   });
 });

@@ -6,9 +6,9 @@ import { test, expect } from "@playwright/test";
  * NOT depend on the model must still work in that window.
  *
  * Regression pin: the model-dependent guard in drawScatter was originally an
- * early `return`, which also skipped the axes and the canvas scale stash
- * (`_pad`/`_xMin`/...). The mousemove handler bails on `!pad`, so hover was
- * dead and clicking a point was a silent no-op until the model loaded.
+ * early `return`, which also skipped the axes and the canvas geometry stash
+ * (`_plotRect`/`_xMin`/...). The mousemove handler bails without a plot rect,
+ * so hover was dead and clicking a point was a silent no-op until the model loaded.
  */
 test.describe("pre-model shell", () => {
   test("scatter keeps its axes and scale state before the model resolves", async ({ page }, testInfo) => {
@@ -28,13 +28,23 @@ test.describe("pre-model shell", () => {
       const c = document.querySelector("canvas#scatter-canvas") as any;
       return {
         modelReady: (window as any).__test.modelReady,
-        hasPad: c._pad !== undefined,
-        hasScales: c._xMin !== undefined && c._yMax !== undefined,
+        hasPlotRect:
+          c._plotRect !== undefined &&
+          c._plotRect.width > 0 &&
+          c._plotRect.height > 0,
+        hasScales:
+          c._xMin !== undefined &&
+          c._xMax !== undefined &&
+          c._yMin !== undefined &&
+          c._yMax !== undefined,
       };
     });
 
     expect(pre.modelReady, "test needs the pre-model window; worker resolved too fast").toBe(false);
-    expect(pre.hasPad, "canvas._pad must be stashed pre-model or hover breaks").toBe(true);
+    expect(
+      pre.hasPlotRect,
+      "canvas plot geometry must be stashed pre-model or hover breaks",
+    ).toBe(true);
     expect(pre.hasScales, "canvas scale state must be stashed pre-model").toBe(true);
   });
 

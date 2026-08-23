@@ -44,7 +44,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [desktop, mobile]
+        include:
+          - project: desktop
+            browser: chromium
+          - project: mobile
+            browser: chromium
+          - project: mobile-webkit
+            browser: webkit
+          - project: desktop-webkit
+            browser: webkit
 
     steps:
       - uses: actions/checkout@v5
@@ -62,17 +70,18 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright browsers
         if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps ${{ matrix.browser }}
 
-      - name: Install Chromium system deps (cached browsers path)
+      - name: Install browser system deps (cached browsers path)
         if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+        run: npx playwright install-deps ${{ matrix.browser }}
 
       - name: Run Playwright tests
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.update_snapshots != 'true' }}
         run: npx playwright test --project=${{ matrix.project }}
         env:
           CI: true

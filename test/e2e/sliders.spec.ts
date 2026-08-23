@@ -167,7 +167,7 @@ test.describe("composition sliders — click-to-edit value input", () => {
     // The Material Source group keeps a <span> for #val-${i} so it can't be
     // clicked into as a text input. This pin protects that contract.
     const tag = await page
-      .locator(".material-source-group label > span:last-child")
+      .locator(".material-source-group .slider-label > span:last-child")
       .evaluate((el) => el.tagName);
     expect(tag).not.toBe("INPUT");
   });

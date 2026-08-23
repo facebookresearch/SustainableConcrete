@@ -49,7 +49,7 @@ test.describe("composition panel — unit toggle", () => {
     // Locate the temperature row by its `Temperature` ingredient name.
     // The friendly label is rendered by `buildSliders` (`Temp` → "Temperature").
     const tempRow = page.locator("#sliders .slider-group").filter({
-      has: page.locator("span.ingredient-name", { hasText: "Temperature" }),
+      has: page.locator("button.ingredient-name", { hasText: "Temperature" }),
     });
     await expect(tempRow).toHaveCount(1);
 
@@ -76,7 +76,7 @@ test.describe("composition panel — unit toggle", () => {
 
   test("round-trip metric → imperial → metric preserves the temperature display", async ({ page }) => {
     const tempRow = page.locator("#sliders .slider-group").filter({
-      has: page.locator("span.ingredient-name", { hasText: "Temperature" }),
+      has: page.locator("button.ingredient-name", { hasText: "Temperature" }),
     });
     const before = await tempRow.locator(".slider-value").inputValue();
 
@@ -95,7 +95,7 @@ test.describe("composition panel — unit toggle", () => {
 
   test("min/max info-row for temperature reflects the active unit system", async ({ page }) => {
     const tempRow = page.locator("#sliders .slider-group").filter({
-      has: page.locator("span.ingredient-name", { hasText: "Temperature" }),
+      has: page.locator("button.ingredient-name", { hasText: "Temperature" }),
     });
     const metricBounds = (await tempRow.locator(".info-row span").allInnerTexts()).map(
       (s) => parseInt(s, 10),

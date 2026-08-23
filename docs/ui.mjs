@@ -6,6 +6,16 @@
 
 import { predictStrengthCurve, predictStrengthMeanOnly, predictGWP, predictCost, initStrengthModel, initWASM } from "./gp.mjs";
 import { stepPreviewComposition } from "./preview_state.mjs";
+import {
+  computeAvailablePlotSize,
+  computeCanvasSizeForPlotRect,
+  computeFixedYSelectorPlacement,
+  computePlotRect,
+  computeSelectorPlacement,
+  formatYAxisTick,
+  resolvePlotInsets,
+  resolvePlotLaneComponents,
+} from "./plot-geometry.mjs";
 import { makeComputedFilters, matchesFilters } from "./filters.mjs";
 import {
   UNITS,
@@ -17,6 +27,37 @@ import {
 // --- Shared Helpers ---
 function easeInOutCubic(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function parseCubicBezier(raw) {
+  const match = raw.trim().match(
+    /^cubic-bezier\(\s*(-?\d*\.?\d+)\s*,\s*(-?\d*\.?\d+)\s*,\s*(-?\d*\.?\d+)\s*,\s*(-?\d*\.?\d+)\s*\)$/,
+  );
+  if (!match) return { spec: "linear", ease: (t) => t };
+  const [, x1, y1, x2, y2] = match.map(Number);
+  const sample = (t, a1, a2) =>
+    ((1 - 3 * a2 + 3 * a1) * t + (3 * a2 - 6 * a1)) * t * t + 3 * a1 * t;
+  const slope = (t, a1, a2) =>
+    3 * (1 - 3 * a2 + 3 * a1) * t * t + 2 * (3 * a2 - 6 * a1) * t + 3 * a1;
+  return {
+    spec: raw.trim(),
+    ease: (progress) => {
+      let parameter = progress;
+      for (let iteration = 0; iteration < 8; iteration += 1) {
+        const error = sample(parameter, x1, x2) - progress;
+        const derivative = slope(parameter, x1, x2);
+        if (Math.abs(error) < 1e-7 || Math.abs(derivative) < 1e-7) break;
+        parameter -= error / derivative;
+      }
+      return sample(Math.max(0, Math.min(1, parameter)), y1, y2);
+    },
+  };
+}
+
+function axisTransitionEasing() {
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue("--axis-transition-easing");
+  return parseCubicBezier(raw);
 }
 
 /**
@@ -98,6 +139,7 @@ let animLoopId = null; // unified animation loop frame ID
 let lastAnimFrameTimestamp = null; // coalesces callbacks delivered for one browser frame
 let lastFrameTime = 0; // for frame-rate-independent interpolation
 let scatterTransition = null; // {startTime, duration, fromX, fromY, toX, toY, fromPareto, toPareto}
+let _lastDisplayedScatter = null; // latest interpolation actually painted by drawScatter()
 let _curveYMax = null; // smoothly interpolated y-axis max for strength curve
 let _curveYMaxTarget = null; // target y-max (for animation loop convergence check)
 // Material Source curve transition: when the user changes Material Source, we
@@ -127,6 +169,8 @@ let _lastDrawHadPreview = false;
 
 // --- Unit System ---
 let unitSystem = "metric"; // "metric" or "imperial"
+document.documentElement.dataset.unitSystem = unitSystem;
+// `UNITS` is imported
 // `UNITS` is imported from `./units.mjs` (single source of truth, also used
 // by the Node-based `test/test_js_units.mjs` parity tests).
 function U() { return UNITS[unitSystem]; }
@@ -166,6 +210,7 @@ document.addEventListener("toggle-units", () => {
   }
   const oldFactors = { ...U() };
   unitSystem = unitSystem === "metric" ? "imperial" : "metric";
+  document.documentElement.dataset.unitSystem = unitSystem;
   const newFactors = { ...U() };
   unitTransition = { startTime: performance.now(), duration: motionDuration(350), from: oldFactors, to: newFactors };
   const unitWord = unitSystem === "metric" ? "SI" : "US";
@@ -316,6 +361,9 @@ async function init() {
   buildSliders();
   _sliderInputs = document.querySelectorAll("#sliders input[type=range]");
   setupEventListeners();
+  setupReferenceDisclosures();
+  setupReferencesCapacityCoordinator();
+  setupPlotGeometryCoordinator();
   update();
 
   // Rebuild the kernel + Cholesky off the main thread where possible.
@@ -383,14 +431,9 @@ function buildSliders() {
       // (Safari < 15.4 still hits this page).
       group.className = "slider-group material-source-group";
 
-      const label = document.createElement("label");
-      const nameSpan = document.createElement("span");
-      nameSpan.textContent = "Material Source";
-      nameSpan.className = "ingredient-name";
-      nameSpan.addEventListener("click", (e) => {
-        e.preventDefault();
-        toggleIngredientInfo(group, "Material Source");
-      });
+      const label = document.createElement("div");
+      label.className = "slider-label";
+      const nameSpan = createIngredientInfoButton(group, "Material Source");
       const valueSpan = document.createElement("span");
       valueSpan.id = `val-${i}`;
       valueSpan.textContent = sourceLabel(Math.round(currentComposition[i]));
@@ -486,21 +529,19 @@ function buildSliders() {
     const group = document.createElement("div");
     group.className = "slider-group";
 
-    const label = document.createElement("label");
-    const nameSpan = document.createElement("span");
+    const label = document.createElement("div");
+    label.className = "slider-label";
+    let nameSpan;
     // Display name: strip unit suffix and rename "Temp" → "Temperature" for
     // a friendlier label. The underlying column name in `compositionsData`
     // is unchanged (still "Temp (C)") so model code keeps working.
     let shortName = shortIngredientName(col);
-    nameSpan.textContent = shortName;
-    // Make ingredient names clickable for info
     const infoKey = shortName;
     if (ingredientInfo[infoKey]) {
-      nameSpan.className = "ingredient-name";
-      nameSpan.addEventListener("click", (e) => {
-        e.preventDefault();
-        toggleIngredientInfo(group, infoKey);
-      });
+      nameSpan = createIngredientInfoButton(group, infoKey);
+    } else {
+      nameSpan = document.createElement("span");
+      nameSpan.textContent = shortName;
     }
     const valueInput = document.createElement("input");
     valueInput.id = `val-${i}`;
@@ -587,30 +628,357 @@ function buildSliders() {
   }
 }
 
-// Show ingredient info in the dedicated panel
-let _activeIngredientKey = null;
+// Show ingredient info in the dedicated panel. Cement starts selected so the
+// feature explains itself as soon as the composition controls render.
+let _activeIngredientKey = "Cement";
 
-function animateContentSwap(bodyEl, textEl, newHTML) {
-  // The 300 ms waits below are matched to the CSS opacity transition. Under
-  // reduced motion that transition is instant, so keeping the waits would drop
-  // the text to opacity 0 and leave the panel BLANK for 300 ms -- worse than
-  // the fade it replaces. Collapse the timing to match the visuals.
-  const swapDelay = _reduceMotion ? 0 : 300;
-  const prevHeight = bodyEl.offsetHeight;
-  textEl.classList.add("fade-out");
-  setTimeout(() => {
-    textEl.innerHTML = newHTML;
-    bodyEl.style.height = "auto";
-    const newHeight = bodyEl.offsetHeight;
-    bodyEl.style.height = prevHeight + "px";
-    requestAnimationFrame(() => {
-      bodyEl.style.height = newHeight + "px";
+function createIngredientInfoButton(group, key) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = key;
+  button.className = "ingredient-name";
+  button.setAttribute("aria-label", `${key} ingredient insight`);
+  button.setAttribute("aria-controls", "ingredient-insight-text");
+  const selected = _activeIngredientKey === key;
+  button.setAttribute("aria-pressed", String(selected));
+  button.classList.toggle("active", selected);
+  button.addEventListener("click", () => {
+    button.focus({ preventScroll: true });
+    selectIngredientInfo(group, key);
+  });
+  return button;
+}
+
+const _contentSwapState = new WeakMap();
+const _intrinsicTransitionState = new WeakMap();
+const _intrinsicTransitionOwners = new Set();
+let _settleFilterMotion = () => {};
+const INTRINSIC_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+
+function dispatchDashboardLayoutChange() {
+  document.dispatchEvent(new Event("dashboard-layout-change"));
+}
+
+function clearIntrinsicTransitionStyles(owner) {
+  owner.style.blockSize = "";
+  owner.style.height = "";
+  owner.style.overflow = "";
+  owner.style.opacity = "";
+  owner.style.transform = "";
+  owner.style.marginBlockEnd = "";
+}
+
+function intrinsicTransitionDuration(distance) {
+  return motionDuration(Math.round(Math.min(320, Math.max(180, 180 + distance * 2))));
+}
+
+function transitionIntrinsicSize(owner, mutate, options = {}) {
+  const previous = _intrinsicTransitionState.get(owner);
+  const sampledBlockSize = owner.getBoundingClientRect().height;
+  const sampledOpacity = Number.parseFloat(getComputedStyle(owner).opacity) || 1;
+  const generation = (previous?.generation ?? 0) + 1;
+
+  if (previous) previous.settle?.("superseded");
+  clearIntrinsicTransitionStyles(owner);
+
+  mutate();
+  dispatchDashboardLayoutChange();
+
+  clearIntrinsicTransitionStyles(owner);
+  const targetBlockSize = options.targetBlockSize ?? owner.getBoundingClientRect().height;
+  const fromBlockSize = options.fromBlockSize ?? sampledBlockSize;
+  const fromOpacity = options.fromOpacity ?? sampledOpacity;
+  const targetOpacity = options.targetOpacity ?? 1;
+  const fromMarginBlockEnd = options.fromMarginBlockEnd;
+  const targetMarginBlockEnd = options.targetMarginBlockEnd;
+  const distance = Math.abs(targetBlockSize - fromBlockSize);
+
+  let resolveFinished;
+  const finished = new Promise((resolve) => { resolveFinished = resolve; });
+  const state = {
+    generation,
+    animation: null,
+    resolve: resolveFinished,
+    finished,
+    settle: null,
+  };
+  _intrinsicTransitionState.set(owner, state);
+  _intrinsicTransitionOwners.add(owner);
+
+  const settle = (status = "finished") => {
+    const current = _intrinsicTransitionState.get(owner);
+    if (current?.generation !== generation) return;
+    current.animation?.cancel();
+    clearIntrinsicTransitionStyles(owner);
+    _intrinsicTransitionState.delete(owner);
+    _intrinsicTransitionOwners.delete(owner);
+    options.onSettled?.(status);
+    refreshScrollRegionFocusability();
+    dispatchDashboardLayoutChange();
+    resolveFinished({ status });
+  };
+
+  state.settle = settle;
+
+  if (_reduceMotion || distance < 0.5) {
+    settle();
+    return { finished, cancel: () => settle("cancelled") };
+  }
+
+  const from = {
+    blockSize: `${fromBlockSize}px`,
+    opacity: fromOpacity,
+  };
+  const to = {
+    blockSize: `${targetBlockSize}px`,
+    opacity: targetOpacity,
+  };
+  if (fromMarginBlockEnd !== undefined) {
+    from.marginBlockEnd = `${fromMarginBlockEnd}px`;
+  }
+  if (targetMarginBlockEnd !== undefined) {
+    to.marginBlockEnd = `${targetMarginBlockEnd}px`;
+  }
+
+  owner.style.overflow = "hidden";
+  const animation = owner.animate([from, to], {
+    duration: intrinsicTransitionDuration(distance),
+    easing: INTRINSIC_TRANSITION_EASING,
+    fill: "both",
+  });
+  state.animation = animation;
+  animation.finished.then(() => settle()).catch(() => {});
+
+  return { finished, cancel: () => settle("cancelled") };
+}
+
+function settleIntrinsicTransitions() {
+  for (const owner of [..._intrinsicTransitionOwners]) {
+    _intrinsicTransitionState.get(owner)?.settle?.("cancelled");
+  }
+}
+
+const SCROLL_REGION_SELECTORS = [
+  "#sliders",
+  ".mobile-scroll-content",
+  ".mix-insight-body",
+  ".ingredient-insight-body",
+  ".curve-body",
+  ".ref-list",
+  "#filter-rows",
+];
+
+function isVisible(element) {
+  return element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden";
+}
+
+function refreshScrollRegionFocusability() {
+  const activeView = document.getElementById("tradeoffs-panel")?.dataset.activeView;
+  for (const selector of SCROLL_REGION_SELECTORS) {
+    const element = document.querySelector(selector);
+    if (!element) continue;
+    const active =
+      isVisible(element) &&
+      !(selector === ".mobile-scroll-content" && activeView === "scatter") &&
+      !(selector === "#filter-rows" && activeView === "composition");
+    if (active && element.scrollHeight > element.clientHeight + 1) {
+      element.setAttribute("tabindex", "0");
+    } else {
+      element.removeAttribute("tabindex");
+    }
+  }
+}
+
+function stripContentSwapGhostSemantics(element) {
+  element.removeAttribute("id");
+  element.removeAttribute("aria-live");
+  element.removeAttribute("role");
+  for (const descendant of element.querySelectorAll("[id], [aria-live], [role]")) {
+    descendant.removeAttribute("id");
+    descendant.removeAttribute("aria-live");
+    descendant.removeAttribute("role");
+  }
+}
+
+function cleanupContentSwapVisuals(state) {
+  for (const animation of state?.animations ?? []) animation.cancel();
+  state?.ghost?.remove();
+}
+
+const REFERENCES_BOTTOM_GAP = 16;
+let _referencesCapacityFrame = null;
+let _referencesHeaderObserver = null;
+let _lastReferencesUsableCap = null;
+
+function updateReferencesCapacity() {
+  _referencesCapacityFrame = null;
+  const header = document.querySelector(".site-header");
+  if (!header) return;
+  const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+  const headerHeight = header.getBoundingClientRect().height;
+  const usableCap = Math.max(0, Math.round(viewportHeight - headerHeight - REFERENCES_BOTTOM_GAP));
+  if (usableCap !== _lastReferencesUsableCap) {
+    document.documentElement.style.setProperty("--references-usable-cap", `${usableCap}px`);
+    _lastReferencesUsableCap = usableCap;
+  }
+  refreshScrollRegionFocusability();
+}
+
+function scheduleReferencesCapacityUpdate() {
+  if (_referencesCapacityFrame !== null) return;
+  _referencesCapacityFrame = requestAnimationFrame(updateReferencesCapacity);
+}
+
+function setupReferencesCapacityCoordinator() {
+  const header = document.querySelector(".site-header");
+  if (!header) return;
+  _referencesHeaderObserver = new ResizeObserver(scheduleReferencesCapacityUpdate);
+  _referencesHeaderObserver.observe(header);
+  window.visualViewport?.addEventListener("resize", scheduleReferencesCapacityUpdate);
+  scheduleReferencesCapacityUpdate();
+}
+
+function setupReferenceDisclosures() {
+  for (const details of document.querySelectorAll(".ref-details")) {
+    const summary = details.querySelector(":scope > summary");
+    const wrapper = details.querySelector(".ref-description-motion");
+    if (!summary || !wrapper) continue;
+    let desiredOpen = details.open;
+    let internalToggle = false;
+    const descendantTabIndexes = new Map();
+    const setDescendantFocusability = (enabled) => {
+      const focusable = wrapper.querySelectorAll(
+        "a[href], button, input, select, textarea, [tabindex]",
+      );
+      for (const element of focusable) {
+        if (enabled) {
+          const previous = descendantTabIndexes.get(element);
+          if (previous === null) element.removeAttribute("tabindex");
+          else if (previous !== undefined) element.setAttribute("tabindex", previous);
+          descendantTabIndexes.delete(element);
+        } else {
+          if (!descendantTabIndexes.has(element)) {
+            descendantTabIndexes.set(element, element.getAttribute("tabindex"));
+          }
+          element.setAttribute("tabindex", "-1");
+        }
+      }
+      wrapper.inert = !enabled;
+    };
+    setDescendantFocusability(desiredOpen);
+
+    const setOpen = (open) => {
+      internalToggle = true;
+      details.open = open;
+      internalToggle = false;
+    };
+
+    const transitionTo = (open) => {
+      desiredOpen = open;
+      if (open) {
+        setOpen(true);
+        setDescendantFocusability(true);
+        return transitionIntrinsicSize(
+          wrapper,
+          () => {},
+          { fromBlockSize: 0, fromOpacity: 0 },
+        );
+      }
+
+      setDescendantFocusability(false);
+      return transitionIntrinsicSize(
+        wrapper,
+        () => {},
+        {
+          targetBlockSize: 0,
+          targetOpacity: 0,
+          onSettled: () => {
+            if (!desiredOpen) setOpen(false);
+          },
+        },
+      );
+    };
+
+    summary.addEventListener("click", (event) => {
+      event.preventDefault();
+      transitionTo(!desiredOpen);
     });
-    textEl.classList.remove("fade-out");
-    textEl.classList.add("fade-in");
-    requestAnimationFrame(() => textEl.classList.remove("fade-in"));
-    setTimeout(() => { bodyEl.style.height = "auto"; }, swapDelay);
-  }, swapDelay);
+    details.addEventListener("toggle", () => {
+      if (internalToggle || details.open === desiredOpen) return;
+      transitionTo(details.open);
+    });
+  }
+}
+
+function animateContentSwap(bodyEl, textEl, newHTML, options = {}) {
+  if (options.immediate) {
+    cleanupContentSwapVisuals(_contentSwapState.get(textEl));
+    _contentSwapState.delete(textEl);
+    textEl.innerHTML = newHTML;
+    bodyEl.scrollTop = 0;
+    refreshScrollRegionFocusability();
+    return { finished: Promise.resolve({ status: "finished" }), cancel: () => {} };
+  }
+
+  const shell = bodyEl.closest(".panel") ?? bodyEl;
+  const previous = _contentSwapState.get(textEl);
+  const token = (previous?.token ?? 0) + 1;
+  let ghost = null;
+
+  const sizeTransition = transitionIntrinsicSize(shell, () => {
+    cleanupContentSwapVisuals(previous);
+    ghost = textEl.cloneNode(true);
+    stripContentSwapGhostSemantics(ghost);
+    ghost.classList.add("content-swap-ghost");
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.inert = true;
+    bodyEl.appendChild(ghost);
+
+    // The stable live node owns semantics. Commit the latest content in the
+    // activating task; the clone exists only to preserve outgoing paint.
+    textEl.innerHTML = newHTML;
+    bodyEl.scrollTop = 0;
+  });
+
+  if (_reduceMotion) {
+    ghost.remove();
+    _contentSwapState.delete(textEl);
+    return sizeTransition;
+  }
+
+  const duration = intrinsicTransitionDuration(
+    Math.abs(shell.getBoundingClientRect().height - bodyEl.getBoundingClientRect().height),
+  );
+  const animations = [
+    ghost.animate(
+      [
+        { opacity: 1, transform: "translateY(0)" },
+        { opacity: 0, transform: "translateY(6px)" },
+      ],
+      { duration, easing: INTRINSIC_TRANSITION_EASING, fill: "both" },
+    ),
+    textEl.animate(
+      [
+        { opacity: 0, transform: "translateY(-6px)" },
+        { opacity: 1, transform: "translateY(0)" },
+      ],
+      { duration, easing: INTRINSIC_TRANSITION_EASING, fill: "both" },
+    ),
+  ];
+  const state = { token, ghost, animations, sizeTransition };
+  _contentSwapState.set(textEl, state);
+
+  Promise.all([
+    sizeTransition.finished,
+    ...animations.map((animation) => animation.finished.catch(() => null)),
+  ]).then(() => {
+    if (_contentSwapState.get(textEl)?.token !== token) return;
+    cleanupContentSwapVisuals(state);
+    _contentSwapState.delete(textEl);
+    refreshScrollRegionFocusability();
+  });
+
+  return sizeTransition;
 }
 
 function materialSourceInsightHTML() {
@@ -631,28 +999,20 @@ function refreshMaterialSourceInsight() {
   animateContentSwap(bodyEl, textEl, materialSourceInsightHTML());
 }
 
-function toggleIngredientInfo(group, key) {
+function selectIngredientInfo(group, key) {
+  if (_activeIngredientKey === key) return;
+
   const textEl = document.getElementById("ingredient-insight-text");
   const bodyEl = document.querySelector(".ingredient-insight-body");
+  if (!textEl || !bodyEl) return;
 
-  // Toggle off if same ingredient clicked again
-  if (_activeIngredientKey === key) {
-    animateContentSwap(bodyEl, textEl, '<span class="mix-insight-placeholder">Click an ingredient name in the Composition panel to learn more.</span>');
-    _activeIngredientKey = null;
-    for (const el of document.querySelectorAll(".ingredient-name.active")) {
-      el.classList.remove("active");
-    }
-    return;
+  for (const control of document.querySelectorAll(".ingredient-name")) {
+    const selected = control === group.querySelector(".ingredient-name");
+    control.classList.toggle("active", selected);
+    control.setAttribute("aria-pressed", String(selected));
   }
 
-  // Update active highlight
-  for (const el of document.querySelectorAll(".ingredient-name.active")) {
-    el.classList.remove("active");
-  }
-  const nameSpan = group.querySelector(".ingredient-name");
-  if (nameSpan) nameSpan.classList.add("active");
-
-  // FLIP: measure current height, crossfade content, animate to new height.
+  // Intrinsic layout responds synchronously when the text content commits.
   // Material Source is class-aware: show the description for the currently
   // selected class.
   const html =
@@ -660,7 +1020,6 @@ function toggleIngredientInfo(group, key) {
       ? materialSourceInsightHTML()
       : `<strong>${key}</strong> — ${ingredientInfo[key]}`;
   animateContentSwap(bodyEl, textEl, html);
-
   _activeIngredientKey = key;
 }
 
@@ -1332,12 +1691,18 @@ function update() {
   // Mix insight updates are triggered separately with delay (see animateToComposition)
 }
 
-// Delayed mix insight update — called after strength curve animation settles
+// Delayed mix insight update — cancel stale work so the latest state wins.
+let _pendingInsightTimer = null;
 function scheduleInsightUpdate() {
-  setTimeout(updateMixInsight, 300); // delay after curve settles for sequenced feel
+  if (_pendingInsightTimer !== null) clearTimeout(_pendingInsightTimer);
+  _pendingInsightTimer = setTimeout(() => {
+    _pendingInsightTimer = null;
+    updateMixInsight();
+  }, 300);
 }
 
 let _currentInsightIdx = null; // track which mix is currently displayed
+let _hasPopulatedMixInsight = false;
 const _placeholderHTML = '<span class="mix-insight-placeholder">Click a data point to see mix analysis.</span>';
 
 function updateMixInsight() {
@@ -1361,19 +1726,26 @@ function updateMixInsight() {
     paretoPill.classList.remove("visible");
   }
 
+  const swapMixContent = (html) => {
+    animateContentSwap(bodyEl, textEl, html, {
+      immediate: !_hasPopulatedMixInsight,
+    });
+    _hasPopulatedMixInsight = true;
+  };
+
   if (nearIdx !== null && mixAnalyses[String(nearIdx)]) {
     if (_currentInsightIdx === nearIdx) return;
 
-    animateContentSwap(bodyEl, textEl, buildInsightHTML(nearIdx));
+    swapMixContent(buildInsightHTML(nearIdx));
     _currentInsightIdx = nearIdx;
   } else if (nearIdx !== null) {
     if (_currentInsightIdx !== nearIdx) {
-      animateContentSwap(bodyEl, textEl, '<span class="mix-insight-placeholder">Mix insight not available for this composition.</span>');
+      swapMixContent('<span class="mix-insight-placeholder">Mix insight not available for this composition.</span>');
       _currentInsightIdx = nearIdx;
     }
   } else {
     if (_currentInsightIdx !== null) {
-      animateContentSwap(bodyEl, textEl, _placeholderHTML);
+      swapMixContent(_placeholderHTML);
       _currentInsightIdx = null;
     }
   }
@@ -1454,38 +1826,172 @@ function updateReadouts() {
 }
 
 // --- HiDPI Canvas Helpers ---
-// Cache canvas dimensions to avoid forced reflow on every frame
+// Cache CSS-pixel canvas dimensions to avoid forced reflow on every frame.
 const _canvasCache = new WeakMap();
-let _resizeObserver = null;
+let _plotResizeObserver = null;
+let _plotGeometryFrame = null;
+
+function resolveCSSLength(raw, fallback) {
+  const probe = document.createElement("div");
+  probe.style.cssText = `position:absolute;visibility:hidden;inline-size:${raw || fallback}`;
+  document.body.appendChild(probe);
+  const value = probe.getBoundingClientRect().width;
+  probe.remove();
+  return value;
+}
+
+function preferredPlotDimensions() {
+  const style = getComputedStyle(document.documentElement);
+  return {
+    width: resolveCSSLength(style.getPropertyValue("--plot-width-max"), "23rem"),
+    height: resolveCSSLength(style.getPropertyValue("--plot-height-max"), "16rem"),
+  };
+}
+
+function applyCanvasCSSSize(canvas, size) {
+  const width = Math.round(size.width);
+  const height = Math.round(size.height);
+  if (width <= 0 || height <= 0) return false;
+  const nextWidth = `${width}px`;
+  const nextHeight = `${height}px`;
+  if (canvas.style.width === nextWidth && canvas.style.height === nextHeight) return false;
+  canvas.style.width = nextWidth;
+  canvas.style.height = nextHeight;
+  _canvasCache.delete(canvas);
+  return true;
+}
+
+function updatePlotGeometry() {
+  _plotGeometryFrame = null;
+  const scatterContainer = document.querySelector(".scatter-content");
+  const strengthContainer = document.querySelector(".curve-body");
+  const scatterCanvas = document.getElementById("scatter-canvas");
+  const strengthCanvas = document.getElementById("curve-canvas");
+  // Use the owners' usable content widths. Linux reserves the stable scrollbar
+  // gutter inside curve-body, so its border box can be wider than the canvas may
+  // actually occupy even when the two dashboard columns are identical.
+  const scatterWidth = scatterContainer.clientWidth;
+  const strengthWidth = strengthContainer.clientWidth;
+  const maximum = preferredPlotDimensions();
+  const insets = resolvePlotInsets(window.innerWidth);
+  const maximumCanvasHeight = computeCanvasSizeForPlotRect(0, maximum.height, insets).height;
+  let mask = 0;
+
+  if (matchMedia("(min-width: 1051px)").matches) {
+    const plot = computeAvailablePlotSize(
+      [scatterWidth, strengthWidth],
+      maximumCanvasHeight,
+      maximum,
+      insets,
+    );
+    if (plot.width > 0 && plot.height > 0) {
+      const size = computeCanvasSizeForPlotRect(plot.width, plot.height, insets);
+      if (applyCanvasCSSSize(scatterCanvas, size)) mask |= CANVAS_SCATTER;
+      if (applyCanvasCSSSize(strengthCanvas, size)) mask |= CANVAS_CURVE;
+    }
+  } else {
+    // Mobile switches the plot views independently, but they still share one
+    // drawable contract. A hidden owner reports zero, so size both canvases
+    // from the currently measurable owner and reuse that geometry on reveal.
+    const measurableWidths = [scatterWidth, strengthWidth].filter((width) => width > 0);
+    const plot = computeAvailablePlotSize(
+      measurableWidths,
+      maximumCanvasHeight,
+      maximum,
+      insets,
+    );
+    if (plot.width > 0 && plot.height > 0) {
+      const size = computeCanvasSizeForPlotRect(plot.width, plot.height, insets);
+      if (applyCanvasCSSSize(scatterCanvas, size)) mask |= CANVAS_SCATTER;
+      if (applyCanvasCSSSize(strengthCanvas, size)) mask |= CANVAS_CURVE;
+    }
+  }
+
+  refreshScrollRegionFocusability();
+  if (mask !== 0) invalidateCanvases(mask);
+}
+
+function schedulePlotGeometryUpdate() {
+  if (_plotGeometryFrame !== null) return;
+  _plotGeometryFrame = requestAnimationFrame(updatePlotGeometry);
+}
+
+function setupPlotGeometryCoordinator() {
+  const containers = [
+    document.querySelector(".scatter-content"),
+    document.querySelector(".curve-body"),
+  ];
+  _plotResizeObserver = new ResizeObserver(schedulePlotGeometryUpdate);
+  for (const container of containers) _plotResizeObserver.observe(container);
+  schedulePlotGeometryUpdate();
+}
+
+function measuredTextDescent(metrics) {
+  // Safari versions without TextMetrics bounding boxes report no finite
+  // descent. Three CSS pixels safely covers the 12px bold tick font.
+  return Number.isFinite(metrics.actualBoundingBoxDescent)
+    ? metrics.actualBoundingBoxDescent
+    : 3;
+}
+
+function updateScatterSelectorGeometry(canvas, ctx, plot, xTickLabels, yTickLabels) {
+  const wrap = canvas.closest(".scatter-plot-wrap");
+  const xSelector = document.getElementById("axis-selector-x");
+  const ySelectorWrap = wrap?.querySelector(".axis-selector-y-wrap");
+  if (!wrap || !xSelector || !ySelectorWrap) return;
+
+  const xMetrics = xTickLabels.map((label) => ctx.measureText(label));
+  const canvasOffsetLeft = canvas.offsetLeft;
+  const canvasOffsetTop = canvas.offsetTop;
+  const xPaintBottom = canvasOffsetTop + plot.bottom + 14 + Math.max(
+    0,
+    ...xMetrics.map(measuredTextDescent),
+  );
+  const xPlacement = computeSelectorPlacement({
+    axis: "x",
+    plotStart: canvasOffsetLeft + plot.left,
+    plotEnd: canvasOffsetLeft + plot.right,
+    paintedTickEdge: xPaintBottom,
+    selectorSize: {
+      width: xSelector.offsetWidth,
+      height: xSelector.offsetHeight,
+    },
+  });
+  const yPlacement = computeFixedYSelectorPlacement({
+    plotLeft: canvasOffsetLeft + plot.left,
+    plotTop: canvasOffsetTop + plot.top,
+    plotBottom: canvasOffsetTop + plot.bottom,
+    selectorSize: {
+      width: ySelectorWrap.offsetWidth,
+      height: ySelectorWrap.offsetHeight,
+    },
+    lane: resolvePlotLaneComponents(window.innerWidth).left,
+  });
+
+  wrap.style.setProperty(
+    "--axis-selector-x-center",
+    `${xPlacement.left + xSelector.offsetWidth / 2}px`,
+  );
+  wrap.style.setProperty("--axis-selector-x-top", `${xPlacement.top}px`);
+  wrap.style.setProperty("--axis-selector-y-left", `${yPlacement.left}px`);
+  wrap.style.setProperty("--axis-selector-y-top", `${yPlacement.top}px`);
+}
 
 function setupHiDPICanvas(canvas) {
   const dpr = window.devicePixelRatio || 1;
-
-  // Use cached dimensions if available (avoids forced reflow from getBoundingClientRect)
   let rect = _canvasCache.get(canvas);
   if (!rect) {
-    rect = canvas.getBoundingClientRect();
-    _canvasCache.set(canvas, { width: rect.width, height: rect.height });
-    rect = _canvasCache.get(canvas);
-    // Observe resize to invalidate cache and redraw only affected canvases.
-    if (!_resizeObserver) {
-      _resizeObserver = new ResizeObserver((entries) => {
-        let mask = 0;
-        for (const entry of entries) {
-          _canvasCache.delete(entry.target);
-          if (entry.target.id === "curve-canvas") mask |= CANVAS_CURVE;
-          if (entry.target.id === "scatter-canvas") mask |= CANVAS_SCATTER;
-        }
-        if (mask !== 0) invalidateCanvases(mask);
-      });
-    }
-    _resizeObserver.observe(canvas);
+    const bounds = canvas.getBoundingClientRect();
+    rect = { width: Math.round(bounds.width), height: Math.round(bounds.height) };
+    _canvasCache.set(canvas, rect);
   }
 
-  canvas.width = rect.width * dpr;
-  canvas.height = rect.height * dpr;
+  const backingWidth = Math.round(rect.width * dpr);
+  const backingHeight = Math.round(rect.height * dpr);
+  if (canvas.width !== backingWidth) canvas.width = backingWidth;
+  if (canvas.height !== backingHeight) canvas.height = backingHeight;
   const ctx = canvas.getContext("2d");
-  ctx.scale(dpr, dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   return { ctx, W: rect.width, H: rect.height };
 }
 
@@ -1619,7 +2125,10 @@ function hideExtrapolationWarning() {
 function drawStrengthCurve() {
   const canvas = document.getElementById("curve-canvas");
   const { ctx, W, H } = setupHiDPICanvas(canvas);
-  const pad = { top: 20, right: 20, bottom: 40, left: 70 };
+  const plot = computePlotRect(W, H, resolvePlotInsets(window.innerWidth));
+  canvas._plotRect = plot;
+
+  // The GP is built off-thread
 
   // The GP is built off-thread, so the shell renders before it exists. Nothing
   // meaningful can be drawn without it; bail rather than throw, and the model
@@ -1703,10 +2212,12 @@ function drawStrengthCurve() {
   }
   // Convert to display units at the last moment
   const yMax = _curveYMax * sf;
+  canvas._yMin = yMin;
+  canvas._yMax = yMax;
 
   // Coordinate transforms
-  const xScale = (t) => pad.left + ((t / 28) * (W - pad.left - pad.right));
-  const yScale = (v) => H - pad.bottom - ((v - yMin) / (yMax - yMin)) * (H - pad.top - pad.bottom);
+  const xScale = (t) => plot.left + ((t / 28) * plot.width);
+  const yScale = (v) => plot.bottom - ((v - yMin) / (yMax - yMin)) * plot.height;
 
   ctx.clearRect(0, 0, W, H);
   const colors = getCanvasColors();
@@ -1830,9 +2341,9 @@ function drawStrengthCurve() {
   ctx.strokeStyle = colors.axis;
   ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.moveTo(pad.left, pad.top);
-  ctx.lineTo(pad.left, H - pad.bottom);
-  ctx.lineTo(W - pad.right, H - pad.bottom);
+  ctx.moveTo(plot.left, plot.top);
+  ctx.lineTo(plot.left, plot.bottom);
+  ctx.lineTo(plot.right, plot.bottom);
   ctx.stroke();
 
   // X ticks
@@ -1842,10 +2353,10 @@ function drawStrengthCurve() {
   for (const t of [0, 1, 3, 7, 14, 28]) {
     const x = xScale(t);
     ctx.beginPath();
-    ctx.moveTo(x, H - pad.bottom);
-    ctx.lineTo(x, H - pad.bottom + 4);
+    ctx.moveTo(x, plot.bottom);
+    ctx.lineTo(x, plot.bottom + 4);
     ctx.stroke();
-    ctx.fillText(t, x, H - pad.bottom + 16);
+    ctx.fillText(t, x, plot.bottom + 16);
   }
   ctx.fillText("Curing Age (days)", W / 2, H - 4);
 
@@ -1855,10 +2366,10 @@ function drawStrengthCurve() {
   for (const v of yTickValues) {
     const y = yScale(v);
     ctx.beginPath();
-    ctx.moveTo(pad.left - 4, y);
-    ctx.lineTo(pad.left, y);
+    ctx.moveTo(plot.left - 4, y);
+    ctx.lineTo(plot.left, y);
     ctx.stroke();
-    ctx.fillText(Math.round(v).toLocaleString(), pad.left - 8, y + 4);
+    ctx.fillText(formatYAxisTick(v), plot.left - 8, y + 4);
   }
   // Y label
   ctx.save();
@@ -1880,15 +2391,15 @@ function drawStrengthCurve() {
   const swatchSize = 10;
   const legendPadX = 8;
   const legendPadY = 6;
-  const swatchX = W - pad.right - 70;
-  const swatchY = pad.top + legendPadY;
+  const swatchX = plot.right - 70;
+  const swatchY = plot.top + legendPadY;
   ctx.fillStyle = colors.band;
   ctx.fillRect(swatchX, swatchY + 1, swatchSize, swatchSize);
   ctx.fillStyle = colors.text;
   ctx.fillText(
     "shaded: ±2σ",
-    W - pad.right - legendPadX,
-    pad.top + legendPadY,
+    plot.right - legendPadX,
+    plot.top + legendPadY,
   );
   ctx.restore();
 }
@@ -1915,33 +2426,110 @@ function getScatterData() {
   return { xPreds, yPreds: strPreds, paretoMask };
 }
 
-function startScatterTransition(applyChange) {
-  // Capture current positions and axis ranges
-  const before = getScatterData();
-  const beforeRange = getAxisRange(before.xPreds, before.yPreds);
+function getCurrentScatterPoint() {
+  const df = getDisplayFactors();
+  const ms = COL_MS >= 0 ? Math.round(currentComposition[COL_MS]) : 0;
+  const composition = [...currentComposition];
+  if (COL_TEMP >= 0) composition[COL_TEMP] = 22;
+  const gwp = -predictGWP(composition, gwpParams, ms).mean * df.gwpFactor;
+  const cost = -predictCost(composition, costParams).mean * df.costFactor;
+  const strength = strengthParams
+    ? predictStrengthMeanOnly(currentComposition, [scatterDay], strengthParams)[0] *
+      df.strengthFactor
+    : null;
+  return { x: scatterXAxis === "cost" ? cost : gwp, y: strength };
+}
 
-  // Apply the change (updates scatterDay or scatterXAxis)
+function sampleScatterTransition() {
+  if (!scatterTransition) return null;
+  const t = Math.min(
+    (performance.now() - scatterTransition.startTime) / scatterTransition.duration,
+    1,
+  );
+  const ease = scatterTransition.ease(t);
+  const currentY = scatterTransition.fromCurrent.y !== null &&
+      scatterTransition.toCurrent.y !== null
+    ? scatterTransition.fromCurrent.y +
+      (scatterTransition.toCurrent.y - scatterTransition.fromCurrent.y) * ease
+    : (scatterTransition.toCurrent.y ?? scatterTransition.fromCurrent.y);
+  return {
+    x: scatterTransition.fromX.map((value, index) =>
+      value + (scatterTransition.toX[index] - value) * ease),
+    y: scatterTransition.fromY.map((value, index) =>
+      value + (scatterTransition.toY[index] - value) * ease),
+    pareto: ease > 0.5 ? scatterTransition.toPareto : scatterTransition.fromPareto,
+    xMax: scatterTransition.fromXMax +
+      (scatterTransition.toXMax - scatterTransition.fromXMax) * ease,
+    yMax:
+      scatterTransition.fromYMax +
+      (scatterTransition.toYMax - scatterTransition.fromYMax) * ease,
+    current: {
+      x: scatterTransition.fromCurrent.x +
+        (scatterTransition.toCurrent.x - scatterTransition.fromCurrent.x) * ease,
+      y: currentY,
+    },
+  };
+}
+
+function updateScatterAccessibleName() {
+  const xLabel = scatterXAxis === "cost" ? "Cost" : "GWP";
+  document.getElementById("scatter-canvas").setAttribute(
+    "aria-label",
+    `Scatter plot showing ${xLabel} on the X axis and ${scatterDay}-day strength on the Y axis`,
+  );
+}
+
+function syncAxisSelectorTransitionState(active) {
+  for (const selector of document.querySelectorAll(".axis-selector")) {
+    if (active) selector.dataset.transitioning = "true";
+    else delete selector.dataset.transitioning;
+  }
+}
+
+function startScatterTransition(applyChange) {
+  const displayed = scatterTransition
+    ? (_lastDisplayedScatter ?? sampleScatterTransition())
+    : null;
+  const before = getScatterData();
+  const beforeCurrent = getCurrentScatterPoint();
+  const beforeRange = getAxisRange(before.xPreds, before.yPreds, beforeCurrent);
+
   applyChange();
 
-  // Capture new positions and axis ranges
-  const after = getScatterData();
-  const afterRange = getAxisRange(after.xPreds, after.yPreds);
+  if (_reduceMotion) {
+    scatterTransition = null;
+    _lastDisplayedScatter = null;
+    updateScatterAccessibleName();
+    syncAxisSelectorTransitionState(false);
+    invalidateCanvases(CANVAS_SCATTER);
+    return;
+  }
 
+  const after = getScatterData();
+  const afterCurrent = getCurrentScatterPoint();
+  const afterRange = getAxisRange(after.xPreds, after.yPreds, afterCurrent);
+  const easing = axisTransitionEasing();
   scatterTransition = {
     startTime: performance.now(),
-    duration: motionDuration(350),
-    fromX: before.xPreds,
-    fromY: before.yPreds,
-    fromPareto: before.paretoMask,
+    duration: _reduceMotion ? 0 : motionDuration(350),
+    easingSpec: easing.spec,
+    ease: easing.ease,
+    fromX: displayed?.x ?? before.xPreds,
+    fromY: displayed?.y ?? before.yPreds,
+    fromPareto: displayed?.pareto ?? before.paretoMask,
     toX: after.xPreds,
     toY: after.yPreds,
     toPareto: after.paretoMask,
-    fromXMax: beforeRange.xMax,
-    fromYMax: beforeRange.yMax,
+    fromXMax: displayed?.xMax ?? beforeRange.xMax,
+    fromYMax: displayed?.yMax ?? beforeRange.yMax,
     toXMax: afterRange.xMax,
     toYMax: afterRange.yMax,
+    fromCurrent: displayed?.current ?? beforeCurrent,
+    toCurrent: afterCurrent,
+    endpointPainted: false,
   };
-
+  updateScatterAccessibleName();
+  syncAxisSelectorTransitionState(!_reduceMotion);
   startAnimLoop();
 }
 
@@ -1950,14 +2538,22 @@ function checkScatterTransitionDone() {
   if (scatterTransition) {
     const elapsed = performance.now() - scatterTransition.startTime;
     if (elapsed >= scatterTransition.duration) {
-      scatterTransition = null;
+      if (scatterTransition.duration === 0 || scatterTransition.endpointPainted) {
+        scatterTransition = null;
+        _lastDisplayedScatter = null;
+        syncAxisSelectorTransitionState(false);
+      } else {
+        scatterTransition.endpointPainted = true;
+      }
     }
   }
 }
 
-function getAxisRange(xPreds, yPreds) {
-  const xMax = Math.max(...xPreds) * 1.05;
-  const yMax = Math.max(...yPreds.map(v => Math.max(0, v))) * 1.1;
+function getAxisRange(xPreds, yPreds, currentPoint) {
+  const currentX = Number.isFinite(currentPoint?.x) ? currentPoint.x : 0;
+  const currentY = Number.isFinite(currentPoint?.y) ? Math.max(0, currentPoint.y) : 0;
+  const xMax = Math.max(...xPreds, currentX) * 1.05;
+  const yMax = Math.max(...yPreds.map(v => Math.max(0, v)), currentY) * 1.1;
   return { xMax, yMax };
 }
 
@@ -1969,10 +2565,11 @@ function getAxisRange(xPreds, yPreds) {
 // prediction. Actual observations are overlaid on the strength curve (right panel)
 // when viewing a specific mix, for ground-truth validation.
 function drawScatter() {
-  checkScatterTransitionDone();
   const canvas = document.getElementById("scatter-canvas");
   const { ctx, W, H } = setupHiDPICanvas(canvas);
-  const pad = { top: 20, right: 20, bottom: 40, left: 70 };
+  const plot = computePlotRect(W, H, resolvePlotInsets(window.innerWidth));
+
+  // gwp_predictions stores
 
   // gwp_predictions stores -GWP; negate to get positive GWP for display
   // cost_predictions stores -Cost; negate to get positive Cost for display
@@ -1983,6 +2580,7 @@ function drawScatter() {
   const costPreds = compositionsData.cost_predictions.map((v) => -v * df.costFactor);
   let xPreds = scatterXAxis === "cost" ? costPreds : gwpPreds;
   let strPreds = compositionsData.strength_predictions[String(scatterDay)].map(v => v * yFactor);
+  let currentPoint = getCurrentScatterPoint();
 
   // Use cached Pareto mask (scale-invariant, keyed by scatterDay + scatterXAxis)
   let paretoMask = getCachedParetoMask(xPreds, strPreds);
@@ -1994,8 +2592,7 @@ function drawScatter() {
   if (scatterTransition) {
     const elapsed = performance.now() - scatterTransition.startTime;
     transT = Math.min(elapsed / scatterTransition.duration, 1);
-    // Ease-in-out cubic
-    const ease = easeInOutCubic(transT);
+    const ease = scatterTransition.ease(transT);
 
     const n = xPreds.length;
     const interpX = new Array(n);
@@ -2006,42 +2603,43 @@ function drawScatter() {
     }
     xPreds = interpX;
     strPreds = interpY;
-    // Interpolate axis ranges smoothly
     overrideXMax = scatterTransition.fromXMax + (scatterTransition.toXMax - scatterTransition.fromXMax) * ease;
     overrideYMax = scatterTransition.fromYMax + (scatterTransition.toYMax - scatterTransition.fromYMax) * ease;
-    // Use target Pareto mask (snaps at midpoint)
     paretoMask = ease > 0.5 ? scatterTransition.toPareto : scatterTransition.fromPareto;
+    currentPoint = {
+      x: scatterTransition.fromCurrent.x +
+        (scatterTransition.toCurrent.x - scatterTransition.fromCurrent.x) * ease,
+      y: scatterTransition.fromCurrent.y !== null && scatterTransition.toCurrent.y !== null
+        ? scatterTransition.fromCurrent.y +
+          (scatterTransition.toCurrent.y - scatterTransition.fromCurrent.y) * ease
+        : (scatterTransition.toCurrent.y ?? scatterTransition.fromCurrent.y),
+    };
+    _lastDisplayedScatter = {
+      x: [...xPreds],
+      y: [...strPreds],
+      pareto: paretoMask,
+      xMax: overrideXMax,
+      yMax: overrideYMax,
+      current: { ...currentPoint },
+    };
+  } else {
+    _lastDisplayedScatter = null;
   }
 
-  // Compute current point (use fixed Temp for GWP/Cost since they're material properties)
-  const msIdx = COL_MS;
-  const tempIdx = COL_TEMP;
-  const ms = msIdx >= 0 ? Math.round(currentComposition[msIdx]) : 0;
-  const compForCost = [...currentComposition];
-  if (tempIdx >= 0) compForCost[tempIdx] = 22; // reference temperature
-  const curGWPRaw = predictGWP(compForCost, gwpParams, ms).mean;
-  const curCostRaw = predictCost(compForCost, costParams).mean;
-  const curX = scatterXAxis === "cost" ? -curCostRaw * df.costFactor : -curGWPRaw * df.gwpFactor;
-  // Mean-only: the scatter marker draws a point, not an uncertainty band.
-  // Null before the model resolves; the marker is simply omitted until then
-  // (the catalog points come from precomputed strength_predictions and still
-  // render).
-  const curStr = strengthParams
-    ? predictStrengthMeanOnly(currentComposition, [scatterDay], strengthParams)[0] * yFactor
-    : null;
+  const curX = currentPoint.x;
+  const curStr = currentPoint.y;
 
   // Axis ranges (use interpolated ranges during transition to avoid jumps)
   const xVals = xPreds;
   const yVals = strPreds.map((v) => Math.max(0, v)); // clip negative predictions
+  const directRange = getAxisRange(xPreds, strPreds, currentPoint);
   const xMin = 0; // physical lower bound for both GWP and Cost
-  const xMax = overrideXMax !== null ? overrideXMax : Math.max(...xVals, curX) * 1.05;
+  const xMax = overrideXMax !== null ? overrideXMax : directRange.xMax;
   const yMin = 0;
-  const yMax = overrideYMax !== null
-    ? overrideYMax
-    : Math.max(...yVals, Math.max(0, curStr ?? 0)) * 1.1;
+  const yMax = overrideYMax !== null ? overrideYMax : directRange.yMax;
 
-  const xScale = (v) => pad.left + ((v - xMin) / (xMax - xMin)) * (W - pad.left - pad.right);
-  const yScale = (v) => H - pad.bottom - ((v - yMin) / (yMax - yMin)) * (H - pad.top - pad.bottom);
+  const xScale = (v) => plot.left + ((v - xMin) / (xMax - xMin)) * plot.width;
+  const yScale = (v) => plot.bottom - ((v - yMin) / (yMax - yMin)) * plot.height;
 
   ctx.clearRect(0, 0, W, H);
 
@@ -2154,7 +2752,7 @@ function drawScatter() {
   // Highlight selected composition with a pulsing glow ring (no crosshair).
   //
   // Scoped to a block rather than an early return: everything below this
-  // marker -- the axes, ticks, labels, and the canvas._pad/_xMin/... scale
+  // marker -- the axes, ticks, labels, and the canvas._plotRect/_xMin/... scale
   // stash that the mousemove and click handlers read -- is model-independent
   // and must still run. Returning here instead left the pre-model scatter
   // without axes AND without the stash, which silently disabled hover and
@@ -2207,55 +2805,50 @@ function drawScatter() {
   ctx.strokeStyle = clr.axis;
   ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.moveTo(pad.left, pad.top);
-  ctx.lineTo(pad.left, H - pad.bottom);
-  ctx.lineTo(W - pad.right, H - pad.bottom);
+  ctx.moveTo(plot.left, plot.top);
+  ctx.lineTo(plot.left, plot.bottom);
+  ctx.lineTo(plot.right, plot.bottom);
   ctx.stroke();
 
   // Labels (unit-aware)
   ctx.fillStyle = clr.text;
   ctx.font = "bold 12px -apple-system, BlinkMacSystemFont, sans-serif";
   ctx.textAlign = "center";
-  const xLabel = scatterXAxis === "cost" ? `Cost (${df.cost})` : `GWP (${df.gwp})`;
-  ctx.fillText(xLabel, W / 2, H - 4);
+  // Axis titles are accessible HTML pill buttons positioned in these margins.
+  // Canvas draws only the ticks so there is one visible label and one control.
 
   // X ticks (round numbers)
   const xTickValues = niceTickValues(xMin, xMax, 5);
-  for (const v of xTickValues) {
+  const xTickLabels = xTickValues.map((value) => String(Math.round(value)));
+  for (const [index, v] of xTickValues.entries()) {
     const x = xScale(v);
     ctx.beginPath();
-    ctx.moveTo(x, H - pad.bottom);
-    ctx.lineTo(x, H - pad.bottom + 4);
+    ctx.moveTo(x, plot.bottom);
+    ctx.lineTo(x, plot.bottom + 4);
     ctx.stroke();
-    ctx.fillText(Math.round(v), x, H - pad.bottom + 16);
+    ctx.fillText(xTickLabels[index], x, plot.bottom + 14);
   }
 
   // Y ticks (round numbers)
   ctx.textAlign = "right";
   const yTickValues = niceTickValues(yMin, yMax, 5);
-  for (const v of yTickValues) {
+  const yTickLabels = yTickValues.map(formatYAxisTick);
+  for (const [index, v] of yTickValues.entries()) {
     const y = yScale(v);
     ctx.beginPath();
-    ctx.moveTo(pad.left - 4, y);
-    ctx.lineTo(pad.left, y);
+    ctx.moveTo(plot.left - 4, y);
+    ctx.lineTo(plot.left, y);
     ctx.stroke();
-    ctx.fillText(Math.round(v).toLocaleString(), pad.left - 8, y + 4);
+    ctx.fillText(yTickLabels[index], plot.left - 8, y + 4);
   }
-  ctx.save();
-  ctx.translate(14, H / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.textAlign = "center";
-  ctx.fillText(`${scatterDay}-day Strength (${df.strength})`, 0, 0);
-  ctx.restore();
-
+  updateScatterSelectorGeometry(canvas, ctx, plot, xTickLabels, yTickLabels);
   // Store scale functions for click handling
   canvas._xMin = xMin;
   canvas._xMax = xMax;
   canvas._yMin = yMin;
   canvas._yMax = yMax;
-  canvas._pad = pad;
-  canvas._W = W;
-  canvas._H = H;
+  canvas._plotRect = plot;
+  checkScatterTransitionDone();
 }
 
 // --- Event Listeners ---
@@ -2276,9 +2869,58 @@ let curveObsHoverScale = 0; // animated hover scale for curve obs
 // second therefore produces a second of long tasks, which is why Lighthouse
 // mobile measured 1.2 s of total blocking time and could never find a quiet
 // window for time-to-interactive.
-const _reduceMotion =
-  typeof matchMedia === "function" &&
-  matchMedia("(prefers-reduced-motion: reduce)").matches;
+const _reduceMotionQuery = typeof matchMedia === "function"
+  ? matchMedia("(prefers-reduced-motion: reduce)")
+  : null;
+let _reduceMotion = _reduceMotionQuery?.matches ?? false;
+function settleCanvasTransitionsForReducedMotion() {
+  const compositionTarget = compositionTransition?.targetComp;
+  const completedCurveId = _curveTransition?.id ?? null;
+  const hidePreview = _previewCurveTransition?.hideOnComplete ?? false;
+
+  compositionTransition = null;
+  _curveTransition = null;
+  unitTransition = null;
+  scatterTransition = null;
+  _lastDisplayedScatter = null;
+  syncAxisSelectorTransitionState(false);
+
+  if (compositionTarget) {
+    setComposition(compositionTarget);
+    if (_pendingFocusedPreviewRestore) {
+      _pendingFocusedPreviewRestore = false;
+      restoreFocusedClassPreview();
+    }
+    scheduleInsightUpdate();
+    checkExtrapolationWarning();
+  }
+  if (_previewHoldCurveTransitionId === completedCurveId) {
+    clearPreviewHold(true);
+  }
+
+  const previewEndpoint = previewSource !== null ? previewTarget : currentComposition;
+  if (displayPreviewComp && previewEndpoint) {
+    stepPreviewComposition(displayPreviewComp, previewEndpoint, 1, COL_MS);
+  }
+  _previewCurveTransition = null;
+  if (hidePreview) _previewIdleRedrawPending = true;
+
+  // Replace any callback queued before the preference change with one final
+  // endpoint render. Because this listener runs before observers registered by
+  // the tests or page, that frame paints and parks before their next-frame read.
+  if (animLoopId !== null) cancelAnimationFrame(animLoopId);
+  animLoopId = null;
+  pendingCanvasMask |= CANVAS_BOTH;
+  startAnimLoop();
+}
+
+_reduceMotionQuery?.addEventListener("change", (event) => {
+  _reduceMotion = event.matches;
+  if (!_reduceMotion) return;
+  settleIntrinsicTransitions();
+  _settleFilterMotion("reduced-motion");
+  settleCanvasTransitionsForReducedMotion();
+});
 
 // Snap easing to its target on the first animated frame. The observation fade
 // and hover easing exist to soften *changes* during interaction; animating
@@ -2573,14 +3215,12 @@ function setupEventListeners() {
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
 
-    const pad = scatterCanvas._pad;
-    const W = scatterCanvas._W;
-    const H = scatterCanvas._H;
-    if (!pad) return;
+    const plot = scatterCanvas._plotRect;
+    if (!plot) return;
 
-    // Convert pixel to data coordinates
-    const dataX = scatterCanvas._xMin + ((px - pad.left) / (W - pad.left - pad.right)) * (scatterCanvas._xMax - scatterCanvas._xMin);
-    const dataY = scatterCanvas._yMin + ((H - pad.bottom - py) / (H - pad.top - pad.bottom)) * (scatterCanvas._yMax - scatterCanvas._yMin);
+    // Convert pixel to data coordinates.
+    const dataX = scatterCanvas._xMin + ((px - plot.left) / plot.width) * (scatterCanvas._xMax - scatterCanvas._xMin);
+    const dataY = scatterCanvas._yMin + ((plot.bottom - py) / plot.height) * (scatterCanvas._yMax - scatterCanvas._yMin);
 
     // Find nearest point in pixel space
     const gwpPreds = compositionsData.gwp_predictions.map((v) => -v * U().gwpFactor);
@@ -2593,8 +3233,8 @@ function setupEventListeners() {
     const xRange = scatterCanvas._xMax - scatterCanvas._xMin;
     const yRange = scatterCanvas._yMax - scatterCanvas._yMin;
     for (let i = 0; i < hoverXPreds.length; i++) {
-      const dx = (hoverXPreds[i] - dataX) / xRange * (W - pad.left - pad.right);
-      const dy = (strPreds[i] - dataY) / yRange * (H - pad.top - pad.bottom);
+      const dx = (hoverXPreds[i] - dataX) / xRange * plot.width;
+      const dy = (strPreds[i] - dataY) / yRange * plot.height;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist < bestDist) {
         bestDist = dist;
@@ -2671,33 +3311,98 @@ function setupEventListeners() {
     }
   });
 
-  // Clickable axis toggles (replacing dropdowns)
-  const toggleX = document.getElementById("toggle-x");
-  const toggleDay = document.getElementById("toggle-day");
-  const xOptions = ["gwp", "cost"];
-  const xLabels = ["GWP", "Cost"];
-  const dayOptions = [28, 1];
-  const dayLabels = ["28-day strength", "1-day strength"];
+  // Native radio groups keep both objectives visible and provide arrow-key
+  // selection with one logical tab stop.
+  const xAxisOptions = document.querySelectorAll(
+    '#axis-selector-x input[name="scatter-x-axis"]',
+  );
+  const yAxisOptions = document.querySelectorAll(
+    '#axis-selector-y input[name="scatter-y-axis"]',
+  );
+  updateScatterAccessibleName();
 
-  toggleX.addEventListener("click", () => {
-    const curIdx = xOptions.indexOf(scatterXAxis);
-    const nextIdx = (curIdx + 1) % xOptions.length;
-    toggleX.textContent = xLabels[nextIdx];
-    startScatterTransition(() => { scatterXAxis = xOptions[nextIdx]; });
-    updateMixInsight();
-  });
+  for (const option of xAxisOptions) {
+    option.addEventListener("change", () => {
+      if (!option.checked || option.value === scatterXAxis) return;
+      startScatterTransition(() => { scatterXAxis = option.value; });
+      updateMixInsight();
+    });
+  }
 
-  toggleDay.addEventListener("click", () => {
-    const curIdx = dayOptions.indexOf(scatterDay);
-    const nextIdx = (curIdx + 1) % dayOptions.length;
-    toggleDay.textContent = dayLabels[nextIdx];
-    startScatterTransition(() => { scatterDay = dayOptions[nextIdx]; });
-    updateMixInsight();
-  });
+  for (const option of yAxisOptions) {
+    option.addEventListener("change", () => {
+      const nextDay = Number(option.value);
+      if (!option.checked || nextDay === scatterDay) return;
+      startScatterTransition(() => { scatterDay = nextDay; });
+      updateMixInsight();
+    });
+  }
 
   // Filter panel — multi-dimensional filtering
   const filterRows = document.getElementById("filter-rows");
+  const filterAddButton = document.getElementById("filter-add");
+  const filterScrollBody = filterRows;
+  let filterAnchorState = null;
+  let filterMotionState = null;
+  let filterMotionGeneration = 0;
   const colNames = compositionsData.column_names;
+
+  function anchorFilterEntry(transition) {
+    filterAnchorState?.cancel();
+    const state = { frame: null, cancelled: false, cancel: null };
+    filterAnchorState = state;
+    const cancelAnchoring = () => { state.cancelled = true; };
+    const scrollKeys = new Set([
+      "ArrowUp",
+      "ArrowDown",
+      "PageUp",
+      "PageDown",
+      "Home",
+      "End",
+      " ",
+    ]);
+    const onKeyDown = (event) => {
+      if (scrollKeys.has(event.key)) cancelAnchoring();
+    };
+    const listeners = [
+      ["wheel", cancelAnchoring, { passive: true }],
+      ["touchstart", cancelAnchoring, { passive: true }],
+      ["pointerdown", cancelAnchoring, { passive: true }],
+      ["keydown", onKeyDown],
+    ];
+    for (const args of listeners) filterScrollBody.addEventListener(...args);
+
+    const cleanup = () => {
+      if (state.frame !== null) cancelAnimationFrame(state.frame);
+      state.frame = null;
+      for (const args of listeners) filterScrollBody.removeEventListener(...args);
+      if (filterAnchorState === state) filterAnchorState = null;
+    };
+    state.cancel = cleanup;
+
+    const anchor = () => {
+      state.frame = null;
+      if (state.cancelled || filterAnchorState !== state) return;
+      filterScrollBody.scrollTop = Math.max(
+        0,
+        filterScrollBody.scrollHeight - filterScrollBody.clientHeight,
+      );
+      state.frame = requestAnimationFrame(anchor);
+    };
+    anchor();
+
+    transition.finished.finally(() => {
+      if (filterAnchorState !== state) return;
+      if (!state.cancelled) {
+        filterScrollBody.scrollTop = Math.max(
+          0,
+          filterScrollBody.scrollHeight - filterScrollBody.clientHeight,
+        );
+      }
+      cleanup();
+      refreshScrollRegionFocusability();
+    });
+  }
 
   // Computed filter quantities (derived from composition)
   // Derived filter quantities live in filters.mjs so they can be unit tested
@@ -2775,14 +3480,200 @@ function setupEventListeners() {
     }
   }
 
-  function addFilterRow() {
-    // Remove any dead wrappers from previous removals
-    for (const dead of filterRows.querySelectorAll(".filter-row-wrapper.collapsed")) {
-      dead.remove();
+  function activeFilterWrappers() {
+    return [
+      ...filterRows.querySelectorAll(
+        ".filter-row-wrapper:not(.collapsed):not([data-exiting])",
+      ),
+    ];
+  }
+
+  function filterShellMetrics() {
+    const style = getComputedStyle(filterRows);
+    return {
+      blockSize: filterRows.getBoundingClientRect().height,
+      paddingBlockStart: Number.parseFloat(style.paddingBlockStart) || 0,
+      paddingBlockEnd: Number.parseFloat(style.paddingBlockEnd) || 0,
+      marginBlockStart: Number.parseFloat(style.marginBlockStart) || 0,
+    };
+  }
+
+  function filterWrapperMetrics(wrapper) {
+    const style = getComputedStyle(wrapper);
+    return {
+      blockSize: wrapper.getBoundingClientRect().height,
+      opacity: Number.parseFloat(style.opacity) || 1,
+      marginBlockEnd: Number.parseFloat(style.marginBlockEnd) || 0,
+    };
+  }
+
+  function clearFilterShellTransitionStyles() {
+    filterRows.style.blockSize = "";
+    filterRows.style.paddingBlockStart = "";
+    filterRows.style.paddingBlockEnd = "";
+    filterRows.style.marginBlockStart = "";
+  }
+
+  function measureSettledFilterShell() {
+    const exiting = [...filterRows.querySelectorAll(".filter-row-wrapper[data-exiting]")];
+    for (const wrapper of exiting) wrapper.style.display = "none";
+    const metrics = filterShellMetrics();
+    for (const wrapper of exiting) wrapper.style.display = "";
+    return metrics;
+  }
+
+  _settleFilterMotion = (status = "cancelled") => {
+    filterMotionState?.settle(status);
+  };
+
+  function transitionFilterStructure(mutate, options = {}) {
+    // WAAPI contributes to computed geometry while an animation is running.
+    // Snapshot that painted frame before cancellation removes its fill so a
+    // rapid reversal retargets continuously instead of jumping to an endpoint.
+    const beforeShell = filterShellMetrics();
+    const retargeting = filterMotionState !== null;
+    const beforeWrappers = new Map(
+      [...filterRows.querySelectorAll(".filter-row-wrapper")]
+        .map((wrapper) => [wrapper, {
+          ...filterWrapperMetrics(wrapper),
+          top: wrapper.getBoundingClientRect().top,
+        }]),
+    );
+    filterMotionState?.settle("superseded");
+    const generation = ++filterMotionGeneration;
+
+    mutate();
+    dispatchDashboardLayoutChange();
+
+    const targetShell = measureSettledFilterShell();
+    const wrappers = [...filterRows.querySelectorAll(".filter-row-wrapper")];
+    const transitions = wrappers.map((wrapper) => {
+      const sampledBefore = beforeWrappers.get(wrapper);
+      const intrinsicTarget = {
+        ...filterWrapperMetrics(wrapper),
+        top: wrapper.getBoundingClientRect().top,
+      };
+      const target = wrapper.dataset.exiting === "true"
+        ? {
+          blockSize: 0,
+          opacity: 0,
+          marginBlockEnd: 0,
+          top: sampledBefore?.top ?? intrinsicTarget.top,
+        }
+        : intrinsicTarget;
+      const before = sampledBefore ?? {
+        blockSize: 0,
+        opacity: 0,
+        marginBlockEnd: 0,
+        top: target.top,
+      };
+      return { wrapper, before, target };
+    });
+    const distance = Math.max(
+      Math.abs(targetShell.blockSize - beforeShell.blockSize),
+      ...transitions.map(({ before, target }) => Math.abs(target.blockSize - before.blockSize)),
+    );
+
+    let resolveFinished;
+    const finished = new Promise((resolve) => { resolveFinished = resolve; });
+    const state = { generation, animations: [], settle: null, finished };
+    filterMotionState = state;
+
+    const settle = (status = "finished") => {
+      if (filterMotionState?.generation !== generation) return;
+      for (const animation of state.animations) {
+        animation.cancel();
+        animation.effect = null;
+      }
+      clearFilterShellTransitionStyles();
+      for (const { wrapper } of transitions) clearIntrinsicTransitionStyles(wrapper);
+      for (const wrapper of filterRows.querySelectorAll(".filter-row-wrapper[data-exiting]")) {
+        wrapper.remove();
+      }
+      filterMotionState = null;
+      options.onSettled?.(status);
+      refreshScrollRegionFocusability();
+      dispatchDashboardLayoutChange();
+      resolveFinished({ status });
+    };
+    state.settle = settle;
+
+    if (_reduceMotion || distance < 0.5) {
+      settle();
+      return { finished, cancel: () => settle("cancelled") };
     }
+
+    const duration = motionDuration(Math.round(Math.min(480, Math.max(240, 220 + distance * 3))));
+    const animationOptions = {
+      duration,
+      easing: "cubic-bezier(0.645, 0.045, 0.355, 1)",
+      fill: "both",
+    };
+    state.animations.push(filterRows.animate([
+      {
+        blockSize: `${beforeShell.blockSize}px`,
+        paddingBlockStart: `${beforeShell.paddingBlockStart}px`,
+        paddingBlockEnd: `${beforeShell.paddingBlockEnd}px`,
+        marginBlockStart: `${beforeShell.marginBlockStart}px`,
+      },
+      {
+        blockSize: `${targetShell.blockSize}px`,
+        paddingBlockStart: `${targetShell.paddingBlockStart}px`,
+        paddingBlockEnd: `${targetShell.paddingBlockEnd}px`,
+        marginBlockStart: `${targetShell.marginBlockStart}px`,
+      },
+    ], animationOptions));
+    for (const { wrapper, before, target } of transitions) {
+      if (
+        Math.abs(target.blockSize - before.blockSize) < 0.5 &&
+        Math.abs(target.marginBlockEnd - before.marginBlockEnd) < 0.5 &&
+        Math.abs(target.opacity - before.opacity) < 0.01 &&
+        Math.abs(target.top - before.top) < 0.5
+      ) continue;
+      wrapper.style.overflow = "hidden";
+      state.animations.push(wrapper.animate([
+        {
+          blockSize: `${before.blockSize}px`,
+          opacity: before.opacity,
+          marginBlockEnd: `${before.marginBlockEnd}px`,
+          transform: `translateY(${retargeting ? before.top - target.top : 0}px)`,
+        },
+        {
+          blockSize: `${target.blockSize}px`,
+          opacity: target.opacity,
+          marginBlockEnd: `${target.marginBlockEnd}px`,
+          transform: "translateY(0)",
+        },
+      ], animationOptions));
+    }
+    Promise.all(state.animations.map((animation) => animation.finished))
+      .then(() => settle())
+      .catch(() => {});
+    return { finished, cancel: () => settle("cancelled") };
+  }
+
+  function removeFilterWrappers(wrappers, focusTarget = null) {
+    const outgoing = wrappers.filter((wrapper) => wrapper.dataset.exiting !== "true");
+    if (outgoing.length === 0) return null;
+    return transitionFilterStructure(
+      () => {
+        for (const wrapper of outgoing) {
+          wrapper.dataset.exiting = "true";
+          wrapper.inert = true;
+        }
+        applyFilters();
+        focusTarget?.focus({ preventScroll: true });
+      },
+    );
+  }
+
+  function removeFilterWrapper(wrapper, focusTarget = null) {
+    return removeFilterWrappers([wrapper], focusTarget);
+  }
+
+  function addFilterRow() {
     const wrapper = document.createElement("div");
     wrapper.className = "filter-row-wrapper";
-    wrapper.style.overflow = "hidden";
     const row = document.createElement("div");
     row.className = "filter-row";
     row.innerHTML = `
@@ -2792,38 +3683,41 @@ function setupEventListeners() {
     `;
     renderFilterValueControls(row);
     row.querySelector(".filter-remove-btn").addEventListener("click", () => {
-      // Measure current rendered height, then animate to 0
-      const h = wrapper.offsetHeight;
-      wrapper.style.overflow = "hidden";
-      const anim = wrapper.animate([
-        { height: `${h}px`, opacity: 1, marginBottom: "0.3rem" },
-        { height: "0px", opacity: 0, marginBottom: "0px" }
-      ], { duration: motionDuration(250), easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" });
-      anim.onfinish = () => {
-        wrapper.classList.add("collapsed");
-        wrapper.style.display = "none";
-        applyFilters();
-      };
+      const activeWrappers = activeFilterWrappers();
+      const index = activeWrappers.indexOf(wrapper);
+      const focusTarget =
+        activeWrappers[index + 1]?.querySelector(".filter-col") ??
+        activeWrappers[index - 1]?.querySelector(".filter-col") ??
+        filterAddButton;
+      removeFilterWrapper(wrapper, focusTarget);
     });
     // min/max listeners are attached by renderFilterValueControls, which
     // rebuilds them whenever the column changes (the controls differ between
     // numeric and categorical columns).
     row.querySelector(".filter-col").addEventListener("change", () => {
-      renderFilterValueControls(row);
-      applyFilters();
+      transitionIntrinsicSize(wrapper, () => {
+        renderFilterValueControls(row);
+        applyFilters();
+      });
     });
     wrapper.appendChild(row);
-    filterRows.appendChild(wrapper);
-    // Animate expansion: measure natural height, then animate from 0 to that height
-    const naturalHeight = wrapper.scrollHeight;
-    wrapper.animate([
-      { height: "0px", opacity: 0, marginBottom: "0px" },
-      { height: `${naturalHeight}px`, opacity: 1, marginBottom: "0.3rem" }
-    ], { duration: motionDuration(250), easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" });
+    const shouldRestoreAddFocus = document.activeElement === filterAddButton;
+    const transition = transitionFilterStructure(
+      () => filterRows.appendChild(wrapper),
+    );
+    anchorFilterEntry(transition);
+    transition.finished.then(({ status }) => {
+      if (status !== "finished") return;
+      if (shouldRestoreAddFocus && document.activeElement === filterAddButton) {
+        filterAddButton.focus({ preventScroll: true });
+      }
+    });
   }
 
   function applyFilters() {
-    const rows = filterRows.querySelectorAll(".filter-row-wrapper:not(.collapsed) .filter-row");
+    const rows = filterRows.querySelectorAll(
+      ".filter-row-wrapper:not(.collapsed):not([data-exiting]) .filter-row",
+    );
     if (rows.length === 0) {
       scatterFilter = null;
     } else {
@@ -2879,32 +3773,18 @@ function setupEventListeners() {
     invalidateCanvases(CANVAS_SCATTER);
   }
 
-  document.getElementById("filter-add").addEventListener("click", () => {
+  filterAddButton.addEventListener("click", () => {
     addFilterRow();
   });
 
-  document.getElementById("filter-clear").addEventListener("click", () => {
-    // Animate all active filters collapsing simultaneously
-    const wrappers = [...filterRows.querySelectorAll(".filter-row-wrapper:not(.collapsed)")];
+  document.getElementById("filter-clear").addEventListener("click", (event) => {
+    const wrappers = activeFilterWrappers();
     if (wrappers.length === 0) return;
-    let finished = 0;
-    for (const w of wrappers) {
-      const h = w.offsetHeight;
-      w.style.overflow = "hidden";
-      const anim = w.animate([
-        { height: `${h}px`, opacity: 1, marginBottom: "0.3rem" },
-        { height: "0px", opacity: 0, marginBottom: "0px" }
-      ], { duration: motionDuration(250), easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" });
-      anim.onfinish = () => {
-        w.classList.add("collapsed");
-        w.style.display = "none";
-        finished++;
-        if (finished === wrappers.length) {
-          scatterFilter = null;
-          invalidateCanvases(CANVAS_SCATTER);
-        }
-      };
-    }
+    filterAnchorState?.cancel();
+    const transition = removeFilterWrappers(wrappers, event.currentTarget);
+    transition.finished.then(() => {
+      refreshScrollRegionFocusability();
+    });
   });
 
   // Tooltip on strength curve canvas for observed data points
@@ -2987,10 +3867,56 @@ new MutationObserver(() => { _canvasColors = null; update(); }).observe(
 );
 
 // --- Invalidate scatter canvas (used by mobile toggle to fix empty canvas bug) ---
+document.addEventListener("dashboard-layout-change", () => {
+  schedulePlotGeometryUpdate();
+  scheduleReferencesCapacityUpdate();
+  requestAnimationFrame(refreshScrollRegionFocusability);
+});
+
+window.addEventListener("resize", () => {
+  settleIntrinsicTransitions();
+  _settleFilterMotion();
+  scheduleReferencesCapacityUpdate();
+  schedulePlotGeometryUpdate();
+});
+
 document.addEventListener("invalidate-scatter", () => {
   const canvas = document.getElementById("scatter-canvas");
   _canvasCache.delete(canvas);
+  schedulePlotGeometryUpdate();
   invalidateCanvases(CANVAS_SCATTER);
+});
+
+document.addEventListener("invalidate-curve", () => {
+  const canvas = document.getElementById("curve-canvas");
+  _canvasCache.delete(canvas);
+  schedulePlotGeometryUpdate();
+
+  // A mobile view switch can expose sliders after the preview loop has parked.
+  // Refresh their DOM markers immediately so the newly visible frame never
+  // carries coordinates measured while Composition was hidden.
+  if (previewSource !== "class" && previewScopeBtn === null) {
+    const target = previewSource !== null ? previewTarget : currentComposition;
+    const previewConverged = displayPreviewComp.every(
+      (value, idx) => Math.abs(value - target[idx]) < 1e-6,
+    );
+    if (previewSource !== null || !previewConverged) {
+      const visibleMarkers = [...document.querySelectorAll(".slider-preview-marker")]
+        .filter((marker) => getComputedStyle(marker).display !== "none");
+      for (const marker of visibleMarkers) marker.style.transition = "none";
+
+      const pointerValue = previewSource === "slider" ? previewScopeValue : null;
+      showSliderPreview(displayPreviewComp, previewScopeIdx, pointerValue);
+
+      // Commit the remeasured positions before restoring normal preview motion.
+      for (const marker of visibleMarkers) {
+        void marker.offsetWidth;
+        marker.style.transition = "";
+      }
+    }
+  }
+
+  invalidateCanvases(CANVAS_CURVE);
 });
 
 // --- Test hook (gated behind ?test=1 to avoid leaking internals in prod) ---
@@ -3002,6 +3928,45 @@ if (typeof location !== "undefined" &&
     get displayPreviewComp() { return displayPreviewComp ? [...displayPreviewComp] : null; },
     get previewSource() { return previewSource; },
     get previewScopeIdx() { return previewScopeIdx; },
+    get scatterFilterCount() { return scatterFilter?.length ?? 0; },
+    get isScatterTransitionActive() { return scatterTransition !== null; },
+    get scatterDisplayedSnapshot() {
+      const displayed = scatterTransition
+        ? (_lastDisplayedScatter ?? sampleScatterTransition())
+        : null;
+      if (displayed) {
+        return {
+          x: [...displayed.x],
+          y: [...displayed.y],
+          xMax: displayed.xMax,
+          yMax: displayed.yMax,
+          current: { ...displayed.current },
+        };
+      }
+      const data = getScatterData();
+      const current = getCurrentScatterPoint();
+      const range = getAxisRange(data.xPreds, data.yPreds, current);
+      return {
+        x: [...data.xPreds],
+        y: [...data.yPreds],
+        xMax: range.xMax,
+        yMax: range.yMax,
+        current,
+      };
+    },
+    get scatterTransitionFromSnapshot() {
+      if (!scatterTransition) return null;
+      return {
+        x: [...scatterTransition.fromX],
+        y: [...scatterTransition.fromY],
+        xMax: scatterTransition.fromXMax,
+        yMax: scatterTransition.fromYMax,
+        current: { ...scatterTransition.fromCurrent },
+      };
+    },
+    get scatterTransitionEasing() {
+      return scatterTransition?.easingSpec ?? null;
+    },
     get previewScopeBtnLabel() {
       return previewScopeBtn ? previewScopeBtn.textContent : null;
     },

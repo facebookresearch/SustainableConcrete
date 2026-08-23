@@ -6,7 +6,7 @@ import { test, expect } from "@playwright/test";
  * These tests pin down the design rules we keep regressing on:
  *  1. Theme toggle is always the rightmost element.
  *  2. On desktop: cite group sits adjacent and to the LEFT of the theme toggle.
- *  3. On mobile: cite group is hidden and the 5 visible items are evenly spaced.
+ *  3. On mobile: citation controls remain reachable and header groups do not overlap.
  *  4. Header is sticky to the top while scrolling.
  *  5. No horizontal pan on mobile (would expose header endpoints).
  */
@@ -41,13 +41,15 @@ test.describe("header layout", () => {
     expect(toggle.x - (cite.x + cite.width)).toBeLessThan(32);
   });
 
-  test("mobile: cite group is hidden", async ({ page }, testInfo) => {
+  test("mobile: citation controls remain visible", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "mobile", "mobile-only layout");
     await page.goto("/");
-    await expect(page.locator(".site-header .cite-group")).toBeHidden();
+    await expect(page.locator(".site-header .cite-group")).toBeVisible();
+    await expect(page.locator("#cite-bibtex")).toBeVisible();
+    await expect(page.locator("#cite-apa")).toBeVisible();
   });
 
-  test("mobile: 5 visible header items are evenly spaced", async ({ page }, testInfo) => {
+  test("mobile: visible header groups stay ordered and non-overlapping", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "mobile", "mobile-only layout");
     await page.goto("/");
     const selectors = [
@@ -55,6 +57,7 @@ test.describe("header layout", () => {
       "#about-link",
       'a[href*="youtube.com"], #video-link',
       'a[href*="github.com/facebookresearch"]',
+      ".site-header .cite-group",
       ".theme-toggle",
     ];
     const boxes = await Promise.all(
@@ -72,12 +75,49 @@ test.describe("header layout", () => {
         xs[i - 1].right - 1, // -1 to allow exact-touch with no overlap
       );
     }
-    const gaps = xs.slice(1).map((b, i) => b.left - xs[i].right);
-    const minGap = Math.min(...gaps);
-    const maxGap = Math.max(...gaps);
-    // Gaps should be even (within ~6px tolerance for sub-pixel rounding +
-    // varying item widths affecting flex space-between).
-    expect(maxGap - minGap, `gap deltas were ${gaps.join(",")}`).toBeLessThan(6);
+    const header = await page.locator(".site-header").boundingBox();
+    expect(header).not.toBeNull();
+    expect(xs[0].left).toBeGreaterThanOrEqual(header!.x);
+    expect(xs.at(-1)!.right).toBeLessThanOrEqual(header!.x + header!.width + 1);
+  });
+
+  test("mobile: every header control stays inside a 320px viewport", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "mobile-only layout");
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto("/");
+
+    const selectors = [
+      ".site-header h1",
+      "#about-link",
+      "#video-link",
+      'a[href*="github.com/facebookresearch"]',
+      "#cite-bibtex",
+      "#cite-apa",
+      ".theme-toggle",
+    ];
+    const boxes = [];
+    for (const selector of selectors) {
+      const box = await page.locator(selector).boundingBox();
+      expect(box, `${selector} must remain rendered`).not.toBeNull();
+      expect(box!.x, `${selector} crosses the left viewport edge`).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width, `${selector} crosses the right viewport edge`).toBeLessThanOrEqual(320);
+      if (selector !== ".site-header h1") {
+        expect(box!.width, `${selector} must keep a 44px mobile target width`).toBeGreaterThanOrEqual(44);
+        expect(box!.height, `${selector} must keep a 44px mobile target height`).toBeGreaterThanOrEqual(44);
+      }
+      boxes.push(box!);
+    }
+    const actionBoxes = boxes.slice(1);
+    expect(boxes[0].y + boxes[0].height, "brand must occupy the first header row").toBeLessThanOrEqual(
+      Math.min(...actionBoxes.map((box) => box.y)) + 1,
+    );
+    expect(Math.max(...actionBoxes.map((box) => box.y)) - Math.min(...actionBoxes.map((box) => box.y)))
+      .toBeLessThanOrEqual(1);
+    await page.locator("#about-link").focus();
+    for (const selector of selectors.slice(2)) {
+      await page.keyboard.press("Tab");
+      await expect(page.locator(selector)).toBeFocused();
+    }
   });
 
   test("header stays sticky at top of viewport when scrolling to references panel", async ({

@@ -152,4 +152,64 @@ test.describe("mobile slider value never overflows the panel", () => {
     await page.waitForTimeout(200);
     await assertNoOverflow(page, "320px imperial max-bound");
   });
+
+  test("narrow viewport (320px): every filter control fits the unified panel", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 720 });
+    await page.goto("/?test=1");
+    await page.locator("#filter-add").click();
+    await expect(page.locator(".filter-row")).toBeVisible();
+
+    const assertControlsFit = async (selectors: string[]) => {
+      const result = await page.evaluate((controlSelectors) => {
+        const panel = document.querySelector<HTMLElement>("#tradeoffs-panel")!;
+        const panelRect = panel.getBoundingClientRect();
+        return {
+          horizontalOverflow:
+            document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          controls: controlSelectors.map((selector) => {
+            const element = document.querySelector<HTMLElement>(selector)!;
+            const rect = element.getBoundingClientRect();
+            return {
+              selector,
+              left: rect.left,
+              right: rect.right,
+              width: rect.width,
+              height: rect.height,
+              panelLeft: panelRect.left,
+              panelRight: panelRect.right,
+            };
+          }),
+        };
+      }, selectors);
+
+      expect(result.horizontalOverflow).toBeLessThanOrEqual(ALLOWANCE_PX);
+      for (const control of result.controls) {
+        expect(control.left, `${control.selector} left edge`).toBeGreaterThanOrEqual(
+          control.panelLeft - ALLOWANCE_PX,
+        );
+        expect(control.right, `${control.selector} right edge`).toBeLessThanOrEqual(
+          control.panelRight + ALLOWANCE_PX,
+        );
+        expect(control.width, `${control.selector} width`).toBeGreaterThanOrEqual(24);
+        expect(control.height, `${control.selector} height`).toBeGreaterThanOrEqual(24);
+      }
+    };
+
+    await assertControlsFit([
+      "#filter-add",
+      "#filter-clear",
+      ".filter-col",
+      ".filter-min",
+      ".filter-max",
+      ".filter-remove-btn",
+    ]);
+
+    const materialSourceIndex = await page.evaluate(async () => {
+      const payload = await (await fetch("model/compositions.json")).json();
+      return payload.column_names.indexOf("Material Source");
+    });
+    await page.locator(".filter-col").selectOption(String(materialSourceIndex));
+    await expect(page.locator(".filter-cat-btn").first()).toBeVisible();
+    await assertControlsFit([".filter-col", ".filter-cat-btn", ".filter-remove-btn"]);
+  });
 });

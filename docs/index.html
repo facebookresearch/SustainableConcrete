@@ -95,7 +95,7 @@
   </script>
 </head>
 <body>
-  <!-- Fixed background (real element — iOS handles better than pseudo-elements) -->
+  <!-- Document background (real element; iOS handles this more reliably than a pseudo-element) -->
   <div class="bg-layer" id="bg-layer"></div>
 
   <!-- Frosted glass header -->
@@ -160,77 +160,99 @@
   </div>
 
   <main class="layout">
-    <!-- Sliders Panel -->
-    <div class="panel sliders fade-in-up" id="sliders-panel" style="--delay: 0ms">
-      <div class="sliders-header">
-        <h2 id="sliders-title">Composition (kg/m³)</h2>
-        <button class="unit-toggle" id="unit-toggle" aria-label="SI units - switch to US units">
-          <span class="unit-label" id="unit-label">SI</span>
-        </button>
+    <!-- Column 1: Composition -->
+    <div class="column-flow" id="composition-column">
+      <div class="panel sliders" id="sliders-panel">
+        <div class="sliders-header">
+          <h2 id="sliders-title">Composition (kg/m³)</h2>
+          <button class="unit-toggle" id="unit-toggle" aria-label="SI units - switch to US units">
+            <span class="unit-label" id="unit-label">SI</span>
+          </button>
+        </div>
+        <p class="panel-hint">Adjust sliders or click a point in the scatter plot to explore predicted strength curves with uncertainty.</p>
+        <div id="sliders" role="region" aria-labelledby="sliders-title"></div>
       </div>
-      <p class="panel-hint">Adjust sliders or click a point in the scatter plot to explore predicted strength curves with uncertainty.</p>
-      <div id="sliders"></div>
     </div>
 
     <!-- Column 2: Scatter + Mix Insight -->
-    <div class="column-flow">
+    <div class="column-flow" id="tradeoffs-column">
       <!-- Scatter Plot (becomes unified panel on mobile) -->
-      <div class="panel chart-panel fade-in-up" style="--delay: 100ms">
+      <div class="panel chart-panel fade-in-up" id="tradeoffs-panel" data-active-view="scatter" style="--delay: 100ms">
         <div class="mobile-panel-header">
-          <button id="mobile-show-scatter" class="active">Performance Tradeoffs</button>
-          <button id="mobile-show-sliders">Composition (kg/m³)</button>
+          <button id="mobile-show-scatter" class="active" aria-pressed="true" aria-controls="scatter-view">Performance Tradeoffs</button>
+          <button id="mobile-show-sliders" aria-pressed="false" aria-controls="composition-view">Composition (kg/m³)</button>
           <button class="unit-toggle mobile-unit-toggle" id="mobile-unit-toggle" aria-label="SI units - switch to US units">
             <span class="unit-label" id="mobile-unit-label">SI</span>
           </button>
         </div>
-        <p class="mobile-hint" id="mobile-hint">Tap a point to explore its properties. Tap X/Y toggles to switch axes.</p>
+        <p class="mobile-hint" id="mobile-hint" hidden></p>
         <hr class="mobile-divider">
-        <div class="mobile-scroll-content">
-        <div class="scatter-content">
-        <h2>Performance Tradeoffs</h2>
-        <canvas id="scatter-canvas" aria-label="Scatter plot showing performance tradeoffs between concrete mixes"></canvas>
-        <p class="scatter-hint">Click a point to explore its properties. Click X/Y toggles to switch axes.</p>
-        <div class="controls" id="scatter-controls">
-          <span>X: <span class="axis-toggle" id="toggle-x">GWP</span></span>
-          <span>Y: <span class="axis-toggle" id="toggle-day">28-day strength</span></span>
-          <span class="filter-actions">
-            <span class="filter-label">Filter</span>
-            <button id="filter-add" class="filter-add-btn" title="Add filter">+</button>
-            <button id="filter-clear">Clear all</button>
-          </span>
+        <div class="tradeoffs-heading">
+          <h2 id="tradeoffs-title">Performance Tradeoffs</h2>
         </div>
-        <div id="filter-rows"></div>
+        <div class="mobile-scroll-content" role="region" aria-label="Performance Tradeoffs">
+        <div class="scatter-content" id="scatter-view">
+        <div class="scatter-plot-wrap">
+          <canvas id="scatter-canvas" aria-label="Scatter plot showing GWP on the X axis and 28-day strength on the Y axis"></canvas>
+          <div class="axis-selector-y-wrap">
+            <fieldset class="axis-selector axis-selector-y" id="axis-selector-y" role="radiogroup">
+              <legend class="sr-only">Y-axis objective</legend>
+              <label class="axis-option-face" data-axis-option="28">
+                <input id="axis-y-28" type="radio" name="scatter-y-axis" value="28" aria-label="28-day strength" checked>
+                <span class="axis-option-pill">28-day Strength</span>
+              </label>
+              <label class="axis-option-face" data-axis-option="1">
+                <input id="axis-y-1" type="radio" name="scatter-y-axis" value="1" aria-label="1-day strength">
+                <span class="axis-option-pill">1-day Strength</span>
+              </label>
+            </fieldset>
+          </div>
+          <fieldset class="axis-selector axis-selector-x" id="axis-selector-x" role="radiogroup">
+              <legend class="sr-only">X-axis objective</legend>
+              <label class="axis-option-face" data-axis-option="gwp">
+                <input id="axis-x-gwp" type="radio" name="scatter-x-axis" value="gwp" aria-label="GWP" checked>
+                <span>GWP</span>
+              </label>
+              <label class="axis-option-face" data-axis-option="cost">
+                <input id="axis-x-cost" type="radio" name="scatter-x-axis" value="cost" aria-label="Cost">
+                <span>Cost</span>
+              </label>
+          </fieldset>
         </div>
-        <div class="mobile-sliders-view hidden"></div>
+        </div>
+        <div class="mobile-sliders-view hidden" id="composition-view"></div>
         </div>
       </div>
 
       <!-- Mix Insight (below scatter) -->
       <div class="panel mix-insight-panel fade-in-up" id="mix-insight" style="--delay: 300ms">
         <div class="mix-insight-header">
-          <h2 class="mix-insight-title">Mix Insight</h2>
+          <h2 class="mix-insight-title" id="mix-insight-title">Mix Insight</h2>
           <span class="pareto-pill" id="pareto-pill">Pareto-optimal</span>
         </div>
-        <div class="mix-insight-body">
+        <div class="mix-insight-body" role="region" aria-labelledby="mix-insight-title">
           <p class="mix-insight-text" id="mix-insight-text"><span class="mix-insight-placeholder">Click a data point to see mix analysis.</span></p>
         </div>
       </div>
 
       <!-- Ingredient Insights (below mix insight) -->
       <div class="panel ingredient-insight-panel fade-in-up" id="ingredient-insight" style="--delay: 350ms">
-        <h2 class="ingredient-insight-title">Ingredient Insight</h2>
-        <div class="ingredient-insight-body">
-          <p class="ingredient-insight-text" id="ingredient-insight-text"><span class="mix-insight-placeholder">Click an ingredient name in the Composition panel to learn more.</span></p>
+        <h2 class="ingredient-insight-title" id="ingredient-insight-title">Ingredient Insight</h2>
+        <div class="ingredient-insight-body" role="region" aria-labelledby="ingredient-insight-title">
+          <p class="ingredient-insight-text" id="ingredient-insight-text" aria-live="polite"><strong>Cement</strong> — Portland cement (OPC) is the primary binder in concrete. Hydration of its clinker minerals (C₃S, C₂S, C₃A, C₄AF) produces calcium silicate hydrate (C-S-H) gel, which gives concrete its strength. High early strength contribution but the most carbon-intensive ingredient — producing 1 tonne of cement releases ~0.6–0.9 tonnes of CO₂ from calcination and kiln fuel.</p>
         </div>
       </div>
     </div>
 
-    <!-- Column 3: Strength Curve + References -->
-    <div class="column-flow">
+    <!-- Column 3: Strength Curve + Filters + References + Credit -->
+    <div class="column-flow" id="strength-column">
       <!-- Strength Curve -->
-      <div class="panel chart-panel fade-in-up" style="--delay: 200ms">
+      <div class="panel chart-panel fade-in-up" id="strength-panel" style="--delay: 200ms">
         <span class="extrapolation-warning" id="extrapolation-warning">⚠ Far from data</span>
-        <h2>Predicted Strength Curve</h2>
+        <div class="strength-heading">
+          <h2 id="strength-title">Predicted Strength Curve</h2>
+        </div>
+        <div class="curve-body" role="region" aria-labelledby="strength-title">
         <canvas id="curve-canvas" aria-label="Predicted concrete strength curve over curing time"></canvas>
         <!-- Text equivalent of the curve for screen readers. A canvas exposes
              no data, so aria-label conveys that a chart exists but not what it
@@ -253,50 +275,79 @@
           <div class="wb-readout">W/B: <span class="value" id="wb-value">–</span></div>
           <!-- TODO: Add Slump readout once model/slump.json is available. -->
         </div>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="panel filters-panel fade-in-up" id="filters-panel" style="--delay: 50ms">
+        <div class="filter-controls" id="filter-controls">
+          <div class="filter-header">
+            <h2 id="filters-title">Filters</h2>
+            <div class="filter-actions">
+              <button id="filter-add" class="filter-add-btn" type="button" title="Add filter" aria-label="Add filter">+</button>
+              <button id="filter-clear" type="button">Clear all</button>
+            </div>
+          </div>
+          <div id="filter-rows" role="region" aria-label="Active filters"></div>
+        </div>
       </div>
 
       <!-- References -->
-      <div class="panel references-panel fade-in-up" style="--delay: 250ms">
-        <h3>References</h3>
-        <div class="ref-list">
+      <div class="panel references-panel fade-in-up" id="references-panel" style="--delay: 250ms">
+        <h3 id="references-title">References</h3>
+        <div class="ref-list" role="region" aria-labelledby="references-title">
           <div class="ref-item">
             <div class="ref-content">
               <a class="ref-title" href="https://arxiv.org/abs/2603.21525" target="_blank" rel="noopener">BOxCrete: A Bayesian Optimization Open-Source AI Model for Concrete Strength Forecasting and Mix Optimization</a>
-              <p class="ref-authors">Baten, Iqbal, Ament, Kusuma, Garg (2026)</p>
-              <p class="ref-desc">Extends the framework to comprehensive concrete mix analysis across different curing temperatures and material sources. The resulting model was used to design a low-carbon mix deployed at <a href="https://engineering.fb.com/2026/03/30/data-center-engineering/ai-for-american-produced-cement-and-concrete/" target="_blank" rel="noopener">a Meta data center</a>.</p>
-              <div class="ref-actions-row">
-                <a class="cite-btn ref-link" href="https://arxiv.org/abs/2603.21525" target="_blank" rel="noopener">arXiv</a>
-                <div class="cite-group">
-                  <span class="cite-label">Cite</span>
-                  <button class="cite-btn ref-cite" data-paper="boxcrete" data-format="bibtex">BibTeX</button>
-                  <button class="cite-btn ref-cite" data-paper="boxcrete" data-format="apa">APA</button>
+              <div class="ref-meta-row">
+                <p class="ref-authors">Baten, Iqbal, Ament, Kusuma, Garg (2026)</p>
+                <div class="ref-actions-row">
+                  <a class="cite-btn ref-link" href="https://arxiv.org/abs/2603.21525" target="_blank" rel="noopener">arXiv</a>
+                  <div class="cite-group">
+                    <span class="cite-label">Cite</span>
+                    <button class="cite-btn ref-cite" data-paper="boxcrete" data-format="bibtex">BibTeX</button>
+                    <button class="cite-btn ref-cite" data-paper="boxcrete" data-format="apa">APA</button>
+                  </div>
                 </div>
               </div>
+              <details class="ref-details">
+                <summary>About BOxCrete</summary>
+                <div class="ref-description-motion" inert>
+                  <p class="ref-desc">Extends the framework to comprehensive concrete mix analysis across different curing temperatures and material sources. The resulting model was used to design a low-carbon mix deployed at <a href="https://engineering.fb.com/2026/03/30/data-center-engineering/ai-for-american-produced-cement-and-concrete/" target="_blank" rel="noopener">a Meta data center</a>.</p>
+                </div>
+              </details>
             </div>
           </div>
           <div class="ref-item">
             <div class="ref-content">
               <a class="ref-title" href="https://arxiv.org/abs/2310.18288" target="_blank" rel="noopener">Sustainable Concrete via Bayesian Optimization</a>
-              <p class="ref-authors">Ament, Witte, Garg, Kusuma (2023)</p>
-              <p class="ref-desc">Introduces the custom Gaussian process model and multi-objective Bayesian optimization formulation for concrete mix design, with initial results demonstrating efficient discovery of low-carbon, high-strength mortar formulations.</p>
-              <div class="ref-actions-row">
-                <a class="cite-btn ref-link" href="https://arxiv.org/abs/2310.18288" target="_blank" rel="noopener">arXiv</a>
-                <div class="cite-group">
-                  <span class="cite-label">Cite</span>
-                  <button class="cite-btn ref-cite" data-paper="sustainable" data-format="bibtex">BibTeX</button>
-                  <button class="cite-btn ref-cite" data-paper="sustainable" data-format="apa">APA</button>
+              <div class="ref-meta-row">
+                <p class="ref-authors">Ament, Witte, Garg, Kusuma (2023)</p>
+                <div class="ref-actions-row">
+                  <a class="cite-btn ref-link" href="https://arxiv.org/abs/2310.18288" target="_blank" rel="noopener">arXiv</a>
+                  <div class="cite-group">
+                    <span class="cite-label">Cite</span>
+                    <button class="cite-btn ref-cite" data-paper="sustainable" data-format="bibtex">BibTeX</button>
+                    <button class="cite-btn ref-cite" data-paper="sustainable" data-format="apa">APA</button>
+                  </div>
                 </div>
               </div>
+              <details class="ref-details">
+                <summary>About the 2023 study</summary>
+                <div class="ref-description-motion" inert>
+                  <p class="ref-desc">Introduces the custom Gaussian process model and multi-objective Bayesian optimization for concrete mix design, demonstrating efficient discovery of low-carbon, high-strength mortar.</p>
+                </div>
+              </details>
             </div>
           </div>
         </div>
       </div>
+
+      <footer class="site-footer">
+        <span>Explorer designed by <a href="https://sebastianament.github.io" target="_blank" rel="author noopener">Sebastian Ament</a></span>
+      </footer>
     </div>
   </main>
-
-  <footer class="site-footer">
-    <span>Explorer designed by <a href="https://sebastianament.github.io" target="_blank" rel="author noopener">Sebastian Ament</a></span>
-  </footer>
 
   <script type="module" src="ui.mjs"></script>
   <script>
@@ -319,33 +370,85 @@
     const scatterContent = document.querySelector('.scatter-content');
     const mobileSlidersView = document.querySelector('.mobile-sliders-view');
     const slidersPanel = document.getElementById('sliders-panel');
+    const filtersPanel = document.getElementById('filters-panel');
+    const filterControls = document.getElementById('filter-controls');
     const mobileHint = document.getElementById('mobile-hint');
+    const mobileScrollContent = document.querySelector('.mobile-scroll-content');
+    const tradeoffsPanel = document.getElementById('tradeoffs-panel');
 
-    // On mobile, move sliders content into the unified panel
+    function resetMobileScrollRegion(label) {
+      mobileScrollContent.scrollTop = 0;
+      mobileScrollContent.setAttribute('aria-label', label);
+      document.dispatchEvent(new CustomEvent('dashboard-layout-change'));
+    }
+
+    // On mobile, move Composition and Filters into the unified panel. The
+    // controls keep their IDs and listeners; only their responsive owner moves.
     function initMobileSliders() {
+      if (window.innerWidth <= 1050 && filterControls.parentElement !== scatterContent) {
+        scatterContent.appendChild(filterControls);
+      }
       if (mobileSlidersView.children.length === 0 && window.innerWidth <= 1050) {
         const hint = slidersPanel.querySelector('.panel-hint');
         const sliders = document.getElementById('sliders');
         if (hint) mobileSlidersView.appendChild(hint);
-        if (sliders) mobileSlidersView.appendChild(sliders);
+        if (sliders) {
+          mobileSlidersView.appendChild(sliders);
+          sliders.removeAttribute('role');
+          sliders.removeAttribute('tabindex');
+          sliders.removeAttribute('aria-labelledby');
+        }
       }
     }
+    let crossfadeToken = 0;
+    let crossfadeTimer = null;
+    let pendingCrossfadeSwap = null;
+
+    function cancelCrossfade() {
+      crossfadeToken += 1;
+      if (crossfadeTimer !== null) {
+        clearTimeout(crossfadeTimer);
+        crossfadeTimer = null;
+      }
+      pendingCrossfadeSwap = null;
+      scatterContent.classList.remove('fading');
+      mobileSlidersView.classList.remove('fading');
+    }
+
     // Restore sliders to their panel for desktop
     function restoreDesktopSliders() {
-      if (window.innerWidth > 1050 && mobileSlidersView.children.length > 0) {
+      if (window.innerWidth > 1050) {
+        if (filterControls.parentElement !== filtersPanel) {
+          filtersPanel.appendChild(filterControls);
+        }
+        if (mobileSlidersView.children.length === 0) return;
+        cancelCrossfade();
         const hint = mobileSlidersView.querySelector('.panel-hint');
         const sliders = document.getElementById('sliders');
         const header = slidersPanel.querySelector('.sliders-header');
         if (hint && header) header.after(hint);
-        if (sliders) slidersPanel.appendChild(sliders);
+        if (sliders) {
+          slidersPanel.appendChild(sliders);
+          sliders.setAttribute('role', 'region');
+          sliders.removeAttribute('tabindex');
+          sliders.setAttribute('aria-labelledby', 'sliders-title');
+        }
         // Reset toggle state for desktop
         scatterContent.classList.remove('hidden');
+        scatterContent.inert = false;
         mobileSlidersView.classList.add('hidden');
+        mobileSlidersView.inert = true;
+        tradeoffsPanel.dataset.activeView = 'scatter';
         mobileScatterBtn.classList.add('active');
+        mobileScatterBtn.setAttribute('aria-pressed', 'true');
         mobileSlidersBtn.classList.remove('active');
-        mobileHint.textContent = 'Tap a point to explore its properties. Tap X/Y toggles to switch axes.';
+        mobileSlidersBtn.setAttribute('aria-pressed', 'false');
+        mobileHint.hidden = true;
+        mobileHint.textContent = '';
+        resetMobileScrollRegion('Performance Tradeoffs');
         // Redraw scatter with correct dimensions
         document.dispatchEvent(new CustomEvent('invalidate-scatter'));
+        document.dispatchEvent(new CustomEvent('dashboard-layout-change'));
       }
     }
     initMobileSliders();
@@ -355,41 +458,97 @@
     });
 
     // Crossfade helper: fade out current, swap, fade in new
-    // 150 ms matches the .fading opacity transition. Under reduced motion that
-    // transition is instant, so the wait would leave the panel blank for
-    // 150 ms instead of fading -- collapse it to match.
-    const REDUCE_MOTION = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // 150 ms matches the .fading opacity transition. Read the live preference
+    // per transaction so changing it while the dashboard is open never leaves
+    // the requested view hidden behind a stale JavaScript delay.
+    const reduceMotionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+    reduceMotionQuery.addEventListener('change', (event) => {
+      if (!event.matches) return;
+      if (pendingCrossfadeSwap !== null) {
+        if (crossfadeTimer !== null) {
+          clearTimeout(crossfadeTimer);
+          crossfadeTimer = null;
+        }
+        pendingCrossfadeSwap(true);
+        return;
+      }
+      scatterContent.classList.remove('fading');
+      mobileSlidersView.classList.remove('fading');
+    });
     function crossfade(fadeOut, fadeIn, onSwap) {
-      const fadeMs = REDUCE_MOTION ? 0 : 150;
-      fadeOut.classList.add('fading');
-      setTimeout(() => {
+      const fadeMs = reduceMotionQuery.matches ? 0 : 150;
+      cancelCrossfade();
+      const token = crossfadeToken;
+
+      // Accessibility follows the requested view immediately; visual paint may
+      // continue briefly, but the outgoing controls leave navigation now.
+      fadeOut.inert = true;
+      fadeIn.inert = false;
+
+      // A rapid reverse can request the view that is still visible because the
+      // first fade has not swapped yet. In that case, normalize immediately.
+      if (!fadeIn.classList.contains('hidden') && fadeOut.classList.contains('hidden')) {
+        onSwap();
+        return;
+      }
+
+      const swap = (forceReducedMotion = false) => {
+        if (token !== crossfadeToken) return;
+        crossfadeTimer = null;
+        pendingCrossfadeSwap = null;
         fadeOut.classList.add('hidden');
         fadeOut.classList.remove('fading');
-        onSwap();
+        const animateFadeIn = fadeMs > 0 && !forceReducedMotion && !reduceMotionQuery.matches;
+        fadeIn.classList.toggle('fading', animateFadeIn);
         fadeIn.classList.remove('hidden');
-        fadeIn.classList.add('fading');
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => fadeIn.classList.remove('fading'));
-        });
-      }, fadeMs);
+        onSwap();
+        document.dispatchEvent(new CustomEvent('dashboard-layout-change'));
+        if (animateFadeIn) {
+          const finishFadeIn = () => {
+            if (token === crossfadeToken) fadeIn.classList.remove('fading');
+          };
+          requestAnimationFrame(() => requestAnimationFrame(finishFadeIn));
+          // Headless WebKit can defer rAF while still advancing timers.
+          setTimeout(finishFadeIn, 50);
+        }
+      };
+
+      if (fadeMs === 0) {
+        swap();
+        return;
+      }
+      fadeOut.classList.add('fading');
+      pendingCrossfadeSwap = swap;
+      crossfadeTimer = setTimeout(swap, fadeMs);
     }
 
     mobileScatterBtn.addEventListener('click', () => {
-      if (scatterContent.classList.contains('hidden')) {
+      if (mobileScatterBtn.getAttribute('aria-pressed') !== 'true') {
         mobileScatterBtn.classList.add('active');
+        mobileScatterBtn.setAttribute('aria-pressed', 'true');
         mobileSlidersBtn.classList.remove('active');
+        mobileSlidersBtn.setAttribute('aria-pressed', 'false');
         crossfade(mobileSlidersView, scatterContent, () => {
-          mobileHint.textContent = 'Tap a point to explore its properties. Tap X/Y toggles to switch axes.';
+          tradeoffsPanel.dataset.activeView = 'scatter';
+          mobileHint.hidden = true;
+          mobileHint.textContent = '';
+          resetMobileScrollRegion('Performance Tradeoffs');
           document.dispatchEvent(new CustomEvent('invalidate-scatter'));
         });
       }
     });
     mobileSlidersBtn.addEventListener('click', () => {
-      if (mobileSlidersView.classList.contains('hidden')) {
+      if (mobileSlidersBtn.getAttribute('aria-pressed') !== 'true') {
         mobileSlidersBtn.classList.add('active');
+        mobileSlidersBtn.setAttribute('aria-pressed', 'true');
         mobileScatterBtn.classList.remove('active');
+        mobileScatterBtn.setAttribute('aria-pressed', 'false');
         crossfade(scatterContent, mobileSlidersView, () => {
+          tradeoffsPanel.dataset.activeView = 'composition';
+          mobileHint.hidden = false;
           mobileHint.textContent = 'Adjust sliders to explore predicted strength curves with uncertainty.';
+          resetMobileScrollRegion('Composition controls');
+          document.dispatchEvent(new CustomEvent('invalidate-curve'));
         });
       }
     });
@@ -438,6 +597,12 @@
     setupCiteBtn('cite-bibtex', allBibtex);
     setupCiteBtn('cite-apa', allApa);
 
+    for (const details of document.querySelectorAll('.ref-details')) {
+      details.addEventListener('toggle', () => {
+        document.dispatchEvent(new CustomEvent('dashboard-layout-change'));
+      });
+    }
+
     // Individual reference cite buttons
     for (const btn of document.querySelectorAll('.ref-cite')) {
       const label = btn.textContent;
@@ -464,20 +629,28 @@
         .filter((el) => el.offsetWidth > 0 || el.offsetHeight > 0 || el === document.activeElement);
     }
 
+    let activeModal = null;
+
     function setupModal(overlay, { onOpen, onClose } = {}) {
       const dialog = overlay.querySelector('[role="dialog"]') || overlay;
       // Element to hand focus back to on close. Without this, dismissing a
       // dialog drops the keyboard user back at the top of the document.
       let lastFocused = null;
 
-      const close = () => {
+      const close = ({ restoreFocus = true } = {}) => {
+        if (!overlay.classList.contains('visible')) return;
         overlay.classList.remove('visible');
         onClose?.();
-        if (lastFocused && document.contains(lastFocused)) lastFocused.focus();
+        if (activeModal?.overlay === overlay) activeModal = null;
+        if (restoreFocus && lastFocused && document.contains(lastFocused)) lastFocused.focus();
         lastFocused = null;
       };
       const open = () => {
-        lastFocused = document.activeElement;
+        const trigger = document.activeElement;
+        if (activeModal?.overlay !== overlay) {
+          activeModal?.close({ restoreFocus: false });
+        }
+        lastFocused = trigger;
         onOpen?.();
         overlay.classList.add('visible');
         // Focus must land inside the dialog, or the user is told a dialog
@@ -488,6 +661,7 @@
         // transition delay; a visibility:hidden element cannot take focus.
         const first = dialog.querySelector('[data-modal-close]') || focusablesIn(dialog)[0];
         first?.focus();
+        activeModal = { overlay, close };
       };
 
       for (const btn of overlay.querySelectorAll('[data-modal-close]')) {
@@ -531,9 +705,21 @@
     const videoIframe = document.getElementById('video-iframe');
     const VIDEO_EMBED_SRC = 'https://www.youtube-nocookie.com/embed/PHuAG_jZMD8?rel=0&autoplay=1';
     const VIDEO_FADE_MS = 250; // matches .video-overlay opacity transition
+    let videoCleanupTimer = null;
     const videoModal = setupModal(document.getElementById('video-overlay'), {
-      onOpen: () => { videoIframe.src = VIDEO_EMBED_SRC; },
-      onClose: () => { setTimeout(() => { videoIframe.src = ''; }, VIDEO_FADE_MS); },
+      onOpen: () => {
+        if (videoCleanupTimer !== null) {
+          clearTimeout(videoCleanupTimer);
+          videoCleanupTimer = null;
+        }
+        videoIframe.src = VIDEO_EMBED_SRC;
+      },
+      onClose: () => {
+        videoCleanupTimer = setTimeout(() => {
+          videoIframe.src = '';
+          videoCleanupTimer = null;
+        }, VIDEO_FADE_MS);
+      },
     });
     document.getElementById('video-link').addEventListener('click', (e) => {
       e.preventDefault();
