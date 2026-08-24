@@ -1,4 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import {
+  openMobileComposition,
+  waitForDashboardLayoutReady,
+} from "./dashboard-helpers";
 
 async function freezeVisualMotion(page: Page) {
   await page.addStyleTag({
@@ -13,8 +17,7 @@ async function freezeVisualMotion(page: Page) {
 
 async function settleDashboard(page: Page) {
   await page.goto("/");
-  await expect(page.locator("#sliders .slider-group").last()).toBeAttached({ timeout: 15_000 });
-  await page.evaluate(() => document.fonts.ready);
+  await waitForDashboardLayoutReady(page);
   await expect
     .poll(() =>
       page.locator("#curve-canvas").evaluate((canvas: HTMLCanvasElement) => {
@@ -56,8 +59,7 @@ test.describe("@visual fixed-dashboard snapshots", () => {
   test("mobile Composition at local scroll boundaries", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "mobile", "mobile Composition baselines");
     await settleDashboard(page);
-    await page.locator("#mobile-show-sliders").click();
-    await expect(page.locator(".mobile-sliders-view")).toBeVisible();
+    await openMobileComposition(page);
     const panel = page.locator("#tradeoffs-panel");
     const body = page.locator(".mobile-scroll-content");
     await panel.evaluate((element) => element.scrollIntoView({ block: "center" }));
@@ -93,8 +95,7 @@ test.describe("@visual fixed-dashboard snapshots", () => {
     test.skip(testInfo.project.name !== "mobile", "narrow mobile layout crop");
     await page.setViewportSize({ width: 320, height: 720 });
     await settleDashboard(page);
-    await page.locator("#mobile-show-sliders").click();
-    await expect(page.locator(".mobile-sliders-view")).toBeVisible();
+    await openMobileComposition(page);
     await expect(page.locator("#tradeoffs-panel")).toHaveScreenshot("composition-mobile-320.png");
   });
 

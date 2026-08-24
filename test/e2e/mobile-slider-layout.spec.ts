@@ -1,4 +1,8 @@
 import { test, expect } from "@playwright/test";
+import {
+  openMobileComposition,
+  waitForDashboardLayoutReady,
+} from "./dashboard-helpers";
 
 /**
  * Mobile-only: pin down the multi-row slider layout. Each `.slider-group`
@@ -25,10 +29,8 @@ test.describe("mobile slider multi-row layout", () => {
   test.beforeEach(async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("mobile"), "mobile-only layout");
     await page.goto("/");
-    // Switch to the Composition view (sliders are hidden by default on mobile)
-    await page.locator("#mobile-show-sliders").click();
-    await expect(page.locator(".mobile-sliders-view")).toBeVisible({ timeout: 2000 });
-    await expect(page.locator(".mobile-sliders-view .slider-group").first()).toBeVisible();
+    await waitForDashboardLayoutReady(page);
+    await openMobileComposition(page);
   });
 
   test("label, slider, and info-row stack vertically without overlap", async ({ page }) => {

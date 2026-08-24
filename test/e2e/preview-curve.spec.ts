@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { waitForCanvasLoopToPark } from "./canvas-frame-probe";
+import {
+  hoverRenderedScatterPoint,
+  waitForCanvasLoopToPark,
+} from "./canvas-frame-probe";
 
 /**
  * Regression pin for two related Material Source toggle bugs:
@@ -26,21 +29,6 @@ async function openPreviewTestPage(page: import("@playwright/test").Page) {
     await page.locator("#mobile-show-sliders").click();
   }
   await expect(firstSlider).toBeVisible();
-}
-
-async function hoverRenderedScatterPoint(page: import("@playwright/test").Page) {
-  const canvas = page.locator("#scatter-canvas");
-  const box = await canvas.boundingBox();
-  if (!box) throw new Error("scatter canvas has no bounding box");
-  for (let y = 30; y < box.height - 30; y += 8) {
-    for (let x = 75; x < box.width - 20; x += 8) {
-      await page.mouse.move(box.x + x, box.y + y);
-      if (await page.evaluate(() => (window as any).__test.hoveredPointIdx !== null)) {
-        return canvas;
-      }
-    }
-  }
-  throw new Error("could not locate a rendered scatter point");
 }
 
 async function waitForPreviewToSettle(page: import("@playwright/test").Page) {

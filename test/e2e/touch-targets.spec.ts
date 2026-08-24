@@ -1,4 +1,8 @@
 import { test, expect } from "@playwright/test";
+import {
+  openMobileComposition,
+  waitForDashboardLayoutReady,
+} from "./dashboard-helpers";
 
 /**
  * Touch-target sizing.
@@ -16,19 +20,11 @@ const WCAG_MIN = 24;
 const HIG_MIN = 44;
 
 test.describe("slider touch targets", () => {
-  // Sliders are built after the model resolves, which now happens in a worker.
-  // Wait on the element rather than a timeout so the assertion measures a
-  // rendered slider instead of racing an empty panel.
-  async function waitForSliders(page: import("@playwright/test").Page, sel: string) {
-    await expect(page.locator(sel).first()).toBeVisible({ timeout: 15000 });
-  }
-
   test("mobile sliders meet the Apple HIG 44px target height", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("mobile"), "mobile touch sizing");
     await page.goto("/");
-    await page.locator("#mobile-show-sliders").click();
-    await expect(page.locator(".mobile-sliders-view")).toBeVisible({ timeout: 2000 });
-    await waitForSliders(page, ".mobile-sliders-view input[type=range]");
+    await waitForDashboardLayoutReady(page);
+    await openMobileComposition(page);
 
     const heights = await page.evaluate(() =>
       Array.from(document.querySelectorAll(".mobile-sliders-view input[type=range]"))
@@ -71,7 +67,7 @@ test.describe("slider touch targets", () => {
   test("desktop sliders meet the WCAG 2.2 AA 24px minimum", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop pointer sizing");
     await page.goto("/");
-    await waitForSliders(page, "#sliders input[type=range]");
+    await waitForDashboardLayoutReady(page);
     const heights = await page.evaluate(() =>
       Array.from(document.querySelectorAll("input[type=range]"))
         .filter((el) => (el as HTMLElement).offsetParent !== null)

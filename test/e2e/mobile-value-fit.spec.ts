@@ -1,5 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { waitForCanvasLoopToPark } from "./canvas-frame-probe";
+import {
+  openMobileComposition,
+  waitForDashboardLayoutReady,
+} from "./dashboard-helpers";
 
 /**
  * Mobile-only overflow regression pin. A previous iteration of the slider
@@ -16,9 +20,8 @@ const ALLOWANCE_PX = 1;
 
 async function gotoSlidersView(page: import("@playwright/test").Page) {
   await page.goto("/?test=1");
-  await page.locator("#mobile-show-sliders").click();
-  await expect(page.locator(".mobile-sliders-view")).toBeVisible({ timeout: 2000 });
-  await expect(page.locator(".mobile-sliders-view .slider-group").first()).toBeVisible();
+  await waitForDashboardLayoutReady(page);
+  await openMobileComposition(page);
 }
 
 async function assertNoOverflow(page: import("@playwright/test").Page, label: string) {

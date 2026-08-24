@@ -1,18 +1,16 @@
 import { expect, test, type Page } from "@playwright/test";
+import {
+  openMobileComposition,
+  waitForDashboardLayoutReady,
+} from "./dashboard-helpers";
 
 async function openComposition(page: Page, projectName: string) {
   await page.goto("/");
+  await waitForDashboardLayoutReady(page);
   if (projectName.startsWith("mobile")) {
-    await page.locator("#mobile-show-sliders").click();
-    await expect(page.locator(".mobile-sliders-view")).toBeVisible();
+    await openMobileComposition(page);
   }
   await expect(page.getByRole("button", { name: "Cement ingredient insight" })).toBeVisible();
-  await page.evaluate(async () => {
-    await document.fonts.ready;
-    const panelAnimations = [...document.querySelectorAll(".fade-in-up")]
-      .flatMap((element) => element.getAnimations());
-    await Promise.all(panelAnimations.map((animation) => animation.finished));
-  });
 }
 
 test.describe("ingredient insight discovery", () => {

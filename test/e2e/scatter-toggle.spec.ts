@@ -1,19 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { waitForCanvasLoopToPark } from "./canvas-frame-probe";
-
-async function waitForDashboard(page: Page) {
-  await page.goto("/?test=1");
-  await expect(page.locator("#scatter-canvas")).toBeVisible({ timeout: 15_000 });
-  await page.evaluate(async () => {
-    await document.fonts.ready;
-    await Promise.all(
-      [...document.querySelectorAll(".fade-in-up")].flatMap((element) =>
-        element.getAnimations().map((animation) => animation.finished),
-      ),
-    );
-  });
-}
+import { waitForDashboardLayoutReady } from "./dashboard-helpers";
 
 async function checkedValue(group: Locator) {
   return group.locator('input[type="radio"]:checked').inputValue();
@@ -370,7 +358,10 @@ async function assertGroupSemantics(group: Locator, legend: RegExp) {
 }
 
 test.describe("scatter plot two-option axis selectors", () => {
-  test.beforeEach(async ({ page }) => waitForDashboard(page));
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+  });
 
   test("both axis objectives remain visible with native radio semantics", async ({ page }) => {
     const x = page.locator("#axis-selector-x");

@@ -1,4 +1,8 @@
 import { test, expect } from "@playwright/test";
+import {
+  openMobileComposition,
+  waitForDashboardLayoutReady,
+} from "./dashboard-helpers";
 
 /**
  * Mobile behavioural coverage.
@@ -14,6 +18,7 @@ import { test, expect } from "@playwright/test";
 
 async function openSliders(page: import("@playwright/test").Page) {
   await page.goto("/?test=1");
+  await waitForDashboardLayoutReady(page);
   await page.waitForFunction(() => typeof (window as any).__test !== "undefined");
   // The shell renders before the GP finishes building in the worker, so wait
   // for the model itself before asserting on predictions.
@@ -22,8 +27,7 @@ async function openSliders(page: import("@playwright/test").Page) {
     null,
     { timeout: 20000 },
   );
-  await page.locator("#mobile-show-sliders").click();
-  await expect(page.locator(".mobile-sliders-view")).toBeVisible({ timeout: 2000 });
+  await openMobileComposition(page);
 }
 
 test.describe("mobile behaviour", () => {
