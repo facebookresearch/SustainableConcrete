@@ -87,7 +87,13 @@ property on a PR, add a spec for it before merging.
 npm install
 npx playwright install --with-deps chromium webkit
 
-# run all tests
+# fast local loop: desktop + mobile Chromium
+make test-e2e
+
+# comprehensive pre-merge loop: all four Chromium/WebKit projects
+make test-e2e-all
+
+# run every configured project in a single Playwright invocation
 npm run test:e2e
 
 # run only mobile Chromium project

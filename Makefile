@@ -1,6 +1,6 @@
-# Local CI-equivalent targets. Mirrors the suite of GitHub Actions
-# workflows in .github/workflows/ so that `make check-all` matches the
-# checks a PR will run on CI.
+# Local test-suite targets. `make check-all` covers the same test suites
+# and Playwright projects as CI, but does not reproduce GitHub runner,
+# artifact, job-topology, or branch-protection behavior.
 #
 #   make help               - list targets
 #
@@ -13,27 +13,28 @@
 #
 # === Slow (minutes) ===
 #   make test-notebooks     - execute every notebook     (notebooks.yml :mode-*)
-#   make test-e2e           - Playwright desktop+mobile  (e2e.yml)
+#   make test-e2e           - fast Playwright Chromium loop (desktop+mobile)
+#   make test-e2e-all       - all four Playwright projects (e2e.yml)
 #   make test-plot-geometry - focused Chromium/WebKit plot contracts
 #   make test-lighthouse    - Lighthouse CI              (lighthouse.yml)
 #
 # === Aggregates ===
 #   make test               - fast tests (py + js + notebook-fmt)
 #   make check              - lint + test          (recommended pre-commit gate)
-#   make check-all          - lint + every test    (full local CI parity)
+#   make check-all          - lint + every local suite/project (pre-merge)
 #
 # Most targets need extras installed:
 #   pip install -e ".[dev]"        # lint, test-py
 #   pip install -e ".[notebooks]"  # test-notebook-fmt, test-notebooks
 #   npm ci                         # test-js, test-e2e, test-lighthouse
-#   npx playwright install --with-deps chromium   # test-e2e
+#   npx playwright install --with-deps chromium webkit  # Playwright targets
 
 PYTHON ?= python
 
 .PHONY: help \
         lint format \
         test-py test-js test-notebook-fmt test-notebooks \
-        test-e2e test-plot-geometry test-lighthouse \
+        test-e2e test-e2e-all test-plot-geometry test-lighthouse \
         test check check-all
 
 help:
@@ -48,14 +49,15 @@ help:
 	@echo ""
 	@echo "  Slow:"
 	@echo "    make test-notebooks     - execute every notebook"
-	@echo "    make test-e2e           - Playwright (desktop + mobile)"
+	@echo "    make test-e2e           - fast Playwright loop (desktop + mobile Chromium)"
+	@echo "    make test-e2e-all       - Playwright (all four Chromium/WebKit projects)"
 	@echo "    make test-plot-geometry - focused plot geometry in Chromium + WebKit"
 	@echo "    make test-lighthouse    - Lighthouse CI"
 	@echo ""
 	@echo "  Aggregates:"
 	@echo "    make test               - fast tests"
 	@echo "    make check              - lint + test (recommended)"
-	@echo "    make check-all          - lint + every test (full CI parity)"
+	@echo "    make check-all          - lint + every local suite/project (pre-merge)"
 
 # Tracked Python files. CI's `black --check --diff .` only sees files
 # in the checked-out commit, so locally we must scope to tracked files
@@ -178,11 +180,18 @@ test-notebooks:
 	done
 
 # --- E2E (Playwright) ----------------------------------------------
-# Mirrors .github/workflows/e2e.yml. Requires `npm ci` + a one-time
-# `npx playwright install --with-deps chromium` to set up browsers.
+# Fast local loop: the broad desktop and mobile Chromium projects.
+# Requires `npm ci` + a one-time browser installation (see header).
 test-e2e:
 	npx playwright test --project=desktop
 	npx playwright test --project=mobile
+
+# Comprehensive local E2E gate: every Playwright project CI executes, once.
+test-e2e-all:
+	npx playwright test --project=desktop
+	npx playwright test --project=mobile
+	npx playwright test --project=mobile-webkit
+	npx playwright test --project=desktop-webkit
 
 test-plot-geometry:
 	npx playwright test test/e2e/plot-geometry.spec.ts test/e2e/scatter-toggle.spec.ts \
@@ -197,4 +206,4 @@ test-lighthouse:
 # --- Aggregates ----------------------------------------------------
 test: test-py test-js test-notebook-fmt
 check: lint test
-check-all: lint test-py test-js test-notebook-fmt test-notebooks test-e2e test-lighthouse
+check-all: lint test-py test-js test-notebook-fmt test-notebooks test-e2e-all test-lighthouse
