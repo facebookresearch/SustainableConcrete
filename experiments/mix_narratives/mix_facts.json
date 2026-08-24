@@ -1,0 +1,10206 @@
+{
+ "0": {
+  "mix": "M1",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 353.33,
+  "fly_ash": 46.67,
+  "slag": 266.67,
+  "water": 140,
+  "hrwr": 6.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 313.3,
+  "scm_frac": 0.47,
+  "slag_frac_of_scm": 0.8511,
+  "wb": 0.21,
+  "wc": 0.3962,
+  "hrwr_pct_binder": 1.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 806.7,
+  "observations": [
+   [
+    1,
+    5000.0
+   ],
+   [
+    3,
+    7235.0
+   ],
+   [
+    5,
+    7318.0
+   ],
+   [
+    28,
+    10290.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 10290.0,
+  "s1_meas": 5000.0,
+  "s7_meas": null,
+  "pred_1d": 5365.8,
+  "pred_28d": 10371.5,
+  "gwp": 319.06,
+  "cost": 125.22,
+  "on_pareto": false,
+  "pct_wb": 33.8,
+  "pct_scm_frac": 45.6,
+  "pct_binder": 25.0,
+  "pct_gwp": 64.7,
+  "pct_pred_28d": 92.6,
+  "pct_cost": 69.1,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "1": {
+  "mix": "M2",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 214.67,
+  "fly_ash": 220,
+  "slag": 232,
+  "water": 159,
+  "hrwr": 4,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 452,
+  "scm_frac": 0.678,
+  "slag_frac_of_scm": 0.5133,
+  "wb": 0.2385,
+  "wc": 0.7407,
+  "hrwr_pct_binder": 0.6,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 825.7,
+  "observations": [
+   [
+    1,
+    3440.0
+   ],
+   [
+    3,
+    4887.0
+   ],
+   [
+    5,
+    4897.0
+   ],
+   [
+    28,
+    6222.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 6222.0,
+  "s1_meas": 3440.0,
+  "s7_meas": null,
+  "pred_1d": 3279.8,
+  "pred_28d": 7294.4,
+  "gwp": 205.66,
+  "cost": 104.42,
+  "on_pareto": false,
+  "pct_wb": 38.2,
+  "pct_scm_frac": 80.9,
+  "pct_binder": 25.0,
+  "pct_gwp": 22.1,
+  "pct_pred_28d": 51.5,
+  "pct_cost": 35.3,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "2": {
+  "mix": "M3",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 344,
+  "fly_ash": 178.67,
+  "slag": 144,
+  "water": 299,
+  "hrwr": 0,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 322.7,
+  "scm_frac": 0.484,
+  "slag_frac_of_scm": 0.4463,
+  "wb": 0.4485,
+  "wc": 0.8692,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 965.7,
+  "observations": [
+   [
+    1,
+    1506.0
+   ],
+   [
+    3,
+    2918.0
+   ],
+   [
+    5,
+    3637.0
+   ],
+   [
+    28,
+    6276.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 6276.0,
+  "s1_meas": 1506.0,
+  "s7_meas": null,
+  "pred_1d": 1553.4,
+  "pred_28d": 6349.9,
+  "gwp": 288.38,
+  "cost": 98.64,
+  "on_pareto": false,
+  "pct_wb": 95.6,
+  "pct_scm_frac": 47.1,
+  "pct_binder": 25.0,
+  "pct_gwp": 55.9,
+  "pct_pred_28d": 29.4,
+  "pct_cost": 17.6,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "3": {
+  "mix": "M4",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 212,
+  "fly_ash": 214.67,
+  "slag": 240,
+  "water": 175,
+  "hrwr": 0,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 454.7,
+  "scm_frac": 0.682,
+  "slag_frac_of_scm": 0.5279,
+  "wb": 0.2625,
+  "wc": 0.8255,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 841.7,
+  "observations": [
+   [
+    1,
+    3115.0
+   ],
+   [
+    3,
+    4280.0
+   ],
+   [
+    5,
+    4308.0
+   ],
+   [
+    28,
+    4433.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 4433.0,
+  "s1_meas": 3115.0,
+  "s7_meas": null,
+  "pred_1d": 2705.8,
+  "pred_28d": 6105.0,
+  "gwp": 192.21,
+  "cost": 92.64,
+  "on_pareto": false,
+  "pct_wb": 50.0,
+  "pct_scm_frac": 82.4,
+  "pct_binder": 25.0,
+  "pct_gwp": 16.2,
+  "pct_pred_28d": 23.5,
+  "pct_cost": 4.4,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "4": {
+  "mix": "M5",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 317.33,
+  "fly_ash": 221.33,
+  "slag": 128,
+  "water": 233,
+  "hrwr": 0,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 349.3,
+  "scm_frac": 0.524,
+  "slag_frac_of_scm": 0.3664,
+  "wb": 0.3495,
+  "wc": 0.7343,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 899.7,
+  "observations": [
+   [
+    1,
+    2905.0
+   ],
+   [
+    3,
+    4314.0
+   ],
+   [
+    5,
+    4429.0
+   ],
+   [
+    28,
+    7897.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 7897.0,
+  "s1_meas": 2905.0,
+  "s7_meas": null,
+  "pred_1d": 2705.7,
+  "pred_28d": 7092.5,
+  "gwp": 265.5,
+  "cost": 95.58,
+  "on_pareto": false,
+  "pct_wb": 66.2,
+  "pct_scm_frac": 57.4,
+  "pct_binder": 25.0,
+  "pct_gwp": 45.6,
+  "pct_pred_28d": 45.6,
+  "pct_cost": 8.8,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "5": {
+  "mix": "M6",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 454.67,
+  "fly_ash": 158.67,
+  "slag": 53.33,
+  "water": 155,
+  "hrwr": 4,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 212.0,
+  "scm_frac": 0.318,
+  "slag_frac_of_scm": 0.2516,
+  "wb": 0.2325,
+  "wc": 0.3409,
+  "hrwr_pct_binder": 0.6,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 821.7,
+  "observations": [
+   [
+    1,
+    6279.0
+   ],
+   [
+    3,
+    7302.0
+   ],
+   [
+    5,
+    7369.0
+   ],
+   [
+    28,
+    9029.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 9029.0,
+  "s1_meas": 6279.0,
+  "s7_meas": null,
+  "pred_1d": 5712.2,
+  "pred_28d": 9175.7,
+  "gwp": 373.43,
+  "cost": 114.68,
+  "on_pareto": false,
+  "pct_wb": 36.8,
+  "pct_scm_frac": 26.5,
+  "pct_binder": 25.0,
+  "pct_gwp": 80.9,
+  "pct_pred_28d": 79.4,
+  "pct_cost": 51.5,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "6": {
+  "mix": "M7",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 436,
+  "fly_ash": 33.33,
+  "slag": 197.33,
+  "water": 256,
+  "hrwr": 0,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 230.7,
+  "scm_frac": 0.346,
+  "slag_frac_of_scm": 0.8555,
+  "wb": 0.384,
+  "wc": 0.5872,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 922.7,
+  "observations": [
+   [
+    1,
+    3411.0
+   ],
+   [
+    3,
+    5008.0
+   ],
+   [
+    5,
+    5308.0
+   ],
+   [
+    28,
+    6647.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 6647.0,
+  "s1_meas": 3411.0,
+  "s7_meas": null,
+  "pred_1d": 3459.3,
+  "pred_28d": 7077.4,
+  "gwp": 359.11,
+  "cost": 108.58,
+  "on_pareto": false,
+  "pct_wb": 86.8,
+  "pct_scm_frac": 30.9,
+  "pct_binder": 25.0,
+  "pct_gwp": 76.5,
+  "pct_pred_28d": 44.1,
+  "pct_cost": 44.1,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "7": {
+  "mix": "M8",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 318.67,
+  "fly_ash": 52,
+  "slag": 296,
+  "water": 317,
+  "hrwr": 0,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 348,
+  "scm_frac": 0.522,
+  "slag_frac_of_scm": 0.8506,
+  "wb": 0.4755,
+  "wc": 0.9948,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 983.7,
+  "observations": [
+   [
+    1,
+    1659.0
+   ],
+   [
+    3,
+    2894.0
+   ],
+   [
+    5,
+    3724.0
+   ],
+   [
+    28,
+    5786.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 5786.0,
+  "s1_meas": 1659.0,
+  "s7_meas": null,
+  "pred_1d": 1378.4,
+  "pred_28d": 6023.7,
+  "gwp": 279.57,
+  "cost": 104.25,
+  "on_pareto": false,
+  "pct_wb": 97.1,
+  "pct_scm_frac": 55.9,
+  "pct_binder": 25.0,
+  "pct_gwp": 50.0,
+  "pct_pred_28d": 22.1,
+  "pct_cost": 32.4,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "8": {
+  "mix": "M9",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 265.33,
+  "fly_ash": 164,
+  "slag": 237.33,
+  "water": 185,
+  "hrwr": 1.33,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 401.3,
+  "scm_frac": 0.602,
+  "slag_frac_of_scm": 0.5914,
+  "wb": 0.2775,
+  "wc": 0.6972,
+  "hrwr_pct_binder": 0.2,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 851.7,
+  "observations": [
+   [
+    1,
+    3532.0
+   ],
+   [
+    3,
+    5189.0
+   ],
+   [
+    5,
+    5568.0
+   ],
+   [
+    28,
+    8685.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 8685.0,
+  "s1_meas": 3532.0,
+  "s7_meas": null,
+  "pred_1d": 3281.8,
+  "pred_28d": 8430.0,
+  "gwp": 236.27,
+  "cost": 100.78,
+  "on_pareto": false,
+  "pct_wb": 51.5,
+  "pct_scm_frac": 67.6,
+  "pct_binder": 25.0,
+  "pct_gwp": 41.2,
+  "pct_pred_28d": 67.6,
+  "pct_cost": 26.5,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "9": {
+  "mix": "M10",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 529.6,
+  "fly_ash": 0,
+  "slag": 137.07,
+  "water": 276,
+  "hrwr": 0,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 137.1,
+  "scm_frac": 0.2056,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.414,
+  "wc": 0.5211,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 942.7,
+  "observations": [
+   [
+    1,
+    3274.0
+   ],
+   [
+    3,
+    4434.0
+   ],
+   [
+    5,
+    4708.0
+   ],
+   [
+    28,
+    6675.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 6675.0,
+  "s1_meas": 3274.0,
+  "s7_meas": null,
+  "pred_1d": 3320.4,
+  "pred_28d": 6687.8,
+  "gwp": 425.77,
+  "cost": 113.1,
+  "on_pareto": false,
+  "pct_wb": 92.6,
+  "pct_scm_frac": 17.6,
+  "pct_binder": 25.0,
+  "pct_gwp": 89.7,
+  "pct_pred_28d": 35.3,
+  "pct_cost": 48.5,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "10": {
+  "mix": "M11",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 503.07,
+  "fly_ash": 163.6,
+  "slag": 0,
+  "water": 237,
+  "hrwr": 0,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 163.6,
+  "scm_frac": 0.2454,
+  "slag_frac_of_scm": 0.0,
+  "wb": 0.3555,
+  "wc": 0.4711,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 903.7,
+  "observations": [
+   [
+    1,
+    4106.0
+   ],
+   [
+    3,
+    5082.0
+   ],
+   [
+    5,
+    5666.0
+   ],
+   [
+    28,
+    7348.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 7348.0,
+  "s1_meas": 4106.0,
+  "s7_meas": null,
+  "pred_1d": 3961.5,
+  "pred_28d": 7481.6,
+  "gwp": 396.19,
+  "cost": 104.05,
+  "on_pareto": false,
+  "pct_wb": 79.4,
+  "pct_scm_frac": 19.1,
+  "pct_binder": 25.0,
+  "pct_gwp": 83.8,
+  "pct_pred_28d": 55.9,
+  "pct_cost": 30.9,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "11": {
+  "mix": "M12",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 495.2,
+  "fly_ash": 0,
+  "slag": 171.47,
+  "water": 297,
+  "hrwr": 0,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 171.5,
+  "scm_frac": 0.2572,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.4455,
+  "wc": 0.5998,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 963.7,
+  "observations": [
+   [
+    1,
+    3060.0
+   ],
+   [
+    3,
+    4137.0
+   ],
+   [
+    5,
+    4673.0
+   ],
+   [
+    28,
+    6424.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 6424.0,
+  "s1_meas": 3060.0,
+  "s7_meas": null,
+  "pred_1d": 2856.6,
+  "pred_28d": 6325.7,
+  "gwp": 402.89,
+  "cost": 112.11,
+  "on_pareto": false,
+  "pct_wb": 94.1,
+  "pct_scm_frac": 20.6,
+  "pct_binder": 25.0,
+  "pct_gwp": 85.3,
+  "pct_pred_28d": 26.5,
+  "pct_cost": 45.6,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "12": {
+  "mix": "M13",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 553.87,
+  "fly_ash": 112.8,
+  "slag": 0,
+  "water": 235,
+  "hrwr": 0,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 112.8,
+  "scm_frac": 0.1692,
+  "slag_frac_of_scm": 0.0,
+  "wb": 0.3525,
+  "wc": 0.4243,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 901.7,
+  "observations": [
+   [
+    1,
+    4402.0
+   ],
+   [
+    3,
+    5673.0
+   ],
+   [
+    5,
+    6101.0
+   ],
+   [
+    28,
+    7660.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 7660.0,
+  "s1_meas": 4402.0,
+  "s7_meas": null,
+  "pred_1d": 4230.2,
+  "pred_28d": 7471.6,
+  "gwp": 434.05,
+  "cost": 108.11,
+  "on_pareto": false,
+  "pct_wb": 77.9,
+  "pct_scm_frac": 16.2,
+  "pct_binder": 25.0,
+  "pct_gwp": 91.2,
+  "pct_pred_28d": 54.4,
+  "pct_cost": 42.6,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "13": {
+  "mix": "M14",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 333.6,
+  "fly_ash": 0,
+  "slag": 333.07,
+  "water": 265,
+  "hrwr": 0,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 333.1,
+  "scm_frac": 0.4996,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.3975,
+  "wc": 0.7944,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 931.7,
+  "observations": [
+   [
+    1,
+    2298.0
+   ],
+   [
+    3,
+    4157.0
+   ],
+   [
+    5,
+    5127.0
+   ],
+   [
+    28,
+    7434.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 7434.0,
+  "s1_meas": 2298.0,
+  "s7_meas": null,
+  "pred_1d": 2319.7,
+  "pred_28d": 7118.5,
+  "gwp": 291.49,
+  "cost": 107.2,
+  "on_pareto": false,
+  "pct_wb": 89.7,
+  "pct_scm_frac": 52.9,
+  "pct_binder": 25.0,
+  "pct_gwp": 57.4,
+  "pct_pred_28d": 47.1,
+  "pct_cost": 41.2,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "14": {
+  "mix": "M15",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 466.67,
+  "fly_ash": 0,
+  "slag": 200,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 200,
+  "scm_frac": 0.3,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.1995,
+  "wc": 0.285,
+  "hrwr_pct_binder": 1.3,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 799.7,
+  "observations": [
+   [
+    1,
+    7571.0
+   ],
+   [
+    3,
+    9343.0
+   ],
+   [
+    5,
+    9431.0
+   ],
+   [
+    28,
+    10801.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 10801.0,
+  "s1_meas": 7571.0,
+  "s7_meas": null,
+  "pred_1d": 6813.4,
+  "pred_28d": 10319.4,
+  "gwp": 405.47,
+  "cost": 136.94,
+  "on_pareto": true,
+  "pct_wb": 5.9,
+  "pct_scm_frac": 22.1,
+  "pct_binder": 25.0,
+  "pct_gwp": 86.8,
+  "pct_pred_28d": 89.7,
+  "pct_cost": 94.1,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "15": {
+  "mix": "M16",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 411.6,
+  "fly_ash": 29.07,
+  "slag": 226,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 255.1,
+  "scm_frac": 0.3826,
+  "slag_frac_of_scm": 0.886,
+  "wb": 0.1995,
+  "wc": 0.3231,
+  "hrwr_pct_binder": 1.3,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 799.7,
+  "observations": [
+   [
+    1,
+    6049.0
+   ],
+   [
+    3,
+    7685.0
+   ],
+   [
+    5,
+    7697.0
+   ],
+   [
+    28,
+    10182.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 10182.0,
+  "s1_meas": 6049.0,
+  "s7_meas": null,
+  "pred_1d": 6157.8,
+  "pred_28d": 10286.7,
+  "gwp": 366.01,
+  "cost": 133.83,
+  "on_pareto": false,
+  "pct_wb": 5.9,
+  "pct_scm_frac": 32.4,
+  "pct_binder": 25.0,
+  "pct_gwp": 77.9,
+  "pct_pred_28d": 85.3,
+  "pct_cost": 89.7,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "16": {
+  "mix": "M17",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 362.93,
+  "fly_ash": 42.93,
+  "slag": 260.8,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 303.7,
+  "scm_frac": 0.4556,
+  "slag_frac_of_scm": 0.8587,
+  "wb": 0.1995,
+  "wc": 0.3665,
+  "hrwr_pct_binder": 1.301,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 799.7,
+  "observations": [
+   [
+    1,
+    6368.0
+   ],
+   [
+    3,
+    8846.0
+   ],
+   [
+    5,
+    10335.0
+   ],
+   [
+    28,
+    10350.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 10350.0,
+  "s1_meas": 6368.0,
+  "s7_meas": null,
+  "pred_1d": 5587.6,
+  "pred_28d": 10454.8,
+  "gwp": 331.87,
+  "cost": 131.68,
+  "on_pareto": false,
+  "pct_wb": 5.9,
+  "pct_scm_frac": 42.6,
+  "pct_binder": 25.0,
+  "pct_gwp": 69.1,
+  "pct_pred_28d": 97.1,
+  "pct_cost": 80.9,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "17": {
+  "mix": "M18",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 277.47,
+  "fly_ash": 118,
+  "slag": 271.2,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 389.2,
+  "scm_frac": 0.5838,
+  "slag_frac_of_scm": 0.6968,
+  "wb": 0.1995,
+  "wc": 0.4793,
+  "hrwr_pct_binder": 1.3,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 799.7,
+  "observations": [
+   [
+    1,
+    4993.0
+   ],
+   [
+    3,
+    7521.0
+   ],
+   [
+    5,
+    8154.0
+   ],
+   [
+    28,
+    11199.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 11199.0,
+  "s1_meas": 4993.0,
+  "s7_meas": null,
+  "pred_1d": 4533.8,
+  "pred_28d": 10486.5,
+  "gwp": 268.75,
+  "cost": 125.36,
+  "on_pareto": false,
+  "pct_wb": 5.9,
+  "pct_scm_frac": 64.7,
+  "pct_binder": 25.0,
+  "pct_gwp": 48.5,
+  "pct_pred_28d": 98.5,
+  "pct_cost": 72.1,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "18": {
+  "mix": "M19",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 200.67,
+  "fly_ash": 172.53,
+  "slag": 293.47,
+  "water": 167,
+  "hrwr": 3.33,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 466.0,
+  "scm_frac": 0.699,
+  "slag_frac_of_scm": 0.6298,
+  "wb": 0.2505,
+  "wc": 0.8322,
+  "hrwr_pct_binder": 0.499,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 833.7,
+  "observations": [
+   [
+    1,
+    3105.0
+   ],
+   [
+    3,
+    4466.0
+   ],
+   [
+    5,
+    5439.0
+   ],
+   [
+    28,
+    8588.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 8588.0,
+  "s1_meas": 3105.0,
+  "s7_meas": null,
+  "pred_1d": 2970.1,
+  "pred_28d": 8340.7,
+  "gwp": 197.23,
+  "cost": 104.38,
+  "on_pareto": false,
+  "pct_wb": 45.6,
+  "pct_scm_frac": 85.3,
+  "pct_binder": 25.0,
+  "pct_gwp": 17.6,
+  "pct_pred_28d": 64.7,
+  "pct_cost": 33.8,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "19": {
+  "mix": "M20",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 322.13,
+  "fly_ash": 82.8,
+  "slag": 261.73,
+  "water": 149,
+  "hrwr": 6.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 344.5,
+  "scm_frac": 0.5168,
+  "slag_frac_of_scm": 0.7597,
+  "wb": 0.2235,
+  "wc": 0.4625,
+  "hrwr_pct_binder": 1.001,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 815.7,
+  "observations": [
+   [
+    1,
+    5776.0
+   ],
+   [
+    3,
+    7819.0
+   ],
+   [
+    5,
+    9212.0
+   ],
+   [
+    28,
+    11900.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 11900.0,
+  "s1_meas": 5776.0,
+  "s7_meas": null,
+  "pred_1d": 4791.8,
+  "pred_28d": 10428.7,
+  "gwp": 295.74,
+  "cost": 122.49,
+  "on_pareto": false,
+  "pct_wb": 35.3,
+  "pct_scm_frac": 54.4,
+  "pct_binder": 25.0,
+  "pct_gwp": 58.8,
+  "pct_pred_28d": 94.1,
+  "pct_cost": 61.8,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "20": {
+  "mix": "M21",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 293.33,
+  "fly_ash": 73.33,
+  "slag": 300,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 373.3,
+  "scm_frac": 0.56,
+  "slag_frac_of_scm": 0.8036,
+  "wb": 0.1995,
+  "wc": 0.4534,
+  "hrwr_pct_binder": 1.301,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 799.7,
+  "observations": [
+   [
+    1,
+    4516.0
+   ],
+   [
+    3,
+    7936.0
+   ],
+   [
+    5,
+    8278.0
+   ],
+   [
+    28,
+    10043.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 10043.0,
+  "s1_meas": 4516.0,
+  "s7_meas": null,
+  "pred_1d": 4780.9,
+  "pred_28d": 10747.4,
+  "gwp": 282.4,
+  "cost": 128.07,
+  "on_pareto": false,
+  "pct_wb": 5.9,
+  "pct_scm_frac": 61.8,
+  "pct_binder": 25.0,
+  "pct_gwp": 51.5,
+  "pct_pred_28d": 100.0,
+  "pct_cost": 75.0,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "21": {
+  "mix": "M22",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 229.33,
+  "fly_ash": 137.33,
+  "slag": 300,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 437.3,
+  "scm_frac": 0.656,
+  "slag_frac_of_scm": 0.686,
+  "wb": 0.1995,
+  "wc": 0.58,
+  "hrwr_pct_binder": 1.301,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 799.7,
+  "observations": [
+   [
+    1,
+    3768.0
+   ],
+   [
+    3,
+    6199.0
+   ],
+   [
+    5,
+    8219.0
+   ],
+   [
+    28,
+    9226.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 9226.0,
+  "s1_meas": 3768.0,
+  "s7_meas": null,
+  "pred_1d": 4047.2,
+  "pred_28d": 10061.7,
+  "gwp": 234.63,
+  "cost": 122.95,
+  "on_pareto": false,
+  "pct_wb": 5.9,
+  "pct_scm_frac": 73.5,
+  "pct_binder": 25.0,
+  "pct_gwp": 38.2,
+  "pct_pred_28d": 83.8,
+  "pct_cost": 63.2,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "22": {
+  "mix": "M23",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 395.33,
+  "fly_ash": 45.2,
+  "slag": 226.13,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 271.3,
+  "scm_frac": 0.407,
+  "slag_frac_of_scm": 0.8334,
+  "wb": 0.1995,
+  "wc": 0.3364,
+  "hrwr_pct_binder": 1.301,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 799.7,
+  "observations": [
+   [
+    1,
+    5654.0
+   ],
+   [
+    3,
+    7804.0
+   ],
+   [
+    5,
+    8942.0
+   ],
+   [
+    28,
+    9696.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 9696.0,
+  "s1_meas": 5654.0,
+  "s7_meas": null,
+  "pred_1d": 5898.7,
+  "pred_28d": 10303.0,
+  "gwp": 353.87,
+  "cost": 132.54,
+  "on_pareto": false,
+  "pct_wb": 5.9,
+  "pct_scm_frac": 36.8,
+  "pct_binder": 25.0,
+  "pct_gwp": 72.1,
+  "pct_pred_28d": 88.2,
+  "pct_cost": 85.3,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "23": {
+  "mix": "M24",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 305.07,
+  "fly_ash": 125.87,
+  "slag": 235.73,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 361.6,
+  "scm_frac": 0.5424,
+  "slag_frac_of_scm": 0.6519,
+  "wb": 0.1995,
+  "wc": 0.436,
+  "hrwr_pct_binder": 1.3,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 799.7,
+  "observations": [
+   [
+    1,
+    4873.0
+   ],
+   [
+    3,
+    7520.0
+   ],
+   [
+    5,
+    7955.0
+   ],
+   [
+    28,
+    10305.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 10305.0,
+  "s1_meas": 4873.0,
+  "s7_meas": null,
+  "pred_1d": 4764.9,
+  "pred_28d": 10338.6,
+  "gwp": 287.12,
+  "cost": 125.79,
+  "on_pareto": false,
+  "pct_wb": 5.9,
+  "pct_scm_frac": 60.3,
+  "pct_binder": 25.0,
+  "pct_gwp": 54.4,
+  "pct_pred_28d": 91.2,
+  "pct_cost": 73.5,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "24": {
+  "mix": "M25",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 408.13,
+  "fly_ash": 108.53,
+  "slag": 150,
+  "water": 139,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 258.5,
+  "scm_frac": 0.3878,
+  "slag_frac_of_scm": 0.5802,
+  "wb": 0.2085,
+  "wc": 0.3406,
+  "hrwr_pct_binder": 1.301,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 805.7,
+  "observations": [
+   [
+    1,
+    5242.0
+   ],
+   [
+    3,
+    6858.0
+   ],
+   [
+    5,
+    8582.0
+   ],
+   [
+    28,
+    9224.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 9224.0,
+  "s1_meas": 5242.0,
+  "s7_meas": null,
+  "pred_1d": 5602.9,
+  "pred_28d": 9935.4,
+  "gwp": 358.82,
+  "cost": 129.76,
+  "on_pareto": false,
+  "pct_wb": 30.9,
+  "pct_scm_frac": 35.3,
+  "pct_binder": 25.0,
+  "pct_gwp": 75.0,
+  "pct_pred_28d": 82.4,
+  "pct_cost": 79.4,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "25": {
+  "mix": "M26",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 340.8,
+  "fly_ash": 101.07,
+  "slag": 224.8,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 325.9,
+  "scm_frac": 0.4888,
+  "slag_frac_of_scm": 0.6898,
+  "wb": 0.1995,
+  "wc": 0.3903,
+  "hrwr_pct_binder": 1.3,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 799.7,
+  "observations": [
+   [
+    1,
+    4939.0
+   ],
+   [
+    3,
+    7249.0
+   ],
+   [
+    5,
+    7678.0
+   ],
+   [
+    28,
+    10569.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 10569.0,
+  "s1_meas": 4939.0,
+  "s7_meas": null,
+  "pred_1d": 5131.7,
+  "pred_28d": 10440.9,
+  "gwp": 313.1,
+  "cost": 128.11,
+  "on_pareto": false,
+  "pct_wb": 5.9,
+  "pct_scm_frac": 48.5,
+  "pct_binder": 25.0,
+  "pct_gwp": 61.8,
+  "pct_pred_28d": 95.6,
+  "pct_cost": 76.5,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "26": {
+  "mix": "M27",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 272.67,
+  "fly_ash": 80.93,
+  "slag": 179.87,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 533.5,
+  "scm": 260.8,
+  "scm_frac": 0.4889,
+  "slag_frac_of_scm": 0.6897,
+  "wb": 0.2493,
+  "wc": 0.4878,
+  "hrwr_pct_binder": 1.625,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 666.5,
+  "observations": [
+   [
+    1,
+    3003.0
+   ],
+   [
+    3,
+    4948.0
+   ],
+   [
+    5,
+    5823.0
+   ],
+   [
+    28,
+    7950.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 7950.0,
+  "s1_meas": 3003.0,
+  "s7_meas": null,
+  "pred_1d": 3279.2,
+  "pred_28d": 8436.2,
+  "gwp": 258.03,
+  "cost": 115.08,
+  "on_pareto": false,
+  "pct_wb": 44.1,
+  "pct_scm_frac": 50.0,
+  "pct_binder": 20.6,
+  "pct_gwp": 44.1,
+  "pct_pred_28d": 69.1,
+  "pct_cost": 52.9,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "27": {
+  "mix": "M28",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 229.33,
+  "fly_ash": 137.33,
+  "slag": 300,
+  "water": 200,
+  "hrwr": 0,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 437.3,
+  "scm_frac": 0.656,
+  "slag_frac_of_scm": 0.686,
+  "wb": 0.3,
+  "wc": 0.8721,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 866.7,
+  "observations": [
+   [
+    1,
+    2174.0
+   ],
+   [
+    3,
+    4071.0
+   ],
+   [
+    28,
+    8599.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   28
+  ],
+  "s28_meas": 8599.0,
+  "s1_meas": 2174.0,
+  "s7_meas": null,
+  "pred_1d": 2232.2,
+  "pred_28d": 7858.0,
+  "gwp": 209.66,
+  "cost": 97.07,
+  "on_pareto": false,
+  "pct_wb": 54.4,
+  "pct_scm_frac": 73.5,
+  "pct_binder": 25.0,
+  "pct_gwp": 25.0,
+  "pct_pred_28d": 61.8,
+  "pct_cost": 13.2,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "28": {
+  "mix": "M29",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 229.33,
+  "fly_ash": 300,
+  "slag": 137.33,
+  "water": 200,
+  "hrwr": 0,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 437.3,
+  "scm_frac": 0.656,
+  "slag_frac_of_scm": 0.314,
+  "wb": 0.3,
+  "wc": 0.8721,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 866.7,
+  "observations": [
+   [
+    1,
+    2045.0
+   ],
+   [
+    5,
+    4969.0
+   ],
+   [
+    28,
+    6145.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   5,
+   28
+  ],
+  "s28_meas": 6145.0,
+  "s1_meas": 2045.0,
+  "s7_meas": null,
+  "pred_1d": 2412.5,
+  "pred_28d": 5957.7,
+  "gwp": 199.43,
+  "cost": 88.94,
+  "on_pareto": false,
+  "pct_wb": 54.4,
+  "pct_scm_frac": 73.5,
+  "pct_binder": 25.0,
+  "pct_gwp": 20.6,
+  "pct_pred_28d": 19.1,
+  "pct_cost": 2.9,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "29": {
+  "mix": "M30",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 160.53,
+  "fly_ash": 138,
+  "slag": 234.8,
+  "water": 167,
+  "hrwr": 3.33,
+  "fine": 1967,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 533.3,
+  "scm": 372.8,
+  "scm_frac": 0.699,
+  "slag_frac_of_scm": 0.6298,
+  "wb": 0.3131,
+  "wc": 1.0403,
+  "hrwr_pct_binder": 0.624,
+  "agg_total": 1967,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 700.3,
+  "observations": [
+   [
+    1,
+    1454.0
+   ],
+   [
+    3,
+    2228.0
+   ],
+   [
+    5,
+    3440.0
+   ],
+   [
+    28,
+    6521.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 6521.0,
+  "s1_meas": 1454.0,
+  "s7_meas": null,
+  "pred_1d": 1383.5,
+  "pred_28d": 6191.6,
+  "gwp": 162.69,
+  "cost": 95.58,
+  "on_pareto": false,
+  "pct_wb": 60.3,
+  "pct_scm_frac": 85.3,
+  "pct_binder": 19.1,
+  "pct_gwp": 10.3,
+  "pct_pred_28d": 25.0,
+  "pct_cost": 8.8,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "30": {
+  "mix": "M31",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 240.8,
+  "fly_ash": 207.07,
+  "slag": 352.13,
+  "water": 167,
+  "hrwr": 3.33,
+  "fine": 1700,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 800.0,
+  "scm": 559.2,
+  "scm_frac": 0.699,
+  "slag_frac_of_scm": 0.6297,
+  "wb": 0.2087,
+  "wc": 0.6935,
+  "hrwr_pct_binder": 0.416,
+  "agg_total": 1700,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 967.0,
+  "observations": [
+   [
+    1,
+    3424.0
+   ],
+   [
+    3,
+    6723.0
+   ],
+   [
+    5,
+    8100.0
+   ],
+   [
+    28,
+    11357.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 11357.0,
+  "s1_meas": 3424.0,
+  "s7_meas": null,
+  "pred_1d": 4166.2,
+  "pred_28d": 10286.7,
+  "gwp": 231.78,
+  "cost": 113.19,
+  "on_pareto": false,
+  "pct_wb": 32.4,
+  "pct_scm_frac": 85.3,
+  "pct_binder": 89.7,
+  "pct_gwp": 36.8,
+  "pct_pred_28d": 85.3,
+  "pct_cost": 50.0,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "31": {
+  "mix": "M32",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 412,
+  "fly_ash": 29.33,
+  "slag": 226.67,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 4.5,
+  "binder": 668.0,
+  "scm": 256.0,
+  "scm_frac": 0.3832,
+  "slag_frac_of_scm": 0.8854,
+  "wb": 0.1991,
+  "wc": 0.3228,
+  "hrwr_pct_binder": 1.298,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 801.0,
+  "observations": [
+   [
+    1,
+    2078.0
+   ],
+   [
+    3,
+    5980.0
+   ],
+   [
+    5,
+    6140.0
+   ],
+   [
+    28,
+    10044.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 10044.0,
+  "s1_meas": 2078.0,
+  "s7_meas": null,
+  "pred_1d": 2089.6,
+  "pred_28d": 9121.4,
+  "gwp": 366.36,
+  "cost": 133.95,
+  "on_pareto": false,
+  "pct_wb": 1.5,
+  "pct_scm_frac": 33.8,
+  "pct_binder": 79.4,
+  "pct_gwp": 79.4,
+  "pct_pred_28d": 76.5,
+  "pct_cost": 91.2,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "32": {
+  "mix": "M33",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 362.67,
+  "fly_ash": 42.67,
+  "slag": 261.33,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 4.5,
+  "binder": 666.7,
+  "scm": 304.0,
+  "scm_frac": 0.456,
+  "slag_frac_of_scm": 0.8596,
+  "wb": 0.1995,
+  "wc": 0.3667,
+  "hrwr_pct_binder": 1.3,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 799.7,
+  "observations": [
+   [
+    1,
+    1197.0
+   ],
+   [
+    3,
+    4473.0
+   ],
+   [
+    5,
+    6288.0
+   ],
+   [
+    28,
+    8916.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 8916.0,
+  "s1_meas": 1197.0,
+  "s7_meas": null,
+  "pred_1d": 1445.6,
+  "pred_28d": 9095.2,
+  "gwp": 331.71,
+  "cost": 131.68,
+  "on_pareto": false,
+  "pct_wb": 5.9,
+  "pct_scm_frac": 44.1,
+  "pct_binder": 25.0,
+  "pct_gwp": 67.6,
+  "pct_pred_28d": 75.0,
+  "pct_cost": 80.9,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "33": {
+  "mix": "M34",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 277.33,
+  "fly_ash": 118.67,
+  "slag": 270.67,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 4.5,
+  "binder": 666.7,
+  "scm": 389.3,
+  "scm_frac": 0.584,
+  "slag_frac_of_scm": 0.6952,
+  "wb": 0.1995,
+  "wc": 0.4796,
+  "hrwr_pct_binder": 1.3,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 799.7,
+  "observations": [
+   [
+    1,
+    486.0
+   ],
+   [
+    3,
+    3074.0
+   ],
+   [
+    5,
+    4322.0
+   ],
+   [
+    28,
+    8398.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 8398.0,
+  "s1_meas": 486.0,
+  "s7_meas": null,
+  "pred_1d": 607.0,
+  "pred_28d": 8751.4,
+  "gwp": 268.61,
+  "cost": 125.32,
+  "on_pareto": false,
+  "pct_wb": 5.9,
+  "pct_scm_frac": 66.2,
+  "pct_binder": 25.0,
+  "pct_gwp": 47.1,
+  "pct_pred_28d": 70.6,
+  "pct_cost": 70.6,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "34": {
+  "mix": "M35",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 201.33,
+  "fly_ash": 172,
+  "slag": 293.33,
+  "water": 167,
+  "hrwr": 3.33,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 4.5,
+  "binder": 666.7,
+  "scm": 465.3,
+  "scm_frac": 0.698,
+  "slag_frac_of_scm": 0.6304,
+  "wb": 0.2505,
+  "wc": 0.8295,
+  "hrwr_pct_binder": 0.5,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 833.7,
+  "observations": [
+   [
+    1,
+    224.0
+   ],
+   [
+    3,
+    2065.0
+   ],
+   [
+    5,
+    3096.0
+   ],
+   [
+    28,
+    5738.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 5738.0,
+  "s1_meas": 224.0,
+  "s7_meas": null,
+  "pred_1d": -115.0,
+  "pred_28d": 6347.5,
+  "gwp": 197.72,
+  "cost": 104.42,
+  "on_pareto": false,
+  "pct_wb": 45.6,
+  "pct_scm_frac": 83.8,
+  "pct_binder": 25.0,
+  "pct_gwp": 19.1,
+  "pct_pred_28d": 27.9,
+  "pct_cost": 35.3,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "35": {
+  "mix": "M36",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 229.33,
+  "fly_ash": 137.33,
+  "slag": 300,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 4.5,
+  "binder": 666.7,
+  "scm": 437.3,
+  "scm_frac": 0.656,
+  "slag_frac_of_scm": 0.686,
+  "wb": 0.1995,
+  "wc": 0.58,
+  "hrwr_pct_binder": 1.301,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 799.7,
+  "observations": [
+   [
+    1,
+    104.0
+   ],
+   [
+    3,
+    3794.0
+   ],
+   [
+    5,
+    4829.0
+   ],
+   [
+    28,
+    9066.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 9066.0,
+  "s1_meas": 104.0,
+  "s7_meas": null,
+  "pred_1d": 346.4,
+  "pred_28d": 8288.1,
+  "gwp": 234.63,
+  "cost": 122.95,
+  "on_pareto": false,
+  "pct_wb": 5.9,
+  "pct_scm_frac": 73.5,
+  "pct_binder": 25.0,
+  "pct_gwp": 38.2,
+  "pct_pred_28d": 63.2,
+  "pct_cost": 63.2,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "36": {
+  "mix": "M37",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 396,
+  "fly_ash": 45.33,
+  "slag": 226.67,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 4.5,
+  "binder": 668.0,
+  "scm": 272.0,
+  "scm_frac": 0.4072,
+  "slag_frac_of_scm": 0.8333,
+  "wb": 0.1991,
+  "wc": 0.3359,
+  "hrwr_pct_binder": 1.298,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 801.0,
+  "observations": [
+   [
+    1,
+    1192.0
+   ],
+   [
+    3,
+    5302.0
+   ],
+   [
+    5,
+    6924.0
+   ],
+   [
+    28,
+    8407.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 8407.0,
+  "s1_meas": 1192.0,
+  "s7_meas": null,
+  "pred_1d": 1811.1,
+  "pred_28d": 9054.8,
+  "gwp": 354.42,
+  "cost": 132.67,
+  "on_pareto": false,
+  "pct_wb": 1.5,
+  "pct_scm_frac": 38.2,
+  "pct_binder": 79.4,
+  "pct_gwp": 73.5,
+  "pct_pred_28d": 73.5,
+  "pct_cost": 86.8,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "37": {
+  "mix": "M38",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 341.33,
+  "fly_ash": 101.33,
+  "slag": 225.33,
+  "water": 133,
+  "hrwr": 8.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 4.5,
+  "binder": 668.0,
+  "scm": 326.7,
+  "scm_frac": 0.489,
+  "slag_frac_of_scm": 0.6898,
+  "wb": 0.1991,
+  "wc": 0.3897,
+  "hrwr_pct_binder": 1.298,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 801.0,
+  "observations": [
+   [
+    1,
+    855.0
+   ],
+   [
+    3,
+    4560.0
+   ],
+   [
+    5,
+    5803.0
+   ],
+   [
+    28,
+    8905.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 8905.0,
+  "s1_meas": 855.0,
+  "s7_meas": null,
+  "pred_1d": 1108.9,
+  "pred_28d": 8885.8,
+  "gwp": 313.54,
+  "cost": 128.23,
+  "on_pareto": false,
+  "pct_wb": 1.5,
+  "pct_scm_frac": 51.5,
+  "pct_binder": 79.4,
+  "pct_gwp": 63.2,
+  "pct_pred_28d": 72.1,
+  "pct_cost": 77.9,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "38": {
+  "mix": "M39",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 400,
+  "fly_ash": 0,
+  "slag": 0,
+  "water": 80,
+  "hrwr": 10.67,
+  "fine": 2100,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 400,
+  "scm": 0,
+  "scm_frac": 0.0,
+  "slag_frac_of_scm": null,
+  "wb": 0.2,
+  "wc": 0.2,
+  "hrwr_pct_binder": 2.667,
+  "agg_total": 2100,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 480,
+  "observations": [
+   [
+    1,
+    2504.0
+   ],
+   [
+    3,
+    3270.0
+   ],
+   [
+    5,
+    3661.0
+   ],
+   [
+    28,
+    3779.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 3779.0,
+  "s1_meas": 2504.0,
+  "s7_meas": null,
+  "pred_1d": 2822.5,
+  "pred_28d": 5181.5,
+  "gwp": 345.98,
+  "cost": 122.17,
+  "on_pareto": false,
+  "pct_wb": 23.5,
+  "pct_scm_frac": 0.0,
+  "pct_binder": 7.4,
+  "pct_gwp": 70.6,
+  "pct_pred_28d": 11.8,
+  "pct_cost": 60.3,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "39": {
+  "mix": "M40",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 229.33,
+  "fly_ash": 0,
+  "slag": 0,
+  "water": 45,
+  "hrwr": 13.33,
+  "fine": 2271,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 229.3,
+  "scm": 0,
+  "scm_frac": 0.0,
+  "slag_frac_of_scm": null,
+  "wb": 0.1962,
+  "wc": 0.1962,
+  "hrwr_pct_binder": 5.813,
+  "agg_total": 2271,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 274.3,
+  "observations": [
+   [
+    1,
+    149.0
+   ],
+   [
+    3,
+    1280.0
+   ],
+   [
+    5,
+    1326.0
+   ],
+   [
+    28,
+    1422.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 1422.0,
+  "s1_meas": 149.0,
+  "s7_meas": null,
+  "pred_1d": 375.8,
+  "pred_28d": 1549.6,
+  "gwp": 224.68,
+  "cost": 113.02,
+  "on_pareto": false,
+  "pct_wb": 0.0,
+  "pct_scm_frac": 0.0,
+  "pct_binder": 5.9,
+  "pct_gwp": 30.9,
+  "pct_pred_28d": 5.9,
+  "pct_cost": 47.1,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "40": {
+  "mix": "M41",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 122.67,
+  "fly_ash": 32,
+  "slag": 54.67,
+  "water": 43,
+  "hrwr": 10.67,
+  "fine": 2289,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 209.3,
+  "scm": 86.7,
+  "scm_frac": 0.414,
+  "slag_frac_of_scm": 0.6308,
+  "wb": 0.2054,
+  "wc": 0.3505,
+  "hrwr_pct_binder": 5.097,
+  "agg_total": 2289,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 252.3,
+  "observations": [
+   [
+    1,
+    171.0
+   ],
+   [
+    3,
+    762.0
+   ],
+   [
+    5,
+    766.0
+   ],
+   [
+    28,
+    1209.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 1209.0,
+  "s1_meas": 171.0,
+  "s7_meas": null,
+  "pred_1d": 182.0,
+  "pred_28d": 1398.4,
+  "gwp": 140.04,
+  "cost": 98.8,
+  "on_pareto": false,
+  "pct_wb": 29.4,
+  "pct_scm_frac": 39.7,
+  "pct_binder": 4.4,
+  "pct_gwp": 7.4,
+  "pct_pred_28d": 4.4,
+  "pct_cost": 20.6,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "41": {
+  "mix": "M42",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 97.33,
+  "fly_ash": 2.67,
+  "slag": 70.67,
+  "water": 83,
+  "hrwr": 10.67,
+  "fine": 2329,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 170.7,
+  "scm": 73.3,
+  "scm_frac": 0.4297,
+  "slag_frac_of_scm": 0.9636,
+  "wb": 0.4863,
+  "wc": 0.8528,
+  "hrwr_pct_binder": 6.252,
+  "agg_total": 2329,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 253.7,
+  "observations": [
+   [
+    1,
+    86.0
+   ],
+   [
+    3,
+    433.0
+   ],
+   [
+    5,
+    537.0
+   ],
+   [
+    28,
+    1022.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 1022.0,
+  "s1_meas": 86.0,
+  "s7_meas": null,
+  "pred_1d": -50.4,
+  "pred_28d": 951.5,
+  "gwp": 123.07,
+  "cost": 96.9,
+  "on_pareto": false,
+  "pct_wb": 98.5,
+  "pct_scm_frac": 41.2,
+  "pct_binder": 1.5,
+  "pct_gwp": 5.9,
+  "pct_pred_28d": 2.9,
+  "pct_cost": 11.8,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "42": {
+  "mix": "M43",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 314.67,
+  "fly_ash": 112,
+  "slag": 49.33,
+  "water": 116,
+  "hrwr": 10.67,
+  "fine": 2025,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 476.0,
+  "scm": 161.3,
+  "scm_frac": 0.3389,
+  "slag_frac_of_scm": 0.3058,
+  "wb": 0.2437,
+  "wc": 0.3686,
+  "hrwr_pct_binder": 2.242,
+  "agg_total": 2025,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 592.0,
+  "observations": [
+   [
+    1,
+    2651.0
+   ],
+   [
+    3,
+    4229.0
+   ],
+   [
+    5,
+    5148.0
+   ],
+   [
+    28,
+    6866.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 6866.0,
+  "s1_meas": 2651.0,
+  "s7_meas": null,
+  "pred_1d": 2962.8,
+  "pred_28d": 7022.4,
+  "gwp": 286.99,
+  "cost": 119.42,
+  "on_pareto": false,
+  "pct_wb": 41.2,
+  "pct_scm_frac": 29.4,
+  "pct_binder": 10.3,
+  "pct_gwp": 52.9,
+  "pct_pred_28d": 42.6,
+  "pct_cost": 55.9,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "43": {
+  "mix": "M44",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 366.67,
+  "fly_ash": 25.33,
+  "slag": 25.33,
+  "water": 84,
+  "hrwr": 10.67,
+  "fine": 2083,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 417.3,
+  "scm": 50.7,
+  "scm_frac": 0.1214,
+  "slag_frac_of_scm": 0.5,
+  "wb": 0.2013,
+  "wc": 0.2291,
+  "hrwr_pct_binder": 2.557,
+  "agg_total": 2083,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 501.3,
+  "observations": [
+   [
+    1,
+    2954.0
+   ],
+   [
+    3,
+    4046.0
+   ],
+   [
+    5,
+    4858.0
+   ],
+   [
+    28,
+    6088.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 6088.0,
+  "s1_meas": 2954.0,
+  "s7_meas": null,
+  "pred_1d": 2808.7,
+  "pred_28d": 5641.4,
+  "gwp": 322.93,
+  "cost": 121.13,
+  "on_pareto": false,
+  "pct_wb": 26.5,
+  "pct_scm_frac": 13.2,
+  "pct_binder": 8.8,
+  "pct_gwp": 66.2,
+  "pct_pred_28d": 14.7,
+  "pct_cost": 57.4,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "44": {
+  "mix": "M45",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 66.67,
+  "fly_ash": 68,
+  "slag": 9.33,
+  "water": 45,
+  "hrwr": 13.33,
+  "fine": 2357,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 144.0,
+  "scm": 77.3,
+  "scm_frac": 0.537,
+  "slag_frac_of_scm": 0.1207,
+  "wb": 0.3125,
+  "wc": 0.675,
+  "hrwr_pct_binder": 9.257,
+  "agg_total": 2357,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 189.0,
+  "observations": [
+   [
+    3,
+    99.0
+   ],
+   [
+    5,
+    269.0
+   ],
+   [
+    28,
+    529.0
+   ]
+  ],
+  "obs_days": [
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 529.0,
+  "s1_meas": null,
+  "s7_meas": null,
+  "pred_1d": -217.3,
+  "pred_28d": 522.5,
+  "gwp": 103.3,
+  "cost": 98.78,
+  "on_pareto": false,
+  "pct_wb": 58.8,
+  "pct_scm_frac": 58.8,
+  "pct_binder": 0.0,
+  "pct_gwp": 4.4,
+  "pct_pred_28d": 0.0,
+  "pct_cost": 19.1,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "45": {
+  "mix": "M46",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 498.67,
+  "fly_ash": 0,
+  "slag": 0,
+  "water": 100,
+  "hrwr": 10.67,
+  "fine": 2001,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 498.7,
+  "scm": 0,
+  "scm_frac": 0.0,
+  "slag_frac_of_scm": null,
+  "wb": 0.2005,
+  "wc": 0.2005,
+  "hrwr_pct_binder": 2.14,
+  "agg_total": 2001,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 598.7,
+  "observations": [
+   [
+    1,
+    5187.0
+   ],
+   [
+    3,
+    6744.0
+   ],
+   [
+    5,
+    7423.0
+   ],
+   [
+    28,
+    8455.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 8455.0,
+  "s1_meas": 5187.0,
+  "s7_meas": null,
+  "pred_1d": 4942.3,
+  "pred_28d": 7729.3,
+  "gwp": 420.88,
+  "cost": 132.07,
+  "on_pareto": false,
+  "pct_wb": 25.0,
+  "pct_scm_frac": 0.0,
+  "pct_binder": 16.2,
+  "pct_gwp": 88.2,
+  "pct_pred_28d": 60.3,
+  "pct_cost": 83.8,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "46": {
+  "mix": "M47",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 160,
+  "fly_ash": 13.33,
+  "slag": 16,
+  "water": 64,
+  "hrwr": 10.67,
+  "fine": 2311,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 189.3,
+  "scm": 29.3,
+  "scm_frac": 0.1549,
+  "slag_frac_of_scm": 0.5455,
+  "wb": 0.338,
+  "wc": 0.4,
+  "hrwr_pct_binder": 5.636,
+  "agg_total": 2311,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 253.3,
+  "observations": [
+   [
+    1,
+    79.0
+   ],
+   [
+    3,
+    605.0
+   ],
+   [
+    5,
+    636.0
+   ],
+   [
+    28,
+    845.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 845.0,
+  "s1_meas": 79.0,
+  "s7_meas": null,
+  "pred_1d": -6.2,
+  "pred_28d": 892.4,
+  "gwp": 165.97,
+  "cost": 99.53,
+  "on_pareto": false,
+  "pct_wb": 61.8,
+  "pct_scm_frac": 14.7,
+  "pct_binder": 2.9,
+  "pct_gwp": 11.8,
+  "pct_pred_28d": 1.5,
+  "pct_cost": 23.5,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "47": {
+  "mix": "M48",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 334.67,
+  "fly_ash": 104,
+  "slag": 50.67,
+  "water": 99,
+  "hrwr": 10.67,
+  "fine": 2011,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 489.3,
+  "scm": 154.7,
+  "scm_frac": 0.3161,
+  "slag_frac_of_scm": 0.3276,
+  "wb": 0.2023,
+  "wc": 0.2958,
+  "hrwr_pct_binder": 2.18,
+  "agg_total": 2011,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 588.3,
+  "observations": [
+   [
+    1,
+    3819.0
+   ],
+   [
+    3,
+    5485.0
+   ],
+   [
+    5,
+    6558.0
+   ],
+   [
+    28,
+    8446.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 8446.0,
+  "s1_meas": 3819.0,
+  "s7_meas": null,
+  "pred_1d": 3473.5,
+  "pred_28d": 7483.1,
+  "gwp": 301.58,
+  "cost": 121.31,
+  "on_pareto": false,
+  "pct_wb": 27.9,
+  "pct_scm_frac": 25.0,
+  "pct_binder": 14.7,
+  "pct_gwp": 60.3,
+  "pct_pred_28d": 57.4,
+  "pct_cost": 58.8,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "48": {
+  "mix": "M49",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 886.67,
+  "fly_ash": 9.33,
+  "slag": 56,
+  "water": 249,
+  "hrwr": 2.67,
+  "fine": 1549,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 952.0,
+  "scm": 65.3,
+  "scm_frac": 0.0686,
+  "slag_frac_of_scm": 0.8572,
+  "wb": 0.2616,
+  "wc": 0.2808,
+  "hrwr_pct_binder": 0.28,
+  "agg_total": 1549,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 1201.0,
+  "observations": [
+   [
+    1,
+    7864.0
+   ],
+   [
+    3,
+    7972.0
+   ],
+   [
+    5,
+    8025.0
+   ],
+   [
+    28,
+    8235.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 8235.0,
+  "s1_meas": 7864.0,
+  "s7_meas": null,
+  "pred_1d": 7290.9,
+  "pred_28d": 9166.1,
+  "gwp": 696.6,
+  "cost": 151.3,
+  "on_pareto": false,
+  "pct_wb": 48.5,
+  "pct_scm_frac": 8.8,
+  "pct_binder": 92.6,
+  "pct_gwp": 98.5,
+  "pct_pred_28d": 77.9,
+  "pct_cost": 98.5,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "49": {
+  "mix": "M50",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 894.67,
+  "fly_ash": 25.33,
+  "slag": 58.67,
+  "water": 240,
+  "hrwr": 2.67,
+  "fine": 1521,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 978.7,
+  "scm": 84.0,
+  "scm_frac": 0.0858,
+  "slag_frac_of_scm": 0.6985,
+  "wb": 0.2452,
+  "wc": 0.2683,
+  "hrwr_pct_binder": 0.273,
+  "agg_total": 1521,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 1218.7,
+  "observations": [
+   [
+    1,
+    7638.0
+   ],
+   [
+    3,
+    8435.0
+   ],
+   [
+    5,
+    8443.0
+   ],
+   [
+    28,
+    10448.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 10448.0,
+  "s1_meas": 7638.0,
+  "s7_meas": null,
+  "pred_1d": 7578.1,
+  "pred_28d": 9561.4,
+  "gwp": 702.65,
+  "cost": 152.56,
+  "on_pareto": true,
+  "pct_wb": 42.6,
+  "pct_scm_frac": 10.3,
+  "pct_binder": 94.1,
+  "pct_gwp": 100.0,
+  "pct_pred_28d": 80.9,
+  "pct_cost": 100.0,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "50": {
+  "mix": "M51",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 240.78,
+  "fly_ash": 207.09,
+  "slag": 352.13,
+  "water": 287,
+  "hrwr": 0,
+  "fine": 1700,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 800.0,
+  "scm": 559.2,
+  "scm_frac": 0.699,
+  "slag_frac_of_scm": 0.6297,
+  "wb": 0.3588,
+  "wc": 1.192,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1700,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 1087.0,
+  "observations": [
+   [
+    1,
+    1319.0
+   ],
+   [
+    3,
+    2355.0
+   ],
+   [
+    5,
+    3256.0
+   ],
+   [
+    28,
+    7027.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 7027.0,
+  "s1_meas": 1319.0,
+  "s7_meas": null,
+  "pred_1d": 1124.0,
+  "pred_28d": 6927.3,
+  "gwp": 224.98,
+  "cost": 103.44,
+  "on_pareto": false,
+  "pct_wb": 82.4,
+  "pct_scm_frac": 85.3,
+  "pct_binder": 89.7,
+  "pct_gwp": 32.4,
+  "pct_pred_28d": 38.2,
+  "pct_cost": 27.9,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "51": {
+  "mix": "M52",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 229.38,
+  "fly_ash": 137.29,
+  "slag": 300,
+  "water": 233,
+  "hrwr": 0,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 437.3,
+  "scm_frac": 0.6559,
+  "slag_frac_of_scm": 0.686,
+  "wb": 0.3495,
+  "wc": 1.0158,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 899.7,
+  "observations": [
+   [
+    1,
+    1518.0
+   ],
+   [
+    3,
+    2861.0
+   ],
+   [
+    5,
+    4078.0
+   ],
+   [
+    28,
+    7662.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 7662.0,
+  "s1_meas": 1518.0,
+  "s7_meas": null,
+  "pred_1d": 1538.7,
+  "pred_28d": 7329.8,
+  "gwp": 210.68,
+  "cost": 97.14,
+  "on_pareto": false,
+  "pct_wb": 66.2,
+  "pct_scm_frac": 72.1,
+  "pct_binder": 25.0,
+  "pct_gwp": 26.5,
+  "pct_pred_28d": 52.9,
+  "pct_cost": 14.7,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "52": {
+  "mix": "M53",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 316,
+  "fly_ash": 112.14,
+  "slag": 49,
+  "water": 167,
+  "hrwr": 0,
+  "fine": 2025,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 477.1,
+  "scm": 161.1,
+  "scm_frac": 0.3377,
+  "slag_frac_of_scm": 0.3041,
+  "wb": 0.35,
+  "wc": 0.5285,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 2025,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 644.1,
+  "observations": [
+   [
+    1,
+    2391.0
+   ],
+   [
+    3,
+    3450.0
+   ],
+   [
+    5,
+    4121.0
+   ],
+   [
+    28,
+    6011.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 6011.0,
+  "s1_meas": 2391.0,
+  "s7_meas": null,
+  "pred_1d": 2346.5,
+  "pred_28d": 5973.3,
+  "gwp": 256.3,
+  "cost": 87.65,
+  "on_pareto": false,
+  "pct_wb": 75.0,
+  "pct_scm_frac": 27.9,
+  "pct_binder": 11.8,
+  "pct_gwp": 42.6,
+  "pct_pred_28d": 20.6,
+  "pct_cost": 1.5,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "53": {
+  "mix": "M54",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 49.33,
+  "fly_ash": 112,
+  "slag": 316,
+  "water": 167,
+  "hrwr": 0,
+  "fine": 2025,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 477.3,
+  "scm": 428,
+  "scm_frac": 0.8967,
+  "slag_frac_of_scm": 0.7383,
+  "wb": 0.3499,
+  "wc": 3.3854,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 2025,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 644.3,
+  "observations": [
+   [
+    1,
+    180.0
+   ],
+   [
+    3,
+    436.0
+   ],
+   [
+    5,
+    800.0
+   ],
+   [
+    28,
+    3668.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 3668.0,
+  "s1_meas": 180.0,
+  "s7_meas": null,
+  "pred_1d": -55.4,
+  "pred_28d": 3607.2,
+  "gwp": 74.07,
+  "cost": 79.67,
+  "on_pareto": false,
+  "pct_wb": 73.5,
+  "pct_scm_frac": 95.6,
+  "pct_binder": 13.2,
+  "pct_gwp": 0.0,
+  "pct_pred_28d": 8.8,
+  "pct_cost": 0.0,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "54": {
+  "mix": "M55",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 253.33,
+  "fly_ash": 160,
+  "slag": 306.67,
+  "water": 252,
+  "hrwr": 0,
+  "fine": 1947,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 720.0,
+  "scm": 466.7,
+  "scm_frac": 0.6482,
+  "slag_frac_of_scm": 0.6571,
+  "wb": 0.35,
+  "wc": 0.9947,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1947,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 972.0,
+  "observations": [
+   [
+    1,
+    1355.0
+   ],
+   [
+    3,
+    2774.0
+   ],
+   [
+    5,
+    3901.0
+   ],
+   [
+    28,
+    6594.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 6594.0,
+  "s1_meas": 1355.0,
+  "s7_meas": null,
+  "pred_1d": 1477.0,
+  "pred_28d": 7159.6,
+  "gwp": 230.51,
+  "cost": 103.84,
+  "on_pareto": false,
+  "pct_wb": 75.0,
+  "pct_scm_frac": 70.6,
+  "pct_binder": 86.8,
+  "pct_gwp": 35.3,
+  "pct_pred_28d": 48.5,
+  "pct_cost": 29.4,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "55": {
+  "mix": "M56",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 229.33,
+  "fly_ash": 164,
+  "slag": 273.33,
+  "water": 233,
+  "hrwr": 0,
+  "fine": 2000,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 437.3,
+  "scm_frac": 0.656,
+  "slag_frac_of_scm": 0.625,
+  "wb": 0.3495,
+  "wc": 1.016,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 2000,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 899.7,
+  "observations": [
+   [
+    1,
+    1180.0
+   ],
+   [
+    3,
+    2586.0
+   ],
+   [
+    5,
+    3563.0
+   ],
+   [
+    28,
+    6799.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 6799.0,
+  "s1_meas": 1180.0,
+  "s7_meas": null,
+  "pred_1d": 1386.7,
+  "pred_28d": 6563.8,
+  "gwp": 209.58,
+  "cost": 99.15,
+  "on_pareto": false,
+  "pct_wb": 66.2,
+  "pct_scm_frac": 73.5,
+  "pct_binder": 25.0,
+  "pct_gwp": 23.5,
+  "pct_pred_28d": 32.4,
+  "pct_cost": 22.1,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "56": {
+  "mix": "M57",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 229.33,
+  "fly_ash": 0,
+  "slag": 300,
+  "water": 200,
+  "hrwr": 1.33,
+  "fine": 1967,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 529.3,
+  "scm": 300,
+  "scm_frac": 0.5668,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.3778,
+  "wc": 0.8721,
+  "hrwr_pct_binder": 0.251,
+  "agg_total": 1967,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 729.3,
+  "observations": [
+   [
+    1,
+    1453.0
+   ],
+   [
+    3,
+    2952.0
+   ],
+   [
+    5,
+    3926.0
+   ],
+   [
+    28,
+    6903.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 6903.0,
+  "s1_meas": 1453.0,
+  "s7_meas": null,
+  "pred_1d": 1513.3,
+  "pred_28d": 6722.6,
+  "gwp": 212.85,
+  "cost": 98.25,
+  "on_pareto": false,
+  "pct_wb": 85.3,
+  "pct_scm_frac": 63.2,
+  "pct_binder": 17.6,
+  "pct_gwp": 27.9,
+  "pct_pred_28d": 36.8,
+  "pct_cost": 16.2,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "57": {
+  "mix": "M58",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 240,
+  "fly_ash": 0,
+  "slag": 433.33,
+  "water": 240,
+  "hrwr": 0,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 673.3,
+  "scm": 433.3,
+  "scm_frac": 0.6436,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.3564,
+  "wc": 1.0,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 913.3,
+  "observations": [
+   [
+    1,
+    1324.0
+   ],
+   [
+    3,
+    3254.0
+   ],
+   [
+    5,
+    4099.0
+   ],
+   [
+    28,
+    6888.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 6888.0,
+  "s1_meas": 1324.0,
+  "s7_meas": null,
+  "pred_1d": 1550.7,
+  "pred_28d": 7276.5,
+  "gwp": 227.26,
+  "cost": 104.94,
+  "on_pareto": false,
+  "pct_wb": 80.9,
+  "pct_scm_frac": 69.1,
+  "pct_binder": 83.8,
+  "pct_gwp": 33.8,
+  "pct_pred_28d": 50.0,
+  "pct_cost": 39.7,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "58": {
+  "mix": "M59",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 870,
+  "fly_ash": 0,
+  "slag": 120,
+  "water": 287,
+  "hrwr": 0,
+  "fine": 1510,
+  "coarse": 0,
+  "temp": 4.5,
+  "binder": 990,
+  "scm": 120,
+  "scm_frac": 0.1212,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.2899,
+  "wc": 0.3299,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1510,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 1277,
+  "observations": [
+   [
+    1,
+    3283.0
+   ],
+   [
+    3,
+    6102.0
+   ],
+   [
+    5,
+    6449.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5
+  ],
+  "s28_meas": null,
+  "s1_meas": 3283.0,
+  "s7_meas": null,
+  "pred_1d": 3633.6,
+  "pred_28d": 7548.4,
+  "gwp": 681.26,
+  "cost": 145.97,
+  "on_pareto": false,
+  "pct_wb": 52.9,
+  "pct_scm_frac": 11.8,
+  "pct_binder": 97.1,
+  "pct_gwp": 97.1,
+  "pct_pred_28d": 58.8,
+  "pct_cost": 97.1,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "59": {
+  "mix": "M60",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 498.67,
+  "fly_ash": 216,
+  "slag": 0,
+  "water": 267,
+  "hrwr": 0,
+  "fine": 1785,
+  "coarse": 0,
+  "temp": 4.5,
+  "binder": 714.7,
+  "scm": 216,
+  "scm_frac": 0.3022,
+  "slag_frac_of_scm": 0.0,
+  "wb": 0.3736,
+  "wc": 0.5354,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1785,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 981.7,
+  "observations": [
+   [
+    1,
+    528.0
+   ],
+   [
+    3,
+    3109.0
+   ],
+   [
+    5,
+    3955.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5
+  ],
+  "s28_meas": null,
+  "s1_meas": 528.0,
+  "s7_meas": null,
+  "pred_1d": 925.4,
+  "pred_28d": 6394.2,
+  "gwp": 394.13,
+  "cost": 104.71,
+  "on_pareto": false,
+  "pct_wb": 83.8,
+  "pct_scm_frac": 23.5,
+  "pct_binder": 85.3,
+  "pct_gwp": 82.4,
+  "pct_pred_28d": 30.9,
+  "pct_cost": 38.2,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "60": {
+  "mix": "M61",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 110.27,
+  "fly_ash": 0,
+  "slag": 1156.4,
+  "water": 443,
+  "hrwr": 0,
+  "fine": 1233,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 1266.7,
+  "scm": 1156.4,
+  "scm_frac": 0.9129,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.3497,
+  "wc": 4.0174,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1233,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 1709.7,
+  "observations": [
+   [
+    1,
+    286.0
+   ],
+   [
+    3,
+    2106.0
+   ],
+   [
+    5,
+    3417.0
+   ],
+   [
+    28,
+    3417.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 3417.0,
+  "s1_meas": 286.0,
+  "s7_meas": null,
+  "pred_1d": 463.0,
+  "pred_28d": 3935.4,
+  "gwp": 185.96,
+  "cost": 142.85,
+  "on_pareto": false,
+  "pct_wb": 70.6,
+  "pct_scm_frac": 97.1,
+  "pct_binder": 100.0,
+  "pct_gwp": 14.7,
+  "pct_pred_28d": 10.3,
+  "pct_cost": 95.6,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "61": {
+  "mix": "M62",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 168.53,
+  "fly_ash": 14.53,
+  "slag": 397.33,
+  "water": 203,
+  "hrwr": 0,
+  "fine": 1920,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 580.4,
+  "scm": 411.9,
+  "scm_frac": 0.7096,
+  "slag_frac_of_scm": 0.9647,
+  "wb": 0.3498,
+  "wc": 1.2045,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1920,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 783.4,
+  "observations": [
+   [
+    1,
+    1014.0
+   ],
+   [
+    3,
+    2577.0
+   ],
+   [
+    5,
+    3664.0
+   ],
+   [
+    28,
+    6556.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 6556.0,
+  "s1_meas": 1014.0,
+  "s7_meas": null,
+  "pred_1d": 1055.1,
+  "pred_28d": 6573.2,
+  "gwp": 169.9,
+  "cost": 95.37,
+  "on_pareto": false,
+  "pct_wb": 72.1,
+  "pct_scm_frac": 91.2,
+  "pct_binder": 23.5,
+  "pct_gwp": 13.2,
+  "pct_pred_28d": 33.8,
+  "pct_cost": 7.4,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "62": {
+  "mix": "M63",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 0,
+  "fly_ash": 0,
+  "slag": 1198.67,
+  "water": 286.67,
+  "hrwr": 0,
+  "fine": 1301.33,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 1198.7,
+  "scm": 1198.7,
+  "scm_frac": 1.0,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.2392,
+  "wc": null,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1301.3,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 1485.3,
+  "observations": [
+   [
+    3,
+    281.0
+   ],
+   [
+    5,
+    898.0
+   ],
+   [
+    28,
+    3574.0
+   ]
+  ],
+  "obs_days": [
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 3574.0,
+  "s1_meas": null,
+  "s7_meas": null,
+  "pred_1d": -814.4,
+  "pred_28d": 3439.4,
+  "gwp": 101.19,
+  "cost": 134.48,
+  "on_pareto": false,
+  "pct_wb": 39.7,
+  "pct_scm_frac": 100.0,
+  "pct_binder": 98.5,
+  "pct_gwp": 2.9,
+  "pct_pred_28d": 7.4,
+  "pct_cost": 92.6,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "63": {
+  "mix": "M64",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 129.47,
+  "fly_ash": 2.67,
+  "slag": 438,
+  "water": 225.33,
+  "hrwr": 0,
+  "fine": 1857.33,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 570.1,
+  "scm": 440.7,
+  "scm_frac": 0.7729,
+  "slag_frac_of_scm": 0.9939,
+  "wb": 0.3952,
+  "wc": 1.7404,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1857.3,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 795.5,
+  "observations": [
+   [
+    1,
+    611.0
+   ],
+   [
+    3,
+    1910.0
+   ],
+   [
+    5,
+    3631.0
+   ],
+   [
+    28,
+    5952.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 5952.0,
+  "s1_meas": 611.0,
+  "s7_meas": null,
+  "pred_1d": 479.0,
+  "pred_28d": 5849.8,
+  "gwp": 143.64,
+  "cost": 92.66,
+  "on_pareto": false,
+  "pct_wb": 88.2,
+  "pct_scm_frac": 92.6,
+  "pct_binder": 22.1,
+  "pct_gwp": 8.8,
+  "pct_pred_28d": 17.6,
+  "pct_cost": 5.9,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "64": {
+  "mix": "M65",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 49.33,
+  "fly_ash": 44,
+  "slag": 632,
+  "water": 253.33,
+  "hrwr": 0,
+  "fine": 1773.33,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 725.3,
+  "scm": 676,
+  "scm_frac": 0.932,
+  "slag_frac_of_scm": 0.9349,
+  "wb": 0.3493,
+  "wc": 5.1354,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1773.3,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 978.7,
+  "observations": [
+   [
+    1,
+    210.0
+   ],
+   [
+    3,
+    1505.0
+   ],
+   [
+    5,
+    2850.0
+   ],
+   [
+    28,
+    5012.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 5012.0,
+  "s1_meas": 210.0,
+  "s7_meas": null,
+  "pred_1d": 125.7,
+  "pred_28d": 5235.5,
+  "gwp": 98.18,
+  "cost": 100.53,
+  "on_pareto": false,
+  "pct_wb": 64.7,
+  "pct_scm_frac": 98.5,
+  "pct_binder": 88.2,
+  "pct_gwp": 1.5,
+  "pct_pred_28d": 13.2,
+  "pct_cost": 25.0,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "65": {
+  "mix": "M66",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 194.67,
+  "fly_ash": 13.33,
+  "slag": 781.33,
+  "water": 345.33,
+  "hrwr": 0,
+  "fine": 1512,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 989.3,
+  "scm": 794.7,
+  "scm_frac": 0.8032,
+  "slag_frac_of_scm": 0.9832,
+  "wb": 0.3491,
+  "wc": 1.7739,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1512,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 1334.7,
+  "observations": [
+   [
+    1,
+    642.0
+   ],
+   [
+    3,
+    2505.0
+   ],
+   [
+    5,
+    3688.0
+   ],
+   [
+    28,
+    7371.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 7371.0,
+  "s1_meas": 642.0,
+  "s7_meas": null,
+  "pred_1d": 709.0,
+  "pred_28d": 6971.4,
+  "gwp": 220.58,
+  "cost": 125.14,
+  "on_pareto": false,
+  "pct_wb": 63.2,
+  "pct_scm_frac": 94.1,
+  "pct_binder": 95.6,
+  "pct_gwp": 29.4,
+  "pct_pred_28d": 39.7,
+  "pct_cost": 66.2,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "66": {
+  "mix": "M67",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 666.67,
+  "fly_ash": 0,
+  "slag": 0,
+  "water": 200,
+  "hrwr": 5.33,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 0,
+  "scm_frac": 0.0,
+  "slag_frac_of_scm": null,
+  "wb": 0.3,
+  "wc": 0.3,
+  "hrwr_pct_binder": 0.799,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 866.7,
+  "observations": [
+   [
+    1,
+    5070.0
+   ],
+   [
+    3,
+    6367.0
+   ],
+   [
+    5,
+    7115.0
+   ],
+   [
+    28,
+    8192.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 8192.0,
+  "s1_meas": 5070.0,
+  "s7_meas": null,
+  "pred_1d": 5451.1,
+  "pred_28d": 8404.9,
+  "gwp": 533.77,
+  "cost": 133.05,
+  "on_pareto": false,
+  "pct_wb": 54.4,
+  "pct_scm_frac": 0.0,
+  "pct_binder": 25.0,
+  "pct_gwp": 95.6,
+  "pct_pred_28d": 66.2,
+  "pct_cost": 88.2,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "67": {
+  "mix": "M68",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 666.67,
+  "fly_ash": 0,
+  "slag": 0,
+  "water": 267,
+  "hrwr": 2.67,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 0,
+  "scm_frac": 0.0,
+  "slag_frac_of_scm": null,
+  "wb": 0.4005,
+  "wc": 0.4005,
+  "hrwr_pct_binder": 0.4,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 933.7,
+  "observations": [
+   [
+    1,
+    4039.0
+   ],
+   [
+    3,
+    5538.0
+   ],
+   [
+    5,
+    5600.0
+   ],
+   [
+    28,
+    7076.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 7076.0,
+  "s1_meas": 4039.0,
+  "s7_meas": null,
+  "pred_1d": 4043.0,
+  "pred_28d": 6999.9,
+  "gwp": 527.49,
+  "cost": 125.2,
+  "on_pareto": false,
+  "pct_wb": 91.2,
+  "pct_scm_frac": 0.0,
+  "pct_binder": 25.0,
+  "pct_gwp": 94.1,
+  "pct_pred_28d": 41.2,
+  "pct_cost": 67.6,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "68": {
+  "mix": "M69",
+  "match_l1": 0.0,
+  "material_source": 0,
+  "source_letter": "A",
+  "class_desc": "Set 1 mortar (Amrize 1L cement, Class C fly ash, no coarse aggregate)",
+  "cement": 666.67,
+  "fly_ash": 0,
+  "slag": 0,
+  "water": 333,
+  "hrwr": 0,
+  "fine": 1833,
+  "coarse": 0,
+  "temp": 22,
+  "binder": 666.7,
+  "scm": 0,
+  "scm_frac": 0.0,
+  "slag_frac_of_scm": null,
+  "wb": 0.4995,
+  "wc": 0.4995,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1833,
+  "coarse_frac": 0.0,
+  "paste_frac_mass": 999.7,
+  "observations": [
+   [
+    1,
+    1757.0
+   ],
+   [
+    3,
+    2830.0
+   ],
+   [
+    5,
+    3680.0
+   ],
+   [
+    28,
+    5884.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   28
+  ],
+  "s28_meas": 5884.0,
+  "s1_meas": 1757.0,
+  "s7_meas": null,
+  "pred_1d": 1925.0,
+  "pred_28d": 5715.8,
+  "gwp": 521.15,
+  "cost": 117.33,
+  "on_pareto": false,
+  "pct_wb": 100.0,
+  "pct_scm_frac": 0.0,
+  "pct_binder": 25.0,
+  "pct_gwp": 92.6,
+  "pct_pred_28d": 16.2,
+  "pct_cost": 54.4,
+  "class_n": 69,
+  "class_median_28d": 7276.5,
+  "class_median_gwp": 279.6
+ },
+ "69": {
+  "mix": "C1",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 667,
+  "fly_ash": 0,
+  "slag": 0,
+  "water": 267,
+  "hrwr": 2.14,
+  "fine": 755,
+  "coarse": 1037,
+  "temp": 22,
+  "binder": 667,
+  "scm": 0,
+  "scm_frac": 0.0,
+  "slag_frac_of_scm": null,
+  "wb": 0.4003,
+  "wc": 0.4003,
+  "hrwr_pct_binder": 0.321,
+  "agg_total": 1792,
+  "coarse_frac": 0.5787,
+  "paste_frac_mass": 934,
+  "observations": [
+   [
+    1,
+    2961.0
+   ],
+   [
+    3,
+    4858.0
+   ],
+   [
+    5,
+    5776.0
+   ],
+   [
+    14,
+    6150.0
+   ],
+   [
+    28,
+    7408.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 7408.0,
+  "s1_meas": 2961.0,
+  "s7_meas": null,
+  "pred_1d": 4393.7,
+  "pred_28d": 8722.8,
+  "gwp": 521.12,
+  "cost": 117.65,
+  "on_pareto": false,
+  "pct_wb": 73.1,
+  "pct_scm_frac": 0.0,
+  "pct_binder": 38.5,
+  "pct_gwp": 88.5,
+  "pct_pred_28d": 42.3,
+  "pct_cost": 96.2,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "70": {
+  "mix": "C2",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 667,
+  "fly_ash": 0,
+  "slag": 0,
+  "water": 267,
+  "hrwr": 2.14,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 667,
+  "scm": 0,
+  "scm_frac": 0.0,
+  "slag_frac_of_scm": null,
+  "wb": 0.4003,
+  "wc": 0.4003,
+  "hrwr_pct_binder": 0.321,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 934,
+  "observations": [
+   [
+    1,
+    4897.0
+   ],
+   [
+    3,
+    6811.0
+   ],
+   [
+    5,
+    7441.0
+   ],
+   [
+    14,
+    8363.0
+   ],
+   [
+    28,
+    9491.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 9491.0,
+  "s1_meas": 4897.0,
+  "s7_meas": null,
+  "pred_1d": 4419.8,
+  "pred_28d": 8829.6,
+  "gwp": 521.26,
+  "cost": 116.85,
+  "on_pareto": false,
+  "pct_wb": 73.1,
+  "pct_scm_frac": 0.0,
+  "pct_binder": 38.5,
+  "pct_gwp": 92.3,
+  "pct_pred_28d": 50.0,
+  "pct_cost": 88.5,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "71": {
+  "mix": "C3",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 667,
+  "fly_ash": 0,
+  "slag": 0,
+  "water": 267,
+  "hrwr": 2.14,
+  "fine": 423,
+  "coarse": 1356,
+  "temp": 22,
+  "binder": 667,
+  "scm": 0,
+  "scm_frac": 0.0,
+  "slag_frac_of_scm": null,
+  "wb": 0.4003,
+  "wc": 0.4003,
+  "hrwr_pct_binder": 0.321,
+  "agg_total": 1779,
+  "coarse_frac": 0.7622,
+  "paste_frac_mass": 934,
+  "observations": [
+   [
+    1,
+    4447.0
+   ],
+   [
+    3,
+    6216.0
+   ],
+   [
+    5,
+    6895.0
+   ],
+   [
+    14,
+    8576.0
+   ],
+   [
+    28,
+    9351.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 9351.0,
+  "s1_meas": 4447.0,
+  "s7_meas": null,
+  "pred_1d": 4458.5,
+  "pred_28d": 8977.5,
+  "gwp": 521.45,
+  "cost": 115.79,
+  "on_pareto": false,
+  "pct_wb": 73.1,
+  "pct_scm_frac": 0.0,
+  "pct_binder": 38.5,
+  "pct_gwp": 96.2,
+  "pct_pred_28d": 53.8,
+  "pct_cost": 84.6,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "72": {
+  "mix": "C4",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 667,
+  "fly_ash": 0,
+  "slag": 0,
+  "water": 267,
+  "hrwr": 2.14,
+  "fine": 815,
+  "coarse": 928,
+  "temp": 22,
+  "binder": 667,
+  "scm": 0,
+  "scm_frac": 0.0,
+  "slag_frac_of_scm": null,
+  "wb": 0.4003,
+  "wc": 0.4003,
+  "hrwr_pct_binder": 0.321,
+  "agg_total": 1743,
+  "coarse_frac": 0.5324,
+  "paste_frac_mass": 934,
+  "observations": [
+   [
+    1,
+    5257.0
+   ],
+   [
+    3,
+    6790.0
+   ],
+   [
+    5,
+    7687.0
+   ],
+   [
+    14,
+    9006.0
+   ],
+   [
+    28,
+    9490.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 9490.0,
+  "s1_meas": 5257.0,
+  "s7_meas": null,
+  "pred_1d": 4431.1,
+  "pred_28d": 8728.6,
+  "gwp": 520.85,
+  "cost": 117.21,
+  "on_pareto": false,
+  "pct_wb": 73.1,
+  "pct_scm_frac": 0.0,
+  "pct_binder": 38.5,
+  "pct_gwp": 84.6,
+  "pct_pred_28d": 46.2,
+  "pct_cost": 92.3,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "73": {
+  "mix": "C5",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 201,
+  "fly_ash": 173,
+  "slag": 293,
+  "water": 167,
+  "hrwr": 3.56,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 667,
+  "scm": 466,
+  "scm_frac": 0.6987,
+  "slag_frac_of_scm": 0.6288,
+  "wb": 0.2504,
+  "wc": 0.8308,
+  "hrwr_pct_binder": 0.534,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 834,
+  "observations": [
+   [
+    1,
+    901.0
+   ],
+   [
+    3,
+    5626.0
+   ],
+   [
+    5,
+    8189.0
+   ],
+   [
+    14,
+    12595.0
+   ],
+   [
+    28,
+    14924.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 14924.0,
+  "s1_meas": 901.0,
+  "s7_meas": null,
+  "pred_1d": 1647.7,
+  "pred_28d": 14571.5,
+  "gwp": 200.91,
+  "cost": 98.28,
+  "on_pareto": false,
+  "pct_wb": 0.0,
+  "pct_scm_frac": 61.5,
+  "pct_binder": 38.5,
+  "pct_gwp": 42.3,
+  "pct_pred_28d": 96.2,
+  "pct_cost": 69.2,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "74": {
+  "mix": "C6",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 201,
+  "fly_ash": 173,
+  "slag": 293,
+  "water": 167,
+  "hrwr": 4.63,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 667,
+  "scm": 466,
+  "scm_frac": 0.6987,
+  "slag_frac_of_scm": 0.6288,
+  "wb": 0.2504,
+  "wc": 0.8308,
+  "hrwr_pct_binder": 0.694,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 834,
+  "observations": [
+   [
+    1,
+    1809.0
+   ],
+   [
+    3,
+    6040.0
+   ],
+   [
+    5,
+    8588.0
+   ],
+   [
+    14,
+    13530.0
+   ],
+   [
+    28,
+    16029.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 16029.0,
+  "s1_meas": 1809.0,
+  "s7_meas": null,
+  "pred_1d": 1791.5,
+  "pred_28d": 14909.9,
+  "gwp": 204.34,
+  "cost": 101.49,
+  "on_pareto": true,
+  "pct_wb": 0.0,
+  "pct_scm_frac": 61.5,
+  "pct_binder": 38.5,
+  "pct_gwp": 46.2,
+  "pct_pred_28d": 100.0,
+  "pct_cost": 73.1,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "75": {
+  "mix": "C7",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 455,
+  "fly_ash": 159,
+  "slag": 53,
+  "water": 200,
+  "hrwr": 2.85,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 667,
+  "scm": 212,
+  "scm_frac": 0.3178,
+  "slag_frac_of_scm": 0.25,
+  "wb": 0.2999,
+  "wc": 0.4396,
+  "hrwr_pct_binder": 0.427,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 867,
+  "observations": [
+   [
+    1,
+    5229.0
+   ],
+   [
+    3,
+    7581.0
+   ],
+   [
+    5,
+    8509.0
+   ],
+   [
+    14,
+    10850.0
+   ],
+   [
+    28,
+    11848.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 11848.0,
+  "s1_meas": 5229.0,
+  "s7_meas": null,
+  "pred_1d": 4774.3,
+  "pred_28d": 11970.1,
+  "gwp": 371.22,
+  "cost": 104.54,
+  "on_pareto": true,
+  "pct_wb": 11.5,
+  "pct_scm_frac": 38.5,
+  "pct_binder": 38.5,
+  "pct_gwp": 73.1,
+  "pct_pred_28d": 84.6,
+  "pct_cost": 76.9,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "76": {
+  "mix": "C8",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 887,
+  "fly_ash": 9,
+  "slag": 55,
+  "water": 285,
+  "hrwr": 1.43,
+  "fine": 516,
+  "coarse": 993,
+  "temp": 22,
+  "binder": 951,
+  "scm": 64,
+  "scm_frac": 0.0673,
+  "slag_frac_of_scm": 0.8594,
+  "wb": 0.2997,
+  "wc": 0.3213,
+  "hrwr_pct_binder": 0.15,
+  "agg_total": 1509,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 1236,
+  "observations": [
+   [
+    1,
+    5928.0
+   ],
+   [
+    3,
+    7519.0
+   ],
+   [
+    5,
+    7786.0
+   ],
+   [
+    14,
+    8523.0
+   ],
+   [
+    28,
+    9265.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 9265.0,
+  "s1_meas": 5928.0,
+  "s7_meas": null,
+  "pred_1d": 5844.0,
+  "pred_28d": 9326.1,
+  "gwp": 690.52,
+  "cost": 141.83,
+  "on_pareto": false,
+  "pct_wb": 7.7,
+  "pct_scm_frac": 26.9,
+  "pct_binder": 100.0,
+  "pct_gwp": 100.0,
+  "pct_pred_28d": 57.7,
+  "pct_cost": 100.0,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "77": {
+  "mix": "C9",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 229,
+  "fly_ash": 137,
+  "slag": 300,
+  "water": 200,
+  "hrwr": 2.49,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 666,
+  "scm": 437,
+  "scm_frac": 0.6562,
+  "slag_frac_of_scm": 0.6865,
+  "wb": 0.3003,
+  "wc": 0.8734,
+  "hrwr_pct_binder": 0.374,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 866,
+  "observations": [
+   [
+    1,
+    1022.0
+   ],
+   [
+    3,
+    3783.0
+   ],
+   [
+    5,
+    6184.0
+   ],
+   [
+    14,
+    9942.0
+   ],
+   [
+    28,
+    11548.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 11548.0,
+  "s1_meas": 1022.0,
+  "s7_meas": null,
+  "pred_1d": 1234.9,
+  "pred_28d": 12248.8,
+  "gwp": 218.35,
+  "cost": 97.69,
+  "on_pareto": true,
+  "pct_wb": 23.1,
+  "pct_scm_frac": 57.7,
+  "pct_binder": 26.9,
+  "pct_gwp": 50.0,
+  "pct_pred_28d": 92.3,
+  "pct_cost": 65.4,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "78": {
+  "mix": "C10",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 201,
+  "fly_ash": 173,
+  "slag": 293,
+  "water": 267,
+  "hrwr": 0,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 667,
+  "scm": 466,
+  "scm_frac": 0.6987,
+  "slag_frac_of_scm": 0.6288,
+  "wb": 0.4003,
+  "wc": 1.3284,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 934,
+  "observations": [
+   [
+    1,
+    413.0
+   ],
+   [
+    3,
+    2776.0
+   ],
+   [
+    5,
+    3569.0
+   ],
+   [
+    14,
+    5875.0
+   ],
+   [
+    28,
+    8025.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 8025.0,
+  "s1_meas": 413.0,
+  "s7_meas": null,
+  "pred_1d": 240.7,
+  "pred_28d": 7830.8,
+  "gwp": 189.44,
+  "cost": 87.8,
+  "on_pareto": false,
+  "pct_wb": 73.1,
+  "pct_scm_frac": 61.5,
+  "pct_binder": 38.5,
+  "pct_gwp": 26.9,
+  "pct_pred_28d": 23.1,
+  "pct_cost": 38.5,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "79": {
+  "mix": "C11",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 133,
+  "fly_ash": 167,
+  "slag": 367,
+  "water": 200,
+  "hrwr": 1.43,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 667,
+  "scm": 534,
+  "scm_frac": 0.8006,
+  "slag_frac_of_scm": 0.6873,
+  "wb": 0.2999,
+  "wc": 1.5038,
+  "hrwr_pct_binder": 0.214,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 867,
+  "observations": [
+   [
+    1,
+    364.0
+   ],
+   [
+    3,
+    3266.0
+   ],
+   [
+    5,
+    5192.0
+   ],
+   [
+    14,
+    9264.0
+   ],
+   [
+    28,
+    11238.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 11238.0,
+  "s1_meas": 364.0,
+  "s7_meas": null,
+  "pred_1d": 317.8,
+  "pred_28d": 11076.9,
+  "gwp": 148.41,
+  "cost": 90.22,
+  "on_pareto": false,
+  "pct_wb": 11.5,
+  "pct_scm_frac": 100.0,
+  "pct_binder": 38.5,
+  "pct_gwp": 19.2,
+  "pct_pred_28d": 80.8,
+  "pct_cost": 46.2,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "80": {
+  "mix": "C12",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 133,
+  "fly_ash": 533,
+  "slag": 0,
+  "water": 200,
+  "hrwr": 0.53,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 666,
+  "scm": 533,
+  "scm_frac": 0.8003,
+  "slag_frac_of_scm": 0.0,
+  "wb": 0.3003,
+  "wc": 1.5038,
+  "hrwr_pct_binder": 0.08,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 866,
+  "observations": [
+   [
+    1,
+    133.0
+   ],
+   [
+    3,
+    133.0
+   ],
+   [
+    5,
+    174.0
+   ],
+   [
+    14,
+    2344.0
+   ],
+   [
+    28,
+    3410.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 3410.0,
+  "s1_meas": 133.0,
+  "s7_meas": null,
+  "pred_1d": -249.1,
+  "pred_28d": 3706.3,
+  "gwp": 124.83,
+  "cost": 69.13,
+  "on_pareto": false,
+  "pct_wb": 23.1,
+  "pct_scm_frac": 92.3,
+  "pct_binder": 26.9,
+  "pct_gwp": 7.7,
+  "pct_pred_28d": 0.0,
+  "pct_cost": 7.7,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "81": {
+  "mix": "C13",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 133,
+  "fly_ash": 233,
+  "slag": 300,
+  "water": 200,
+  "hrwr": 0.71,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 666,
+  "scm": 533,
+  "scm_frac": 0.8003,
+  "slag_frac_of_scm": 0.5629,
+  "wb": 0.3003,
+  "wc": 1.5038,
+  "hrwr_pct_binder": 0.107,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 866,
+  "observations": [
+   [
+    1,
+    154.0
+   ],
+   [
+    3,
+    2341.0
+   ],
+   [
+    5,
+    3844.0
+   ],
+   [
+    14,
+    7750.0
+   ],
+   [
+    28,
+    10747.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 10747.0,
+  "s1_meas": 154.0,
+  "s7_meas": null,
+  "pred_1d": 15.1,
+  "pred_28d": 10201.0,
+  "gwp": 142.3,
+  "cost": 84.67,
+  "on_pareto": false,
+  "pct_wb": 23.1,
+  "pct_scm_frac": 92.3,
+  "pct_binder": 26.9,
+  "pct_gwp": 15.4,
+  "pct_pred_28d": 76.9,
+  "pct_cost": 30.8,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "82": {
+  "mix": "C14",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 201,
+  "fly_ash": 173,
+  "slag": 293,
+  "water": 200,
+  "hrwr": 1.78,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 667,
+  "scm": 466,
+  "scm_frac": 0.6987,
+  "slag_frac_of_scm": 0.6288,
+  "wb": 0.2999,
+  "wc": 0.995,
+  "hrwr_pct_binder": 0.267,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 867,
+  "observations": [
+   [
+    1,
+    649.0
+   ],
+   [
+    3,
+    5143.0
+   ],
+   [
+    5,
+    6757.0
+   ],
+   [
+    14,
+    10156.0
+   ],
+   [
+    28,
+    11648.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 11648.0,
+  "s1_meas": 649.0,
+  "s7_meas": null,
+  "pred_1d": 852.8,
+  "pred_28d": 12137.7,
+  "gwp": 195.19,
+  "cost": 93.01,
+  "on_pareto": false,
+  "pct_wb": 11.5,
+  "pct_scm_frac": 61.5,
+  "pct_binder": 38.5,
+  "pct_gwp": 34.6,
+  "pct_pred_28d": 88.5,
+  "pct_cost": 53.8,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "83": {
+  "mix": "C15",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 201,
+  "fly_ash": 173,
+  "slag": 293,
+  "water": 233,
+  "hrwr": 0.89,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 667,
+  "scm": 466,
+  "scm_frac": 0.6987,
+  "slag_frac_of_scm": 0.6288,
+  "wb": 0.3493,
+  "wc": 1.1592,
+  "hrwr_pct_binder": 0.133,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 900,
+  "observations": [
+   [
+    1,
+    670.0
+   ],
+   [
+    3,
+    2717.0
+   ],
+   [
+    5,
+    5089.0
+   ],
+   [
+    14,
+    7979.0
+   ],
+   [
+    28,
+    9431.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 9431.0,
+  "s1_meas": 670.0,
+  "s7_meas": null,
+  "pred_1d": 348.1,
+  "pred_28d": 9795.5,
+  "gwp": 192.31,
+  "cost": 90.41,
+  "on_pareto": false,
+  "pct_wb": 34.6,
+  "pct_scm_frac": 61.5,
+  "pct_binder": 38.5,
+  "pct_gwp": 30.8,
+  "pct_pred_28d": 69.2,
+  "pct_cost": 50.0,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "84": {
+  "mix": "C16",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 667,
+  "fly_ash": 0,
+  "slag": 0,
+  "water": 333,
+  "hrwr": 0,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 667,
+  "scm": 0,
+  "scm_frac": 0.0,
+  "slag_frac_of_scm": null,
+  "wb": 0.4993,
+  "wc": 0.4993,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 1000,
+  "observations": [
+   [
+    1,
+    1825.0
+   ],
+   [
+    3,
+    2801.0
+   ],
+   [
+    5,
+    4243.0
+   ],
+   [
+    14,
+    5213.0
+   ],
+   [
+    28,
+    5086.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5086.0,
+  "s1_meas": 1825.0,
+  "s7_meas": null,
+  "pred_1d": 1867.9,
+  "pred_28d": 5514.9,
+  "gwp": 514.36,
+  "cost": 110.57,
+  "on_pareto": false,
+  "pct_wb": 92.3,
+  "pct_scm_frac": 0.0,
+  "pct_binder": 38.5,
+  "pct_gwp": 80.8,
+  "pct_pred_28d": 3.8,
+  "pct_cost": 80.8,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "85": {
+  "mix": "C17",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 467,
+  "fly_ash": 200,
+  "slag": 0,
+  "water": 333,
+  "hrwr": 0,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 667,
+  "scm": 200,
+  "scm_frac": 0.2999,
+  "slag_frac_of_scm": 0.0,
+  "wb": 0.4993,
+  "wc": 0.7131,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 1000,
+  "observations": [
+   [
+    1,
+    818.0
+   ],
+   [
+    3,
+    1751.0
+   ],
+   [
+    5,
+    2044.0
+   ],
+   [
+    14,
+    4474.0
+   ],
+   [
+    28,
+    5317.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5317.0,
+  "s1_meas": 818.0,
+  "s7_meas": null,
+  "pred_1d": 751.2,
+  "pred_28d": 5533.5,
+  "gwp": 367.8,
+  "cost": 94.57,
+  "on_pareto": false,
+  "pct_wb": 92.3,
+  "pct_scm_frac": 30.8,
+  "pct_binder": 38.5,
+  "pct_gwp": 69.2,
+  "pct_pred_28d": 7.7,
+  "pct_cost": 61.5,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "86": {
+  "mix": "C18",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 400,
+  "fly_ash": 267,
+  "slag": 0,
+  "water": 333,
+  "hrwr": 0,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 667,
+  "scm": 267,
+  "scm_frac": 0.4003,
+  "slag_frac_of_scm": 0.0,
+  "wb": 0.4993,
+  "wc": 0.8325,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 1000,
+  "observations": [
+   [
+    1,
+    466.0
+   ],
+   [
+    3,
+    1567.0
+   ],
+   [
+    5,
+    3214.0
+   ],
+   [
+    14,
+    4583.0
+   ],
+   [
+    28,
+    6683.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 6683.0,
+  "s1_meas": 466.0,
+  "s7_meas": null,
+  "pred_1d": 387.1,
+  "pred_28d": 6314.6,
+  "gwp": 318.7,
+  "cost": 89.21,
+  "on_pareto": false,
+  "pct_wb": 92.3,
+  "pct_scm_frac": 46.2,
+  "pct_binder": 38.5,
+  "pct_gwp": 65.4,
+  "pct_pred_28d": 19.2,
+  "pct_cost": 42.3,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "87": {
+  "mix": "C19",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 267,
+  "fly_ash": 400,
+  "slag": 0,
+  "water": 233,
+  "hrwr": 0,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 667,
+  "scm": 400,
+  "scm_frac": 0.5997,
+  "slag_frac_of_scm": 0.0,
+  "wb": 0.3493,
+  "wc": 0.8727,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 900,
+  "observations": [
+   [
+    1,
+    207.0
+   ],
+   [
+    3,
+    2261.0
+   ],
+   [
+    5,
+    3968.0
+   ],
+   [
+    14,
+    6928.0
+   ],
+   [
+    28,
+    8488.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 8488.0,
+  "s1_meas": 207.0,
+  "s7_meas": null,
+  "pred_1d": 476.7,
+  "pred_28d": 8091.2,
+  "gwp": 221.32,
+  "cost": 78.37,
+  "on_pareto": false,
+  "pct_wb": 34.6,
+  "pct_scm_frac": 50.0,
+  "pct_binder": 38.5,
+  "pct_gwp": 53.8,
+  "pct_pred_28d": 34.6,
+  "pct_cost": 26.9,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "88": {
+  "mix": "C20",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 200,
+  "fly_ash": 467,
+  "slag": 0,
+  "water": 233,
+  "hrwr": 0,
+  "fine": 611,
+  "coarse": 1176,
+  "temp": 22,
+  "binder": 667,
+  "scm": 467,
+  "scm_frac": 0.7001,
+  "slag_frac_of_scm": 0.0,
+  "wb": 0.3493,
+  "wc": 1.165,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1787,
+  "coarse_frac": 0.6581,
+  "paste_frac_mass": 900,
+  "observations": [
+   [
+    1,
+    84.0
+   ],
+   [
+    3,
+    585.0
+   ],
+   [
+    5,
+    1749.0
+   ],
+   [
+    14,
+    4622.0
+   ],
+   [
+    28,
+    5490.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5490.0,
+  "s1_meas": 84.0,
+  "s7_meas": null,
+  "pred_1d": -74.8,
+  "pred_28d": 5695.1,
+  "gwp": 172.23,
+  "cost": 73.01,
+  "on_pareto": false,
+  "pct_wb": 34.6,
+  "pct_scm_frac": 84.6,
+  "pct_binder": 38.5,
+  "pct_gwp": 23.1,
+  "pct_pred_28d": 11.5,
+  "pct_cost": 19.2,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "89": {
+  "mix": "C21",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 500,
+  "fly_ash": 0,
+  "slag": 0,
+  "water": 200,
+  "hrwr": 0.36,
+  "fine": 667,
+  "coarse": 1282,
+  "temp": 22,
+  "binder": 500,
+  "scm": 0,
+  "scm_frac": 0.0,
+  "slag_frac_of_scm": null,
+  "wb": 0.4,
+  "wc": 0.4,
+  "hrwr_pct_binder": 0.072,
+  "agg_total": 1949,
+  "coarse_frac": 0.6578,
+  "paste_frac_mass": 700,
+  "observations": [
+   [
+    1,
+    4477.0
+   ],
+   [
+    3,
+    6106.0
+   ],
+   [
+    5,
+    6668.0
+   ],
+   [
+    14,
+    7879.0
+   ],
+   [
+    28,
+    8242.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 8242.0,
+  "s1_meas": 4477.0,
+  "s7_meas": null,
+  "pred_1d": 4313.0,
+  "pred_28d": 8444.0,
+  "gwp": 388.98,
+  "cost": 94.05,
+  "on_pareto": false,
+  "pct_wb": 53.8,
+  "pct_scm_frac": 0.0,
+  "pct_binder": 23.1,
+  "pct_gwp": 76.9,
+  "pct_pred_28d": 38.5,
+  "pct_cost": 57.7,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "90": {
+  "mix": "C22",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 400,
+  "fly_ash": 0,
+  "slag": 0,
+  "water": 160,
+  "hrwr": 0.89,
+  "fine": 700,
+  "coarse": 1347,
+  "temp": 22,
+  "binder": 400,
+  "scm": 0,
+  "scm_frac": 0.0,
+  "slag_frac_of_scm": null,
+  "wb": 0.4,
+  "wc": 0.4,
+  "hrwr_pct_binder": 0.223,
+  "agg_total": 2047,
+  "coarse_frac": 0.658,
+  "paste_frac_mass": 560,
+  "observations": [
+   [
+    1,
+    4296.0
+   ],
+   [
+    3,
+    6831.0
+   ],
+   [
+    5,
+    7726.0
+   ],
+   [
+    14,
+    8509.0
+   ],
+   [
+    28,
+    9624.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 9624.0,
+  "s1_meas": 4296.0,
+  "s7_meas": null,
+  "pred_1d": 4375.3,
+  "pred_28d": 9372.2,
+  "gwp": 314.89,
+  "cost": 85.19,
+  "on_pareto": false,
+  "pct_wb": 53.8,
+  "pct_scm_frac": 0.0,
+  "pct_binder": 0.0,
+  "pct_gwp": 61.5,
+  "pct_pred_28d": 61.5,
+  "pct_cost": 34.6,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "91": {
+  "mix": "C23",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 280,
+  "fly_ash": 120,
+  "slag": 0,
+  "water": 160,
+  "hrwr": 0.89,
+  "fine": 700,
+  "coarse": 1347,
+  "temp": 22,
+  "binder": 400,
+  "scm": 120,
+  "scm_frac": 0.3,
+  "slag_frac_of_scm": 0.0,
+  "wb": 0.4,
+  "wc": 0.5714,
+  "hrwr_pct_binder": 0.223,
+  "agg_total": 2047,
+  "coarse_frac": 0.658,
+  "paste_frac_mass": 560,
+  "observations": [
+   [
+    1,
+    1984.0
+   ],
+   [
+    3,
+    5459.0
+   ],
+   [
+    5,
+    7286.0
+   ],
+   [
+    14,
+    8023.0
+   ],
+   [
+    28,
+    10040.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 10040.0,
+  "s1_meas": 1984.0,
+  "s7_meas": null,
+  "pred_1d": 2262.3,
+  "pred_28d": 9992.7,
+  "gwp": 226.95,
+  "cost": 75.59,
+  "on_pareto": false,
+  "pct_wb": 53.8,
+  "pct_scm_frac": 34.6,
+  "pct_binder": 0.0,
+  "pct_gwp": 57.7,
+  "pct_pred_28d": 73.1,
+  "pct_cost": 23.1,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "92": {
+  "mix": "C24",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 240,
+  "fly_ash": 160,
+  "slag": 0,
+  "water": 160,
+  "hrwr": 0.71,
+  "fine": 700,
+  "coarse": 1347,
+  "temp": 22,
+  "binder": 400,
+  "scm": 160,
+  "scm_frac": 0.4,
+  "slag_frac_of_scm": 0.0,
+  "wb": 0.4,
+  "wc": 0.6667,
+  "hrwr_pct_binder": 0.177,
+  "agg_total": 2047,
+  "coarse_frac": 0.658,
+  "paste_frac_mass": 560,
+  "observations": [
+   [
+    1,
+    897.0
+   ],
+   [
+    3,
+    4935.0
+   ],
+   [
+    5,
+    6453.0
+   ],
+   [
+    14,
+    9023.0
+   ],
+   [
+    28,
+    10380.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 10380.0,
+  "s1_meas": 897.0,
+  "s7_meas": null,
+  "pred_1d": 1469.8,
+  "pred_28d": 9690.3,
+  "gwp": 197.07,
+  "cost": 71.86,
+  "on_pareto": false,
+  "pct_wb": 53.8,
+  "pct_scm_frac": 42.3,
+  "pct_binder": 0.0,
+  "pct_gwp": 38.5,
+  "pct_pred_28d": 65.4,
+  "pct_cost": 15.4,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "93": {
+  "mix": "C25",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 80,
+  "fly_ash": 100,
+  "slag": 220,
+  "water": 160,
+  "hrwr": 0.89,
+  "fine": 700,
+  "coarse": 1347,
+  "temp": 22,
+  "binder": 400,
+  "scm": 320,
+  "scm_frac": 0.8,
+  "slag_frac_of_scm": 0.6875,
+  "wb": 0.4,
+  "wc": 2.0,
+  "hrwr_pct_binder": 0.223,
+  "agg_total": 2047,
+  "coarse_frac": 0.658,
+  "paste_frac_mass": 560,
+  "observations": [
+   [
+    1,
+    645.0
+   ],
+   [
+    3,
+    2187.0
+   ],
+   [
+    5,
+    3247.0
+   ],
+   [
+    14,
+    6322.0
+   ],
+   [
+    28,
+    7993.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 7993.0,
+  "s1_meas": 645.0,
+  "s7_meas": null,
+  "pred_1d": 152.5,
+  "pred_28d": 7888.5,
+  "gwp": 92.79,
+  "cost": 70.59,
+  "on_pareto": false,
+  "pct_wb": 53.8,
+  "pct_scm_frac": 88.5,
+  "pct_binder": 0.0,
+  "pct_gwp": 0.0,
+  "pct_pred_28d": 26.9,
+  "pct_cost": 11.5,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "94": {
+  "mix": "C26",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 160,
+  "fly_ash": 240,
+  "slag": 0,
+  "water": 140,
+  "hrwr": 0.89,
+  "fine": 700,
+  "coarse": 1347,
+  "temp": 22,
+  "binder": 400,
+  "scm": 240,
+  "scm_frac": 0.6,
+  "slag_frac_of_scm": 0.0,
+  "wb": 0.35,
+  "wc": 0.875,
+  "hrwr_pct_binder": 0.223,
+  "agg_total": 2047,
+  "coarse_frac": 0.658,
+  "paste_frac_mass": 540,
+  "observations": [
+   [
+    1,
+    181.0
+   ],
+   [
+    3,
+    2950.0
+   ],
+   [
+    5,
+    5049.0
+   ],
+   [
+    14,
+    7410.0
+   ],
+   [
+    28,
+    7450.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 7450.0,
+  "s1_meas": 181.0,
+  "s7_meas": null,
+  "pred_1d": 465.2,
+  "pred_28d": 7975.8,
+  "gwp": 139.03,
+  "cost": 65.95,
+  "on_pareto": false,
+  "pct_wb": 46.2,
+  "pct_scm_frac": 53.8,
+  "pct_binder": 0.0,
+  "pct_gwp": 11.5,
+  "pct_pred_28d": 30.8,
+  "pct_cost": 3.8,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "95": {
+  "mix": "C27",
+  "match_l1": 0.0,
+  "material_source": 1,
+  "source_letter": "B",
+  "class_desc": "Set 2 concrete (Heidelberg 1L cement, Class C fly ash, limestone)",
+  "cement": 120,
+  "fly_ash": 280,
+  "slag": 0,
+  "water": 140,
+  "hrwr": 0.71,
+  "fine": 700,
+  "coarse": 1347,
+  "temp": 22,
+  "binder": 400,
+  "scm": 280,
+  "scm_frac": 0.7,
+  "slag_frac_of_scm": 0.0,
+  "wb": 0.35,
+  "wc": 1.1667,
+  "hrwr_pct_binder": 0.177,
+  "agg_total": 2047,
+  "coarse_frac": 0.658,
+  "paste_frac_mass": 540,
+  "observations": [
+   [
+    1,
+    85.0
+   ],
+   [
+    3,
+    791.0
+   ],
+   [
+    5,
+    1895.0
+   ],
+   [
+    14,
+    4374.0
+   ],
+   [
+    28,
+    5235.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5235.0,
+  "s1_meas": 85.0,
+  "s7_meas": null,
+  "pred_1d": -393.7,
+  "pred_28d": 5801.1,
+  "gwp": 109.15,
+  "cost": 62.22,
+  "on_pareto": false,
+  "pct_wb": 46.2,
+  "pct_scm_frac": 80.8,
+  "pct_binder": 0.0,
+  "pct_gwp": 3.8,
+  "pct_pred_28d": 15.4,
+  "pct_cost": 0.0,
+  "class_n": 27,
+  "class_median_28d": 8829.6,
+  "class_median_gwp": 218.3
+ },
+ "96": {
+  "mix": "C28",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 263,
+  "fly_ash": 0,
+  "slag": 108,
+  "water": 130,
+  "hrwr": 2.04,
+  "fine": 867,
+  "coarse": 1129,
+  "temp": 22,
+  "binder": 371,
+  "scm": 108,
+  "scm_frac": 0.2911,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.3504,
+  "wc": 0.4943,
+  "hrwr_pct_binder": 0.55,
+  "agg_total": 1996,
+  "coarse_frac": 0.5656,
+  "paste_frac_mass": 501,
+  "observations": [
+   [
+    1,
+    4004.0
+   ],
+   [
+    3,
+    6143.0
+   ],
+   [
+    5,
+    6976.0
+   ],
+   [
+    14,
+    8448.0
+   ],
+   [
+    28,
+    9344.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 9344.0,
+  "s1_meas": 4004.0,
+  "s7_meas": null,
+  "pred_1d": 3520.7,
+  "pred_28d": 8948.9,
+  "gwp": 222.18,
+  "cost": 81.94,
+  "on_pareto": false,
+  "pct_wb": 0.0,
+  "pct_scm_frac": 9.6,
+  "pct_binder": 88.5,
+  "pct_gwp": 98.1,
+  "pct_pred_28d": 100.0,
+  "pct_cost": 98.1,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "97": {
+  "mix": "C29",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 225,
+  "fly_ash": 0,
+  "slag": 223,
+  "water": 157,
+  "hrwr": 2.04,
+  "fine": 818,
+  "coarse": 1073,
+  "temp": 22,
+  "binder": 448,
+  "scm": 223,
+  "scm_frac": 0.4978,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.3504,
+  "wc": 0.6978,
+  "hrwr_pct_binder": 0.455,
+  "agg_total": 1891,
+  "coarse_frac": 0.5674,
+  "paste_frac_mass": 605,
+  "observations": [
+   [
+    1,
+    2178.0
+   ],
+   [
+    3,
+    5151.0
+   ],
+   [
+    5,
+    5897.0
+   ],
+   [
+    14,
+    7450.0
+   ],
+   [
+    28,
+    8866.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 8866.0,
+  "s1_meas": 2178.0,
+  "s7_meas": null,
+  "pred_1d": 2623.9,
+  "pred_28d": 8789.2,
+  "gwp": 203.41,
+  "cost": 85.96,
+  "on_pareto": false,
+  "pct_wb": 0.0,
+  "pct_scm_frac": 42.3,
+  "pct_binder": 98.1,
+  "pct_gwp": 88.5,
+  "pct_pred_28d": 98.1,
+  "pct_cost": 100.0,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "98": {
+  "mix": "C30",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 210,
+  "fly_ash": 39,
+  "slag": 122,
+  "water": 130,
+  "hrwr": 2.04,
+  "fine": 942,
+  "coarse": 1054,
+  "temp": 22,
+  "binder": 371,
+  "scm": 161,
+  "scm_frac": 0.434,
+  "slag_frac_of_scm": 0.7578,
+  "wb": 0.3504,
+  "wc": 0.619,
+  "hrwr_pct_binder": 0.55,
+  "agg_total": 1996,
+  "coarse_frac": 0.5281,
+  "paste_frac_mass": 501,
+  "observations": [
+   [
+    1,
+    2015.0
+   ],
+   [
+    3,
+    4780.0
+   ],
+   [
+    5,
+    5485.0
+   ],
+   [
+    14,
+    7276.0
+   ],
+   [
+    28,
+    8372.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 8372.0,
+  "s1_meas": 2015.0,
+  "s7_meas": null,
+  "pred_1d": 2442.5,
+  "pred_28d": 8165.5,
+  "gwp": 183.63,
+  "cost": 78.77,
+  "on_pareto": false,
+  "pct_wb": 0.0,
+  "pct_scm_frac": 40.4,
+  "pct_binder": 88.5,
+  "pct_gwp": 80.8,
+  "pct_pred_28d": 96.2,
+  "pct_cost": 96.2,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "99": {
+  "mix": "C31",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 179,
+  "fly_ash": 0,
+  "slag": 191,
+  "water": 130,
+  "hrwr": 1.28,
+  "fine": 946,
+  "coarse": 1051,
+  "temp": 22,
+  "binder": 370,
+  "scm": 191,
+  "scm_frac": 0.5162,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.3514,
+  "wc": 0.7263,
+  "hrwr_pct_binder": 0.346,
+  "agg_total": 1997,
+  "coarse_frac": 0.5263,
+  "paste_frac_mass": 500,
+  "observations": [
+   [
+    1,
+    2633.0
+   ],
+   [
+    3,
+    4758.0
+   ],
+   [
+    5,
+    5240.0
+   ],
+   [
+    14,
+    7102.0
+   ],
+   [
+    28,
+    8256.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 8256.0,
+  "s1_meas": 2633.0,
+  "s7_meas": null,
+  "pred_1d": 2307.4,
+  "pred_28d": 7878.6,
+  "gwp": 162.76,
+  "cost": 77.46,
+  "on_pareto": false,
+  "pct_wb": 5.8,
+  "pct_scm_frac": 61.5,
+  "pct_binder": 78.8,
+  "pct_gwp": 63.5,
+  "pct_pred_28d": 94.2,
+  "pct_cost": 92.3,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "100": {
+  "mix": "C32",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 148,
+  "fly_ash": 0,
+  "slag": 222,
+  "water": 130,
+  "hrwr": 1.4,
+  "fine": 875,
+  "coarse": 1121,
+  "temp": 22,
+  "binder": 370,
+  "scm": 222,
+  "scm_frac": 0.6,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.3514,
+  "wc": 0.8784,
+  "hrwr_pct_binder": 0.378,
+  "agg_total": 1996,
+  "coarse_frac": 0.5616,
+  "paste_frac_mass": 500,
+  "observations": [
+   [
+    1,
+    1668.0
+   ],
+   [
+    3,
+    4345.0
+   ],
+   [
+    5,
+    5761.0
+   ],
+   [
+    14,
+    6692.0
+   ],
+   [
+    28,
+    7784.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 7784.0,
+  "s1_meas": 1668.0,
+  "s7_meas": null,
+  "pred_1d": 2057.6,
+  "pred_28d": 7697.1,
+  "gwp": 142.58,
+  "cost": 76.52,
+  "on_pareto": false,
+  "pct_wb": 5.8,
+  "pct_scm_frac": 76.9,
+  "pct_binder": 78.8,
+  "pct_gwp": 42.3,
+  "pct_pred_28d": 90.4,
+  "pct_cost": 88.5,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "101": {
+  "mix": "C33",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 263,
+  "fly_ash": 0,
+  "slag": 108,
+  "water": 148,
+  "hrwr": 0.59,
+  "fine": 818,
+  "coarse": 1129,
+  "temp": 22,
+  "binder": 371,
+  "scm": 108,
+  "scm_frac": 0.2911,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.3989,
+  "wc": 0.5627,
+  "hrwr_pct_binder": 0.159,
+  "agg_total": 1947,
+  "coarse_frac": 0.5799,
+  "paste_frac_mass": 519,
+  "observations": [
+   [
+    1,
+    2299.0
+   ],
+   [
+    3,
+    3693.0
+   ],
+   [
+    5,
+    4632.0
+   ],
+   [
+    14,
+    5885.0
+   ],
+   [
+    28,
+    6757.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 6757.0,
+  "s1_meas": 2299.0,
+  "s7_meas": null,
+  "pred_1d": 2544.3,
+  "pred_28d": 6984.7,
+  "gwp": 217.72,
+  "cost": 76.64,
+  "on_pareto": false,
+  "pct_wb": 13.5,
+  "pct_scm_frac": 9.6,
+  "pct_binder": 88.5,
+  "pct_gwp": 96.2,
+  "pct_pred_28d": 82.7,
+  "pct_cost": 90.4,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "102": {
+  "mix": "C34",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 263,
+  "fly_ash": 0,
+  "slag": 108,
+  "water": 167,
+  "hrwr": 0,
+  "fine": 768,
+  "coarse": 1129,
+  "temp": 22,
+  "binder": 371,
+  "scm": 108,
+  "scm_frac": 0.2911,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.4501,
+  "wc": 0.635,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1897,
+  "coarse_frac": 0.5952,
+  "paste_frac_mass": 538,
+  "observations": [
+   [
+    1,
+    1810.0
+   ],
+   [
+    3,
+    3246.0
+   ],
+   [
+    5,
+    4061.0
+   ],
+   [
+    14,
+    5763.0
+   ],
+   [
+    28,
+    6295.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 6295.0,
+  "s1_meas": 1810.0,
+  "s7_meas": null,
+  "pred_1d": 1984.5,
+  "pred_28d": 6069.5,
+  "gwp": 215.82,
+  "cost": 73.91,
+  "on_pareto": false,
+  "pct_wb": 88.5,
+  "pct_scm_frac": 9.6,
+  "pct_binder": 88.5,
+  "pct_gwp": 94.2,
+  "pct_pred_28d": 61.5,
+  "pct_cost": 75.0,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "103": {
+  "mix": "C35",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 263,
+  "fly_ash": 0,
+  "slag": 108,
+  "water": 186,
+  "hrwr": 0,
+  "fine": 719,
+  "coarse": 1129,
+  "temp": 22,
+  "binder": 371,
+  "scm": 108,
+  "scm_frac": 0.2911,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.5013,
+  "wc": 0.7072,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1848,
+  "coarse_frac": 0.6109,
+  "paste_frac_mass": 557,
+  "observations": [
+   [
+    1,
+    1220.0
+   ],
+   [
+    3,
+    2839.0
+   ],
+   [
+    5,
+    3420.0
+   ],
+   [
+    14,
+    4495.0
+   ],
+   [
+    28,
+    4631.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 4631.0,
+  "s1_meas": 1220.0,
+  "s7_meas": null,
+  "pred_1d": 1479.2,
+  "pred_28d": 5334.7,
+  "gwp": 215.69,
+  "cost": 72.97,
+  "on_pareto": false,
+  "pct_wb": 100.0,
+  "pct_scm_frac": 9.6,
+  "pct_binder": 88.5,
+  "pct_gwp": 92.3,
+  "pct_pred_28d": 36.5,
+  "pct_cost": 73.1,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "104": {
+  "mix": "C36",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 237,
+  "fly_ash": 0,
+  "slag": 97,
+  "water": 130,
+  "hrwr": 1.02,
+  "fine": 881,
+  "coarse": 1147,
+  "temp": 22,
+  "binder": 334,
+  "scm": 97,
+  "scm_frac": 0.2904,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.3892,
+  "wc": 0.5485,
+  "hrwr_pct_binder": 0.305,
+  "agg_total": 2028,
+  "coarse_frac": 0.5656,
+  "paste_frac_mass": 464,
+  "observations": [
+   [
+    1,
+    2339.0
+   ],
+   [
+    3,
+    4365.0
+   ],
+   [
+    5,
+    5144.0
+   ],
+   [
+    14,
+    6626.0
+   ],
+   [
+    28,
+    7563.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 7563.0,
+  "s1_meas": 2339.0,
+  "s7_meas": null,
+  "pred_1d": 2684.5,
+  "pred_28d": 7427.0,
+  "gwp": 198.15,
+  "cost": 75.31,
+  "on_pareto": false,
+  "pct_wb": 9.6,
+  "pct_scm_frac": 1.9,
+  "pct_binder": 30.8,
+  "pct_gwp": 84.6,
+  "pct_pred_28d": 88.5,
+  "pct_cost": 84.6,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "105": {
+  "mix": "C37",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 210,
+  "fly_ash": 0,
+  "slag": 86,
+  "water": 130,
+  "hrwr": 0.77,
+  "fine": 895,
+  "coarse": 1166,
+  "temp": 22,
+  "binder": 296,
+  "scm": 86,
+  "scm_frac": 0.2905,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.4392,
+  "wc": 0.619,
+  "hrwr_pct_binder": 0.26,
+  "agg_total": 2061,
+  "coarse_frac": 0.5657,
+  "paste_frac_mass": 426,
+  "observations": [
+   [
+    1,
+    2154.0
+   ],
+   [
+    3,
+    3646.0
+   ],
+   [
+    5,
+    4247.0
+   ],
+   [
+    14,
+    5895.0
+   ],
+   [
+    28,
+    6926.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 6926.0,
+  "s1_meas": 2154.0,
+  "s7_meas": null,
+  "pred_1d": 2005.9,
+  "pred_28d": 6271.0,
+  "gwp": 175.67,
+  "cost": 70.9,
+  "on_pareto": false,
+  "pct_wb": 69.2,
+  "pct_scm_frac": 3.8,
+  "pct_binder": 3.8,
+  "pct_gwp": 67.3,
+  "pct_pred_28d": 63.5,
+  "pct_cost": 57.7,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "106": {
+  "mix": "C38",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 184,
+  "fly_ash": 0,
+  "slag": 76,
+  "water": 130,
+  "hrwr": 0,
+  "fine": 909,
+  "coarse": 1184,
+  "temp": 22,
+  "binder": 260,
+  "scm": 76,
+  "scm_frac": 0.2923,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.5,
+  "wc": 0.7065,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 2093,
+  "coarse_frac": 0.5657,
+  "paste_frac_mass": 390,
+  "observations": [
+   [
+    1,
+    1128.0
+   ],
+   [
+    3,
+    2488.0
+   ],
+   [
+    5,
+    3052.0
+   ],
+   [
+    14,
+    4655.0
+   ],
+   [
+    28,
+    5235.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5235.0,
+  "s1_meas": 1128.0,
+  "s7_meas": null,
+  "pred_1d": 1356.4,
+  "pred_28d": 5151.9,
+  "gwp": 152.48,
+  "cost": 65.12,
+  "on_pareto": false,
+  "pct_wb": 94.2,
+  "pct_scm_frac": 17.3,
+  "pct_binder": 0.0,
+  "pct_gwp": 48.1,
+  "pct_pred_28d": 30.8,
+  "pct_cost": 19.2,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "107": {
+  "mix": "C39",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 225,
+  "fly_ash": 0,
+  "slag": 223,
+  "water": 179,
+  "hrwr": 0,
+  "fine": 758,
+  "coarse": 1073,
+  "temp": 22,
+  "binder": 448,
+  "scm": 223,
+  "scm_frac": 0.4978,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.3996,
+  "wc": 0.7956,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1831,
+  "coarse_frac": 0.586,
+  "paste_frac_mass": 627,
+  "observations": [
+   [
+    1,
+    1477.0
+   ],
+   [
+    3,
+    3227.0
+   ],
+   [
+    5,
+    3943.0
+   ],
+   [
+    14,
+    5834.0
+   ],
+   [
+    28,
+    6659.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 6659.0,
+  "s1_meas": 1477.0,
+  "s7_meas": null,
+  "pred_1d": 1697.4,
+  "pred_28d": 6539.7,
+  "gwp": 197.15,
+  "cost": 78.68,
+  "on_pareto": false,
+  "pct_wb": 40.4,
+  "pct_scm_frac": 42.3,
+  "pct_binder": 98.1,
+  "pct_gwp": 82.7,
+  "pct_pred_28d": 73.1,
+  "pct_cost": 94.2,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "108": {
+  "mix": "C40",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 179,
+  "fly_ash": 0,
+  "slag": 191,
+  "water": 148,
+  "hrwr": 0.51,
+  "fine": 898,
+  "coarse": 1051,
+  "temp": 22,
+  "binder": 370,
+  "scm": 191,
+  "scm_frac": 0.5162,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.4,
+  "wc": 0.8268,
+  "hrwr_pct_binder": 0.138,
+  "agg_total": 1949,
+  "coarse_frac": 0.5393,
+  "paste_frac_mass": 518,
+  "observations": [
+   [
+    1,
+    2038.0
+   ],
+   [
+    3,
+    3592.0
+   ],
+   [
+    5,
+    4398.0
+   ],
+   [
+    14,
+    5757.0
+   ],
+   [
+    28,
+    6766.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 6766.0,
+  "s1_meas": 2038.0,
+  "s7_meas": null,
+  "pred_1d": 1574.0,
+  "pred_28d": 6340.9,
+  "gwp": 160.32,
+  "cost": 74.22,
+  "on_pareto": false,
+  "pct_wb": 42.3,
+  "pct_scm_frac": 61.5,
+  "pct_binder": 78.8,
+  "pct_gwp": 61.5,
+  "pct_pred_28d": 65.4,
+  "pct_cost": 76.9,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "109": {
+  "mix": "C41",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 179,
+  "fly_ash": 0,
+  "slag": 191,
+  "water": 167,
+  "hrwr": 0,
+  "fine": 849,
+  "coarse": 1051,
+  "temp": 22,
+  "binder": 370,
+  "scm": 191,
+  "scm_frac": 0.5162,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.4514,
+  "wc": 0.933,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1900,
+  "coarse_frac": 0.5532,
+  "paste_frac_mass": 537,
+  "observations": [
+   [
+    1,
+    1515.0
+   ],
+   [
+    3,
+    2998.0
+   ],
+   [
+    5,
+    3489.0
+   ],
+   [
+    14,
+    5561.0
+   ],
+   [
+    28,
+    6229.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 6229.0,
+  "s1_meas": 1515.0,
+  "s7_meas": null,
+  "pred_1d": 1250.7,
+  "pred_28d": 5635.7,
+  "gwp": 158.66,
+  "cost": 71.75,
+  "on_pareto": false,
+  "pct_wb": 90.4,
+  "pct_scm_frac": 61.5,
+  "pct_binder": 78.8,
+  "pct_gwp": 59.6,
+  "pct_pred_28d": 46.2,
+  "pct_cost": 61.5,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "110": {
+  "mix": "C42",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 179,
+  "fly_ash": 0,
+  "slag": 191,
+  "water": 185,
+  "hrwr": 0,
+  "fine": 800,
+  "coarse": 1051,
+  "temp": 22,
+  "binder": 370,
+  "scm": 191,
+  "scm_frac": 0.5162,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.5,
+  "wc": 1.0335,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1851,
+  "coarse_frac": 0.5678,
+  "paste_frac_mass": 555,
+  "observations": [
+   [
+    1,
+    870.0
+   ],
+   [
+    3,
+    2009.0
+   ],
+   [
+    5,
+    2763.0
+   ],
+   [
+    14,
+    4372.0
+   ],
+   [
+    28,
+    4906.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 4906.0,
+  "s1_meas": 870.0,
+  "s7_meas": null,
+  "pred_1d": 822.0,
+  "pred_28d": 4980.1,
+  "gwp": 158.54,
+  "cost": 70.81,
+  "on_pareto": false,
+  "pct_wb": 94.2,
+  "pct_scm_frac": 61.5,
+  "pct_binder": 78.8,
+  "pct_gwp": 57.7,
+  "pct_pred_28d": 26.9,
+  "pct_cost": 55.8,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "111": {
+  "mix": "C43",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 162,
+  "fly_ash": 0,
+  "slag": 172,
+  "water": 130,
+  "hrwr": 0.77,
+  "fine": 961,
+  "coarse": 1068,
+  "temp": 22,
+  "binder": 334,
+  "scm": 172,
+  "scm_frac": 0.515,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.3892,
+  "wc": 0.8025,
+  "hrwr_pct_binder": 0.231,
+  "agg_total": 2029,
+  "coarse_frac": 0.5264,
+  "paste_frac_mass": 464,
+  "observations": [
+   [
+    1,
+    1277.0
+   ],
+   [
+    3,
+    2901.0
+   ],
+   [
+    5,
+    3793.0
+   ],
+   [
+    14,
+    5092.0
+   ],
+   [
+    28,
+    5650.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5650.0,
+  "s1_meas": 1277.0,
+  "s7_meas": null,
+  "pred_1d": 1740.4,
+  "pred_28d": 6633.8,
+  "gwp": 146.41,
+  "cost": 72.73,
+  "on_pareto": false,
+  "pct_wb": 9.6,
+  "pct_scm_frac": 55.8,
+  "pct_binder": 30.8,
+  "pct_gwp": 46.2,
+  "pct_pred_28d": 76.9,
+  "pct_cost": 69.2,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "112": {
+  "mix": "C44",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 144,
+  "fly_ash": 0,
+  "slag": 153,
+  "water": 131,
+  "hrwr": 0.77,
+  "fine": 977,
+  "coarse": 1085,
+  "temp": 22,
+  "binder": 297,
+  "scm": 153,
+  "scm_frac": 0.5152,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.4411,
+  "wc": 0.9097,
+  "hrwr_pct_binder": 0.259,
+  "agg_total": 2062,
+  "coarse_frac": 0.5262,
+  "paste_frac_mass": 428,
+  "observations": [
+   [
+    1,
+    1559.0
+   ],
+   [
+    3,
+    2997.0
+   ],
+   [
+    5,
+    3992.0
+   ],
+   [
+    14,
+    5741.0
+   ],
+   [
+    28,
+    6259.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 6259.0,
+  "s1_meas": 1559.0,
+  "s7_meas": null,
+  "pred_1d": 1274.3,
+  "pred_28d": 5716.1,
+  "gwp": 130.82,
+  "cost": 69.44,
+  "on_pareto": false,
+  "pct_wb": 86.5,
+  "pct_scm_frac": 57.7,
+  "pct_binder": 9.6,
+  "pct_gwp": 26.9,
+  "pct_pred_28d": 50.0,
+  "pct_cost": 46.2,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "113": {
+  "mix": "C45",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 126,
+  "fly_ash": 0,
+  "slag": 134,
+  "water": 130,
+  "hrwr": 1.28,
+  "fine": 992,
+  "coarse": 1103,
+  "temp": 22,
+  "binder": 260,
+  "scm": 134,
+  "scm_frac": 0.5154,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.5,
+  "wc": 1.0317,
+  "hrwr_pct_binder": 0.492,
+  "agg_total": 2095,
+  "coarse_frac": 0.5265,
+  "paste_frac_mass": 390,
+  "observations": [
+   [
+    1,
+    710.0
+   ],
+   [
+    3,
+    2009.0
+   ],
+   [
+    5,
+    2926.0
+   ],
+   [
+    14,
+    4455.0
+   ],
+   [
+    28,
+    5021.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5021.0,
+  "s1_meas": 710.0,
+  "s7_meas": null,
+  "pred_1d": 1033.3,
+  "pred_28d": 5263.3,
+  "gwp": 116.78,
+  "cost": 67.66,
+  "on_pareto": false,
+  "pct_wb": 94.2,
+  "pct_scm_frac": 59.6,
+  "pct_binder": 0.0,
+  "pct_gwp": 19.2,
+  "pct_pred_28d": 34.6,
+  "pct_cost": 32.7,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "114": {
+  "mix": "C46",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 210,
+  "fly_ash": 0,
+  "slag": 86,
+  "water": 130,
+  "hrwr": 1.28,
+  "fine": 895,
+  "coarse": 1166,
+  "temp": 22,
+  "binder": 296,
+  "scm": 86,
+  "scm_frac": 0.2905,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.4392,
+  "wc": 0.619,
+  "hrwr_pct_binder": 0.432,
+  "agg_total": 2061,
+  "coarse_frac": 0.5657,
+  "paste_frac_mass": 426,
+  "observations": [
+   [
+    1,
+    2253.0
+   ],
+   [
+    3,
+    3291.0
+   ],
+   [
+    5,
+    4182.0
+   ],
+   [
+    14,
+    5250.0
+   ],
+   [
+    28,
+    5991.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5991.0,
+  "s1_meas": 2253.0,
+  "s7_meas": null,
+  "pred_1d": 2207.6,
+  "pred_28d": 6730.8,
+  "gwp": 177.2,
+  "cost": 72.43,
+  "on_pareto": false,
+  "pct_wb": 69.2,
+  "pct_scm_frac": 3.8,
+  "pct_binder": 3.8,
+  "pct_gwp": 71.2,
+  "pct_pred_28d": 78.8,
+  "pct_cost": 65.4,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "115": {
+  "mix": "C47",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 210,
+  "fly_ash": 0,
+  "slag": 86,
+  "water": 130,
+  "hrwr": 1.02,
+  "fine": 895,
+  "coarse": 1166,
+  "temp": 10,
+  "binder": 296,
+  "scm": 86,
+  "scm_frac": 0.2905,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.4392,
+  "wc": 0.619,
+  "hrwr_pct_binder": 0.345,
+  "agg_total": 2061,
+  "coarse_frac": 0.5657,
+  "paste_frac_mass": 426,
+  "observations": [
+   [
+    1,
+    1599.0
+   ],
+   [
+    3,
+    2203.0
+   ],
+   [
+    5,
+    3017.0
+   ],
+   [
+    14,
+    4510.0
+   ],
+   [
+    28,
+    5522.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5522.0,
+  "s1_meas": 1599.0,
+  "s7_meas": null,
+  "pred_1d": 1104.8,
+  "pred_28d": 5588.3,
+  "gwp": 176.42,
+  "cost": 71.65,
+  "on_pareto": false,
+  "pct_wb": 69.2,
+  "pct_scm_frac": 3.8,
+  "pct_binder": 3.8,
+  "pct_gwp": 69.2,
+  "pct_pred_28d": 42.3,
+  "pct_cost": 59.6,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "116": {
+  "mix": "C48",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 180,
+  "fly_ash": 30,
+  "slag": 90,
+  "water": 132,
+  "hrwr": 0.5,
+  "fine": 895,
+  "coarse": 1166,
+  "temp": 22,
+  "binder": 300,
+  "scm": 120,
+  "scm_frac": 0.4,
+  "slag_frac_of_scm": 0.75,
+  "wb": 0.44,
+  "wc": 0.7333,
+  "hrwr_pct_binder": 0.167,
+  "agg_total": 2061,
+  "coarse_frac": 0.5657,
+  "paste_frac_mass": 432,
+  "observations": [
+   [
+    1,
+    1388.0
+   ],
+   [
+    3,
+    2669.0
+   ],
+   [
+    5,
+    3411.0
+   ],
+   [
+    14,
+    4969.0
+   ],
+   [
+    28,
+    5370.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5370.0,
+  "s1_meas": 1388.0,
+  "s7_meas": null,
+  "pred_1d": 1237.0,
+  "pred_28d": 5402.3,
+  "gwp": 153.13,
+  "cost": 68.05,
+  "on_pareto": false,
+  "pct_wb": 75.0,
+  "pct_scm_frac": 26.9,
+  "pct_binder": 11.5,
+  "pct_gwp": 50.0,
+  "pct_pred_28d": 40.4,
+  "pct_cost": 36.5,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "117": {
+  "mix": "C49",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 150,
+  "fly_ash": 60,
+  "slag": 90,
+  "water": 132,
+  "hrwr": 0.75,
+  "fine": 895,
+  "coarse": 1166,
+  "temp": 22,
+  "binder": 300,
+  "scm": 150,
+  "scm_frac": 0.5,
+  "slag_frac_of_scm": 0.6,
+  "wb": 0.44,
+  "wc": 0.88,
+  "hrwr_pct_binder": 0.25,
+  "agg_total": 2061,
+  "coarse_frac": 0.5657,
+  "paste_frac_mass": 432,
+  "observations": [
+   [
+    1,
+    1038.0
+   ],
+   [
+    3,
+    2414.0
+   ],
+   [
+    5,
+    2999.0
+   ],
+   [
+    14,
+    4921.0
+   ],
+   [
+    28,
+    5137.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5137.0,
+  "s1_meas": 1038.0,
+  "s7_meas": null,
+  "pred_1d": 872.9,
+  "pred_28d": 5112.6,
+  "gwp": 131.79,
+  "cost": 66.4,
+  "on_pareto": false,
+  "pct_wb": 75.0,
+  "pct_scm_frac": 46.2,
+  "pct_binder": 11.5,
+  "pct_gwp": 28.8,
+  "pct_pred_28d": 28.8,
+  "pct_cost": 26.9,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "118": {
+  "mix": "C50",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 150,
+  "fly_ash": 30,
+  "slag": 120,
+  "water": 132,
+  "hrwr": 1.25,
+  "fine": 895,
+  "coarse": 1166,
+  "temp": 22,
+  "binder": 300,
+  "scm": 150,
+  "scm_frac": 0.5,
+  "slag_frac_of_scm": 0.8,
+  "wb": 0.44,
+  "wc": 0.88,
+  "hrwr_pct_binder": 0.417,
+  "agg_total": 2061,
+  "coarse_frac": 0.5657,
+  "paste_frac_mass": 432,
+  "observations": [
+   [
+    1,
+    1168.0
+   ],
+   [
+    3,
+    3209.0
+   ],
+   [
+    5,
+    4017.0
+   ],
+   [
+    14,
+    5528.0
+   ],
+   [
+    28,
+    6162.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 6162.0,
+  "s1_meas": 1168.0,
+  "s7_meas": null,
+  "pred_1d": 1284.0,
+  "pred_28d": 5995.0,
+  "gwp": 135.15,
+  "cost": 69.4,
+  "on_pareto": false,
+  "pct_wb": 75.0,
+  "pct_scm_frac": 46.2,
+  "pct_binder": 11.5,
+  "pct_gwp": 34.6,
+  "pct_pred_28d": 59.6,
+  "pct_cost": 44.2,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "119": {
+  "mix": "C51",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 210,
+  "fly_ash": 0,
+  "slag": 90,
+  "water": 120,
+  "hrwr": 2,
+  "fine": 895,
+  "coarse": 1166,
+  "temp": 22,
+  "binder": 300,
+  "scm": 90,
+  "scm_frac": 0.3,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.4,
+  "wc": 0.5714,
+  "hrwr_pct_binder": 0.667,
+  "agg_total": 2061,
+  "coarse_frac": 0.5657,
+  "paste_frac_mass": 420,
+  "observations": [
+   [
+    1,
+    2973.0
+   ],
+   [
+    3,
+    4867.0
+   ],
+   [
+    5,
+    5982.0
+   ],
+   [
+    14,
+    7546.0
+   ],
+   [
+    28,
+    8242.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 8242.0,
+  "s1_meas": 2973.0,
+  "s7_meas": null,
+  "pred_1d": 2751.9,
+  "pred_28d": 7806.6,
+  "gwp": 179.82,
+  "cost": 74.93,
+  "on_pareto": false,
+  "pct_wb": 42.3,
+  "pct_scm_frac": 19.2,
+  "pct_binder": 11.5,
+  "pct_gwp": 76.9,
+  "pct_pred_28d": 92.3,
+  "pct_cost": 80.8,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "120": {
+  "mix": "C52",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 180,
+  "fly_ash": 30,
+  "slag": 90,
+  "water": 120,
+  "hrwr": 1.25,
+  "fine": 895,
+  "coarse": 1166,
+  "temp": 22,
+  "binder": 300,
+  "scm": 120,
+  "scm_frac": 0.4,
+  "slag_frac_of_scm": 0.75,
+  "wb": 0.4,
+  "wc": 0.6667,
+  "hrwr_pct_binder": 0.417,
+  "agg_total": 2061,
+  "coarse_frac": 0.5657,
+  "paste_frac_mass": 420,
+  "observations": [
+   [
+    1,
+    1634.0
+   ],
+   [
+    3,
+    3244.0
+   ],
+   [
+    5,
+    4208.0
+   ],
+   [
+    14,
+    6282.0
+   ],
+   [
+    28,
+    6559.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 6559.0,
+  "s1_meas": 1634.0,
+  "s7_meas": null,
+  "pred_1d": 1889.0,
+  "pred_28d": 6782.6,
+  "gwp": 155.48,
+  "cost": 70.28,
+  "on_pareto": false,
+  "pct_wb": 42.3,
+  "pct_scm_frac": 26.9,
+  "pct_binder": 11.5,
+  "pct_gwp": 55.8,
+  "pct_pred_28d": 80.8,
+  "pct_cost": 53.8,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "121": {
+  "mix": "C53",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 150,
+  "fly_ash": 60,
+  "slag": 90,
+  "water": 120,
+  "hrwr": 1,
+  "fine": 895,
+  "coarse": 1166,
+  "temp": 22,
+  "binder": 300,
+  "scm": 150,
+  "scm_frac": 0.5,
+  "slag_frac_of_scm": 0.6,
+  "wb": 0.4,
+  "wc": 0.8,
+  "hrwr_pct_binder": 0.333,
+  "agg_total": 2061,
+  "coarse_frac": 0.5657,
+  "paste_frac_mass": 420,
+  "observations": [
+   [
+    1,
+    1126.0
+   ],
+   [
+    3,
+    2632.0
+   ],
+   [
+    5,
+    3552.0
+   ],
+   [
+    14,
+    5107.0
+   ],
+   [
+    28,
+    5680.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5680.0,
+  "s1_meas": 1126.0,
+  "s7_meas": null,
+  "pred_1d": 1307.0,
+  "pred_28d": 5978.0,
+  "gwp": 132.65,
+  "cost": 67.13,
+  "on_pareto": false,
+  "pct_wb": 42.3,
+  "pct_scm_frac": 46.2,
+  "pct_binder": 11.5,
+  "pct_gwp": 30.8,
+  "pct_pred_28d": 57.7,
+  "pct_cost": 28.8,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "122": {
+  "mix": "C54",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 150,
+  "fly_ash": 30,
+  "slag": 120,
+  "water": 120,
+  "hrwr": 1.25,
+  "fine": 895,
+  "coarse": 1166,
+  "temp": 22,
+  "binder": 300,
+  "scm": 150,
+  "scm_frac": 0.5,
+  "slag_frac_of_scm": 0.8,
+  "wb": 0.4,
+  "wc": 0.8,
+  "hrwr_pct_binder": 0.417,
+  "agg_total": 2061,
+  "coarse_frac": 0.5657,
+  "paste_frac_mass": 420,
+  "observations": [
+   [
+    1,
+    1675.0
+   ],
+   [
+    3,
+    3610.0
+   ],
+   [
+    5,
+    4781.0
+   ],
+   [
+    14,
+    6695.0
+   ],
+   [
+    28,
+    7112.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 7112.0,
+  "s1_meas": 1675.0,
+  "s7_meas": null,
+  "pred_1d": 1623.2,
+  "pred_28d": 6613.6,
+  "gwp": 135.26,
+  "cost": 69.38,
+  "on_pareto": false,
+  "pct_wb": 42.3,
+  "pct_scm_frac": 46.2,
+  "pct_binder": 11.5,
+  "pct_gwp": 36.5,
+  "pct_pred_28d": 75.0,
+  "pct_cost": 42.3,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "123": {
+  "mix": "C55",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 245,
+  "fly_ash": 0,
+  "slag": 105,
+  "water": 154,
+  "hrwr": 0.88,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 350,
+  "scm": 105,
+  "scm_frac": 0.3,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.44,
+  "wc": 0.6286,
+  "hrwr_pct_binder": 0.251,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 504,
+  "observations": [
+   [
+    1,
+    2829.0
+   ],
+   [
+    3,
+    4073.0
+   ],
+   [
+    5,
+    4631.0
+   ],
+   [
+    14,
+    5868.0
+   ],
+   [
+    28,
+    6687.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 6687.0,
+  "s1_meas": 2829.0,
+  "s7_meas": null,
+  "pred_1d": 2156.5,
+  "pred_28d": 6516.7,
+  "gwp": 204.25,
+  "cost": 75.21,
+  "on_pareto": false,
+  "pct_wb": 75.0,
+  "pct_scm_frac": 19.2,
+  "pct_binder": 34.6,
+  "pct_gwp": 90.4,
+  "pct_pred_28d": 71.2,
+  "pct_cost": 82.7,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "124": {
+  "mix": "C56",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 210,
+  "fly_ash": 30,
+  "slag": 60,
+  "water": 131.25,
+  "hrwr": 0.87,
+  "fine": 895,
+  "coarse": 1166,
+  "temp": 22,
+  "binder": 300,
+  "scm": 90,
+  "scm_frac": 0.3,
+  "slag_frac_of_scm": 0.6667,
+  "wb": 0.4375,
+  "wc": 0.625,
+  "hrwr_pct_binder": 0.29,
+  "agg_total": 2061,
+  "coarse_frac": 0.5657,
+  "paste_frac_mass": 431.2,
+  "observations": [
+   [
+    1,
+    1575.0
+   ],
+   [
+    3,
+    3040.0
+   ],
+   [
+    5,
+    3353.0
+   ],
+   [
+    14,
+    4776.0
+   ],
+   [
+    28,
+    5968.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5968.0,
+  "s1_meas": 1575.0,
+  "s7_meas": null,
+  "pred_1d": 1709.9,
+  "pred_28d": 5963.5,
+  "gwp": 174.48,
+  "cost": 70.06,
+  "on_pareto": false,
+  "pct_wb": 65.4,
+  "pct_scm_frac": 19.2,
+  "pct_binder": 11.5,
+  "pct_gwp": 65.4,
+  "pct_pred_28d": 55.8,
+  "pct_cost": 51.9,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "125": {
+  "mix": "C57",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 180,
+  "fly_ash": 30,
+  "slag": 90,
+  "water": 131.25,
+  "hrwr": 0.87,
+  "fine": 895,
+  "coarse": 1166,
+  "temp": 22,
+  "binder": 300,
+  "scm": 120,
+  "scm_frac": 0.4,
+  "slag_frac_of_scm": 0.75,
+  "wb": 0.4375,
+  "wc": 0.7292,
+  "hrwr_pct_binder": 0.29,
+  "agg_total": 2061,
+  "coarse_frac": 0.5657,
+  "paste_frac_mass": 431.2,
+  "observations": [
+   [
+    1,
+    1882.0
+   ],
+   [
+    3,
+    2506.0
+   ],
+   [
+    5,
+    3067.0
+   ],
+   [
+    14,
+    4422.0
+   ],
+   [
+    28,
+    5490.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5490.0,
+  "s1_meas": 1882.0,
+  "s7_meas": null,
+  "pred_1d": 1417.6,
+  "pred_28d": 5852.9,
+  "gwp": 154.25,
+  "cost": 69.16,
+  "on_pareto": false,
+  "pct_wb": 65.4,
+  "pct_scm_frac": 26.9,
+  "pct_binder": 11.5,
+  "pct_gwp": 51.9,
+  "pct_pred_28d": 53.8,
+  "pct_cost": 40.4,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "126": {
+  "mix": "C58",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 180,
+  "fly_ash": 30,
+  "slag": 90,
+  "water": 120,
+  "hrwr": 0.87,
+  "fine": 912,
+  "coarse": 1179,
+  "temp": 22,
+  "binder": 300,
+  "scm": 120,
+  "scm_frac": 0.4,
+  "slag_frac_of_scm": 0.75,
+  "wb": 0.4,
+  "wc": 0.6667,
+  "hrwr_pct_binder": 0.29,
+  "agg_total": 2091,
+  "coarse_frac": 0.5638,
+  "paste_frac_mass": 420,
+  "observations": [
+   [
+    1,
+    1460.0
+   ],
+   [
+    3,
+    3115.0
+   ],
+   [
+    5,
+    4107.0
+   ],
+   [
+    14,
+    5449.0
+   ],
+   [
+    28,
+    6425.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 6425.0,
+  "s1_meas": 1460.0,
+  "s7_meas": null,
+  "pred_1d": 1726.1,
+  "pred_28d": 6394.4,
+  "gwp": 154.39,
+  "cost": 69.68,
+  "on_pareto": false,
+  "pct_wb": 42.3,
+  "pct_scm_frac": 26.9,
+  "pct_binder": 11.5,
+  "pct_gwp": 53.8,
+  "pct_pred_28d": 69.2,
+  "pct_cost": 48.1,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "127": {
+  "mix": "C59",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 245,
+  "fly_ash": 35,
+  "slag": 70,
+  "water": 154,
+  "hrwr": 0.69,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 350,
+  "scm": 105,
+  "scm_frac": 0.3,
+  "slag_frac_of_scm": 0.6667,
+  "wb": 0.44,
+  "wc": 0.6286,
+  "hrwr_pct_binder": 0.197,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 504,
+  "observations": [
+   [
+    1,
+    1593.0
+   ],
+   [
+    3,
+    2891.0
+   ],
+   [
+    5,
+    3531.0
+   ],
+   [
+    14,
+    4790.0
+   ],
+   [
+    28,
+    5679.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5679.0,
+  "s1_meas": 1593.0,
+  "s7_meas": null,
+  "pred_1d": 1686.3,
+  "pred_28d": 5814.4,
+  "gwp": 201.51,
+  "cost": 72.89,
+  "on_pareto": false,
+  "pct_wb": 75.0,
+  "pct_scm_frac": 19.2,
+  "pct_binder": 34.6,
+  "pct_gwp": 86.5,
+  "pct_pred_28d": 51.9,
+  "pct_cost": 71.2,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "128": {
+  "mix": "C60",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 210,
+  "fly_ash": 35,
+  "slag": 105,
+  "water": 154,
+  "hrwr": 0.69,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 350,
+  "scm": 140,
+  "scm_frac": 0.4,
+  "slag_frac_of_scm": 0.75,
+  "wb": 0.44,
+  "wc": 0.7333,
+  "hrwr_pct_binder": 0.197,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 504,
+  "observations": [
+   [
+    1,
+    1246.0
+   ],
+   [
+    3,
+    2669.0
+   ],
+   [
+    5,
+    3424.0
+   ],
+   [
+    14,
+    4800.0
+   ],
+   [
+    28,
+    5881.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5881.0,
+  "s1_meas": 1246.0,
+  "s7_meas": null,
+  "pred_1d": 1323.7,
+  "pred_28d": 5700.0,
+  "gwp": 177.91,
+  "cost": 71.84,
+  "on_pareto": false,
+  "pct_wb": 75.0,
+  "pct_scm_frac": 26.9,
+  "pct_binder": 34.6,
+  "pct_gwp": 73.1,
+  "pct_pred_28d": 48.1,
+  "pct_cost": 63.5,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "129": {
+  "mix": "C61",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 210,
+  "fly_ash": 35,
+  "slag": 105,
+  "water": 140,
+  "hrwr": 0.69,
+  "fine": 865,
+  "coarse": 1117,
+  "temp": 22,
+  "binder": 350,
+  "scm": 140,
+  "scm_frac": 0.4,
+  "slag_frac_of_scm": 0.75,
+  "wb": 0.4,
+  "wc": 0.6667,
+  "hrwr_pct_binder": 0.197,
+  "agg_total": 1982,
+  "coarse_frac": 0.5636,
+  "paste_frac_mass": 490,
+  "observations": [
+   [
+    1,
+    1394.0
+   ],
+   [
+    3,
+    2428.0
+   ],
+   [
+    5,
+    3462.0
+   ],
+   [
+    14,
+    5466.0
+   ],
+   [
+    28,
+    5929.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5929.0,
+  "s1_meas": 1394.0,
+  "s7_meas": null,
+  "pred_1d": 1690.1,
+  "pred_28d": 6345.7,
+  "gwp": 178.1,
+  "cost": 72.45,
+  "on_pareto": false,
+  "pct_wb": 42.3,
+  "pct_scm_frac": 26.9,
+  "pct_binder": 34.6,
+  "pct_gwp": 75.0,
+  "pct_pred_28d": 67.3,
+  "pct_cost": 67.3,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "130": {
+  "mix": "C62",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 165,
+  "fly_ash": 186,
+  "slag": 0,
+  "water": 140,
+  "hrwr": 0,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 351,
+  "scm": 186,
+  "scm_frac": 0.5299,
+  "slag_frac_of_scm": 0.0,
+  "wb": 0.3989,
+  "wc": 0.8485,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 491,
+  "observations": [
+   [
+    1,
+    904.0
+   ],
+   [
+    3,
+    1874.0
+   ],
+   [
+    5,
+    2158.0
+   ],
+   [
+    14,
+    2872.0
+   ],
+   [
+    28,
+    3810.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 3810.0,
+  "s1_meas": 904.0,
+  "s7_meas": null,
+  "pred_1d": 1023.4,
+  "pred_28d": 3956.7,
+  "gwp": 136.36,
+  "cost": 60.94,
+  "on_pareto": false,
+  "pct_wb": 13.5,
+  "pct_scm_frac": 69.2,
+  "pct_binder": 53.8,
+  "pct_gwp": 38.5,
+  "pct_pred_28d": 7.7,
+  "pct_cost": 7.7,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "131": {
+  "mix": "C63",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 210,
+  "fly_ash": 0,
+  "slag": 140,
+  "water": 140,
+  "hrwr": 0.96,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 350,
+  "scm": 140,
+  "scm_frac": 0.4,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.4,
+  "wc": 0.6667,
+  "hrwr_pct_binder": 0.274,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 490,
+  "observations": [
+   [
+    1,
+    2027.0
+   ],
+   [
+    3,
+    3481.0
+   ],
+   [
+    5,
+    4468.0
+   ],
+   [
+    14,
+    5648.0
+   ],
+   [
+    28,
+    6457.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 6457.0,
+  "s1_meas": 2027.0,
+  "s7_meas": null,
+  "pred_1d": 2195.6,
+  "pred_28d": 7136.3,
+  "gwp": 181.01,
+  "cost": 74.38,
+  "on_pareto": false,
+  "pct_wb": 42.3,
+  "pct_scm_frac": 26.9,
+  "pct_binder": 34.6,
+  "pct_gwp": 78.8,
+  "pct_pred_28d": 84.6,
+  "pct_cost": 78.8,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "132": {
+  "mix": "C64",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 305,
+  "fly_ash": 0,
+  "slag": 46,
+  "water": 140,
+  "hrwr": 0.55,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 351,
+  "scm": 46,
+  "scm_frac": 0.1311,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.3989,
+  "wc": 0.459,
+  "hrwr_pct_binder": 0.157,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 491,
+  "observations": [
+   [
+    1,
+    3391.0
+   ],
+   [
+    3,
+    4920.0
+   ],
+   [
+    5,
+    5275.0
+   ],
+   [
+    14,
+    6854.0
+   ],
+   [
+    28,
+    7137.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 7137.0,
+  "s1_meas": 3391.0,
+  "s7_meas": null,
+  "pred_1d": 3157.6,
+  "pred_28d": 7138.9,
+  "gwp": 243.94,
+  "cost": 76.09,
+  "on_pareto": false,
+  "pct_wb": 13.5,
+  "pct_scm_frac": 0.0,
+  "pct_binder": 53.8,
+  "pct_gwp": 100.0,
+  "pct_pred_28d": 86.5,
+  "pct_cost": 86.5,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "133": {
+  "mix": "C65",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 95,
+  "fly_ash": 0,
+  "slag": 256,
+  "water": 140,
+  "hrwr": 0.55,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 351,
+  "scm": 256,
+  "scm_frac": 0.7293,
+  "slag_frac_of_scm": 1.0,
+  "wb": 0.3989,
+  "wc": 1.4737,
+  "hrwr_pct_binder": 0.157,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 491,
+  "observations": [
+   [
+    1,
+    838.0
+   ],
+   [
+    3,
+    2225.0
+   ],
+   [
+    5,
+    3020.0
+   ],
+   [
+    14,
+    4505.0
+   ],
+   [
+    28,
+    4902.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 4902.0,
+  "s1_meas": 838.0,
+  "s7_meas": null,
+  "pred_1d": 902.5,
+  "pred_28d": 5363.6,
+  "gwp": 102.33,
+  "cost": 69.78,
+  "on_pareto": false,
+  "pct_wb": 13.5,
+  "pct_scm_frac": 88.5,
+  "pct_binder": 53.8,
+  "pct_gwp": 11.5,
+  "pct_pred_28d": 38.5,
+  "pct_cost": 50.0,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "134": {
+  "mix": "C66",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 105,
+  "fly_ash": 21,
+  "slag": 224,
+  "water": 166,
+  "hrwr": 0,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 350,
+  "scm": 245,
+  "scm_frac": 0.7,
+  "slag_frac_of_scm": 0.9143,
+  "wb": 0.4743,
+  "wc": 1.581,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 516,
+  "observations": [
+   [
+    1,
+    611.0
+   ],
+   [
+    3,
+    1624.0
+   ],
+   [
+    5,
+    2269.0
+   ],
+   [
+    14,
+    3470.0
+   ],
+   [
+    28,
+    4064.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 4064.0,
+  "s1_meas": 611.0,
+  "s7_meas": null,
+  "pred_1d": 532.4,
+  "pred_28d": 4394.7,
+  "gwp": 105.81,
+  "cost": 67.35,
+  "on_pareto": false,
+  "pct_wb": 92.3,
+  "pct_scm_frac": 86.5,
+  "pct_binder": 34.6,
+  "pct_gwp": 15.4,
+  "pct_pred_28d": 13.5,
+  "pct_cost": 30.8,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "135": {
+  "mix": "C67",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 126,
+  "fly_ash": 35,
+  "slag": 189,
+  "water": 140,
+  "hrwr": 0.55,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 350,
+  "scm": 224,
+  "scm_frac": 0.64,
+  "slag_frac_of_scm": 0.8438,
+  "wb": 0.4,
+  "wc": 1.1111,
+  "hrwr_pct_binder": 0.157,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 490,
+  "observations": [
+   [
+    1,
+    1178.0
+   ],
+   [
+    3,
+    2465.0
+   ],
+   [
+    5,
+    3198.0
+   ],
+   [
+    14,
+    4906.0
+   ],
+   [
+    28,
+    5749.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5749.0,
+  "s1_meas": 1178.0,
+  "s7_meas": null,
+  "pred_1d": 983.2,
+  "pred_28d": 5633.7,
+  "gwp": 120.97,
+  "cost": 68.88,
+  "on_pareto": false,
+  "pct_wb": 42.3,
+  "pct_scm_frac": 82.7,
+  "pct_binder": 34.6,
+  "pct_gwp": 21.2,
+  "pct_pred_28d": 44.2,
+  "pct_cost": 38.5,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "136": {
+  "mix": "C68",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 63,
+  "fly_ash": 56,
+  "slag": 231,
+  "water": 140,
+  "hrwr": 0.55,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 350,
+  "scm": 287,
+  "scm_frac": 0.82,
+  "slag_frac_of_scm": 0.8049,
+  "wb": 0.4,
+  "wc": 2.2222,
+  "hrwr_pct_binder": 0.157,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 490,
+  "observations": [
+   [
+    1,
+    464.0
+   ],
+   [
+    3,
+    1605.0
+   ],
+   [
+    5,
+    2414.0
+   ],
+   [
+    14,
+    3579.0
+   ],
+   [
+    28,
+    4293.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 4293.0,
+  "s1_meas": 464.0,
+  "s7_meas": null,
+  "pred_1d": 343.7,
+  "pred_28d": 4452.3,
+  "gwp": 77.19,
+  "cost": 65.94,
+  "on_pareto": false,
+  "pct_wb": 42.3,
+  "pct_scm_frac": 100.0,
+  "pct_binder": 34.6,
+  "pct_gwp": 1.9,
+  "pct_pred_28d": 15.4,
+  "pct_cost": 23.1,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "137": {
+  "mix": "C69",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 95,
+  "fly_ash": 67,
+  "slag": 189,
+  "water": 140,
+  "hrwr": 0.41,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 351,
+  "scm": 256,
+  "scm_frac": 0.7293,
+  "slag_frac_of_scm": 0.7383,
+  "wb": 0.3989,
+  "wc": 1.4737,
+  "hrwr_pct_binder": 0.117,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 491,
+  "observations": [
+   [
+    1,
+    709.0
+   ],
+   [
+    3,
+    1767.0
+   ],
+   [
+    5,
+    2570.0
+   ],
+   [
+    14,
+    3774.0
+   ],
+   [
+    28,
+    4985.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 4985.0,
+  "s1_meas": 709.0,
+  "s7_meas": null,
+  "pred_1d": 545.5,
+  "pred_28d": 4776.1,
+  "gwp": 97.76,
+  "cost": 66.02,
+  "on_pareto": false,
+  "pct_wb": 13.5,
+  "pct_scm_frac": 88.5,
+  "pct_binder": 53.8,
+  "pct_gwp": 9.6,
+  "pct_pred_28d": 25.0,
+  "pct_cost": 25.0,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "138": {
+  "mix": "C70",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 130,
+  "fly_ash": 154,
+  "slag": 67,
+  "water": 140,
+  "hrwr": 0,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 351,
+  "scm": 221,
+  "scm_frac": 0.6296,
+  "slag_frac_of_scm": 0.3032,
+  "wb": 0.3989,
+  "wc": 1.0769,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 491,
+  "observations": [
+   [
+    1,
+    502.0
+   ],
+   [
+    3,
+    943.0
+   ],
+   [
+    5,
+    1365.0
+   ],
+   [
+    14,
+    2360.0
+   ],
+   [
+    28,
+    3349.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 3349.0,
+  "s1_meas": 502.0,
+  "s7_meas": null,
+  "pred_1d": 828.4,
+  "pred_28d": 4130.0,
+  "gwp": 114.75,
+  "cost": 61.48,
+  "on_pareto": false,
+  "pct_wb": 13.5,
+  "pct_scm_frac": 80.8,
+  "pct_binder": 53.8,
+  "pct_gwp": 17.3,
+  "pct_pred_28d": 11.5,
+  "pct_cost": 11.5,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "139": {
+  "mix": "C71",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 81,
+  "fly_ash": 144,
+  "slag": 126,
+  "water": 140,
+  "hrwr": 0,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 351,
+  "scm": 270,
+  "scm_frac": 0.7692,
+  "slag_frac_of_scm": 0.4667,
+  "wb": 0.3989,
+  "wc": 1.7284,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 491,
+  "observations": [
+   [
+    1,
+    507.0
+   ],
+   [
+    3,
+    1216.0
+   ],
+   [
+    5,
+    1938.0
+   ],
+   [
+    14,
+    3065.0
+   ],
+   [
+    28,
+    3722.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 3722.0,
+  "s1_meas": 507.0,
+  "s7_meas": null,
+  "pred_1d": 542.5,
+  "pred_28d": 3891.6,
+  "gwp": 82.32,
+  "cost": 60.52,
+  "on_pareto": false,
+  "pct_wb": 13.5,
+  "pct_scm_frac": 92.3,
+  "pct_binder": 53.8,
+  "pct_gwp": 5.8,
+  "pct_pred_28d": 5.8,
+  "pct_cost": 5.8,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "140": {
+  "mix": "C72",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 70,
+  "fly_ash": 235,
+  "slag": 46,
+  "water": 140,
+  "hrwr": 0,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 351,
+  "scm": 281,
+  "scm_frac": 0.8006,
+  "slag_frac_of_scm": 0.1637,
+  "wb": 0.3989,
+  "wc": 2.0,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 491,
+  "observations": [
+   [
+    1,
+    330.0
+   ],
+   [
+    3,
+    646.0
+   ],
+   [
+    5,
+    974.0
+   ],
+   [
+    14,
+    2008.0
+   ],
+   [
+    28,
+    2649.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 2649.0,
+  "s1_meas": 330.0,
+  "s7_meas": null,
+  "pred_1d": 272.0,
+  "pred_28d": 2774.9,
+  "gwp": 69.27,
+  "cost": 55.63,
+  "on_pareto": false,
+  "pct_wb": 13.5,
+  "pct_scm_frac": 98.1,
+  "pct_binder": 53.8,
+  "pct_gwp": 0.0,
+  "pct_pred_28d": 0.0,
+  "pct_cost": 0.0,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "141": {
+  "mix": "C73",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 116,
+  "fly_ash": 196,
+  "slag": 39,
+  "water": 140,
+  "hrwr": 0,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 351,
+  "scm": 235,
+  "scm_frac": 0.6695,
+  "slag_frac_of_scm": 0.166,
+  "wb": 0.3989,
+  "wc": 1.2069,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 491,
+  "observations": [
+   [
+    1,
+    786.0
+   ],
+   [
+    3,
+    1216.0
+   ],
+   [
+    5,
+    1642.0
+   ],
+   [
+    14,
+    2908.0
+   ],
+   [
+    28,
+    3683.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 3683.0,
+  "s1_meas": 786.0,
+  "s7_meas": null,
+  "pred_1d": 689.3,
+  "pred_28d": 3540.7,
+  "gwp": 102.7,
+  "cost": 58.97,
+  "on_pareto": false,
+  "pct_wb": 13.5,
+  "pct_scm_frac": 84.6,
+  "pct_binder": 53.8,
+  "pct_gwp": 13.5,
+  "pct_pred_28d": 3.8,
+  "pct_cost": 3.8,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "142": {
+  "mix": "C74",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 81,
+  "fly_ash": 186,
+  "slag": 84,
+  "water": 140,
+  "hrwr": 0,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 351,
+  "scm": 270,
+  "scm_frac": 0.7692,
+  "slag_frac_of_scm": 0.3111,
+  "wb": 0.3989,
+  "wc": 1.7284,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 491,
+  "observations": [
+   [
+    1,
+    519.0
+   ],
+   [
+    3,
+    948.0
+   ],
+   [
+    5,
+    1405.0
+   ],
+   [
+    14,
+    2997.0
+   ],
+   [
+    28,
+    3742.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 3742.0,
+  "s1_meas": 519.0,
+  "s7_meas": null,
+  "pred_1d": 447.9,
+  "pred_28d": 3377.1,
+  "gwp": 79.72,
+  "cost": 58.41,
+  "on_pareto": false,
+  "pct_wb": 13.5,
+  "pct_scm_frac": 92.3,
+  "pct_binder": 53.8,
+  "pct_gwp": 3.8,
+  "pct_pred_28d": 1.9,
+  "pct_cost": 1.9,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "143": {
+  "mix": "C75",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 147,
+  "fly_ash": 172,
+  "slag": 32,
+  "water": 140,
+  "hrwr": 0,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 351,
+  "scm": 204,
+  "scm_frac": 0.5812,
+  "slag_frac_of_scm": 0.1569,
+  "wb": 0.3989,
+  "wc": 0.9524,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 491,
+  "observations": [
+   [
+    1,
+    1100.0
+   ],
+   [
+    3,
+    1583.0
+   ],
+   [
+    5,
+    2073.0
+   ],
+   [
+    14,
+    3243.0
+   ],
+   [
+    28,
+    4067.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 4067.0,
+  "s1_meas": 1100.0,
+  "s7_meas": null,
+  "pred_1d": 916.5,
+  "pred_28d": 3995.7,
+  "gwp": 125.09,
+  "cost": 61.09,
+  "on_pareto": false,
+  "pct_wb": 13.5,
+  "pct_scm_frac": 75.0,
+  "pct_binder": 53.8,
+  "pct_gwp": 25.0,
+  "pct_pred_28d": 9.6,
+  "pct_cost": 9.6,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "144": {
+  "mix": "C76",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 175,
+  "fly_ash": 140,
+  "slag": 35,
+  "water": 140,
+  "hrwr": 0,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 350,
+  "scm": 175,
+  "scm_frac": 0.5,
+  "slag_frac_of_scm": 0.2,
+  "wb": 0.4,
+  "wc": 0.8,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 490,
+  "observations": [
+   [
+    1,
+    1355.0
+   ],
+   [
+    3,
+    1931.0
+   ],
+   [
+    5,
+    2561.0
+   ],
+   [
+    14,
+    3772.0
+   ],
+   [
+    28,
+    4420.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 4420.0,
+  "s1_meas": 1355.0,
+  "s7_meas": null,
+  "pred_1d": 1116.1,
+  "pred_28d": 4538.7,
+  "gwp": 145.86,
+  "cost": 63.45,
+  "on_pareto": false,
+  "pct_wb": 42.3,
+  "pct_scm_frac": 46.2,
+  "pct_binder": 34.6,
+  "pct_gwp": 44.2,
+  "pct_pred_28d": 17.3,
+  "pct_cost": 17.3,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "145": {
+  "mix": "C77",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 158,
+  "fly_ash": 133,
+  "slag": 60,
+  "water": 140,
+  "hrwr": 0,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 351,
+  "scm": 193,
+  "scm_frac": 0.5499,
+  "slag_frac_of_scm": 0.3109,
+  "wb": 0.3989,
+  "wc": 0.8861,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 491,
+  "observations": [
+   [
+    1,
+    1421.0
+   ],
+   [
+    3,
+    2207.0
+   ],
+   [
+    5,
+    2633.0
+   ],
+   [
+    14,
+    4119.0
+   ],
+   [
+    28,
+    4891.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 4891.0,
+  "s1_meas": 1421.0,
+  "s7_meas": null,
+  "pred_1d": 1025.5,
+  "pred_28d": 4576.8,
+  "gwp": 134.93,
+  "cost": 63.38,
+  "on_pareto": false,
+  "pct_wb": 13.5,
+  "pct_scm_frac": 73.1,
+  "pct_binder": 53.8,
+  "pct_gwp": 32.7,
+  "pct_pred_28d": 19.2,
+  "pct_cost": 15.4,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "146": {
+  "mix": "C78",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 70,
+  "fly_ash": 21,
+  "slag": 259,
+  "water": 140,
+  "hrwr": 0.55,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 350,
+  "scm": 280,
+  "scm_frac": 0.8,
+  "slag_frac_of_scm": 0.925,
+  "wb": 0.4,
+  "wc": 2.0,
+  "hrwr_pct_binder": 0.157,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 490,
+  "observations": [
+   [
+    1,
+    360.0
+   ],
+   [
+    3,
+    1918.0
+   ],
+   [
+    5,
+    2969.0
+   ],
+   [
+    14,
+    4002.0
+   ],
+   [
+    28,
+    4748.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 4748.0,
+  "s1_meas": 360.0,
+  "s7_meas": null,
+  "pred_1d": 543.6,
+  "pred_28d": 4770.1,
+  "gwp": 84.08,
+  "cost": 67.89,
+  "on_pareto": false,
+  "pct_wb": 42.3,
+  "pct_scm_frac": 96.2,
+  "pct_binder": 34.6,
+  "pct_gwp": 7.7,
+  "pct_pred_28d": 23.1,
+  "pct_cost": 34.6,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "147": {
+  "mix": "C79",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 161,
+  "fly_ash": 88,
+  "slag": 102,
+  "water": 140,
+  "hrwr": 0,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 351,
+  "scm": 190,
+  "scm_frac": 0.5413,
+  "slag_frac_of_scm": 0.5368,
+  "wb": 0.3989,
+  "wc": 0.8696,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 491,
+  "observations": [
+   [
+    1,
+    1068.0
+   ],
+   [
+    3,
+    2398.0
+   ],
+   [
+    5,
+    3126.0
+   ],
+   [
+    14,
+    4690.0
+   ],
+   [
+    28,
+    5000.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5000.0,
+  "s1_meas": 1068.0,
+  "s7_meas": null,
+  "pred_1d": 1145.0,
+  "pred_28d": 5260.3,
+  "gwp": 139.74,
+  "cost": 65.72,
+  "on_pareto": false,
+  "pct_wb": 13.5,
+  "pct_scm_frac": 71.2,
+  "pct_binder": 53.8,
+  "pct_gwp": 40.4,
+  "pct_pred_28d": 32.7,
+  "pct_cost": 21.2,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ },
+ "148": {
+  "mix": "C80",
+  "match_l1": 0.0,
+  "material_source": 2,
+  "source_letter": "C",
+  "class_desc": "Set 3 concrete (Amrize 1L cement, Class F fly ash, gravel)",
+  "cement": 137,
+  "fly_ash": 123,
+  "slag": 91,
+  "water": 140,
+  "hrwr": 0,
+  "fine": 845,
+  "coarse": 1101,
+  "temp": 22,
+  "binder": 351,
+  "scm": 214,
+  "scm_frac": 0.6097,
+  "slag_frac_of_scm": 0.4252,
+  "wb": 0.3989,
+  "wc": 1.0219,
+  "hrwr_pct_binder": 0.0,
+  "agg_total": 1946,
+  "coarse_frac": 0.5658,
+  "paste_frac_mass": 491,
+  "observations": [
+   [
+    1,
+    780.0
+   ],
+   [
+    3,
+    1850.0
+   ],
+   [
+    5,
+    2552.0
+   ],
+   [
+    14,
+    4072.0
+   ],
+   [
+    28,
+    5079.0
+   ]
+  ],
+  "obs_days": [
+   1,
+   3,
+   5,
+   14,
+   28
+  ],
+  "s28_meas": 5079.0,
+  "s1_meas": 780.0,
+  "s7_meas": null,
+  "pred_1d": 924.4,
+  "pred_28d": 4622.5,
+  "gwp": 121.39,
+  "cost": 63.24,
+  "on_pareto": false,
+  "pct_wb": 13.5,
+  "pct_scm_frac": 78.8,
+  "pct_binder": 53.8,
+  "pct_gwp": 23.1,
+  "pct_pred_28d": 21.2,
+  "pct_cost": 13.5,
+  "class_n": 53,
+  "class_median_28d": 5716.1,
+  "class_median_gwp": 153.1
+ }
+}
