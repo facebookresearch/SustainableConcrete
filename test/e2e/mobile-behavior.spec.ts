@@ -85,10 +85,15 @@ test.describe("mobile behaviour", () => {
     await input.click();
     await input.fill("300");
     await input.press("Enter");
-    await page.waitForTimeout(700);
-    const committed = await page.evaluate(
-      (i) => (window as any).__test.currentComposition[Number(i)], idx);
-    expect(committed, "typed value should commit to the composition").toBeCloseTo(300, 0);
+    await expect
+      .poll(() => page.evaluate(
+        (i) => ({
+          value: (window as any).__test.currentComposition[Number(i)],
+          active: (window as any).__test.isCompositionTransitionActive,
+        }),
+        idx,
+      ))
+      .toEqual({ value: 300, active: false });
   });
 
   test("strength curve renders non-blank after interaction", async ({ page }) => {

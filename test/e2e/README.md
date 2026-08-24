@@ -169,6 +169,13 @@ Visual specs are tagged `@visual`. Verify a regeneration by re-running
 5. Run locally to confirm it passes.
 6. PR it.
 
+## Authoring rules
+
+- Apply custom viewport, media emulation, init scripts, and preload state before the initial navigation.
+- Install canvas init-script probes before navigation.
+- Use the `request` fixture without page navigation for asset-only tests.
+- Synchronize on observable DOM, geometry, animation, focus, or `window.__test` state instead of sleeping for a guessed duration unless timing itself is the contract.
+
 ## Anti-patterns to avoid
 
 - **`page.waitForTimeout` for animation settlement** — replace with `expect.poll()`,

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { waitForCanvasLoopToPark } from "./canvas-frame-probe";
 
 /**
  * Mobile-only overflow regression pin. A previous iteration of the slider
@@ -14,7 +15,7 @@ import { test, expect } from "@playwright/test";
 const ALLOWANCE_PX = 1;
 
 async function gotoSlidersView(page: import("@playwright/test").Page) {
-  await page.goto("/");
+  await page.goto("/?test=1");
   await page.locator("#mobile-show-sliders").click();
   await expect(page.locator(".mobile-sliders-view")).toBeVisible({ timeout: 2000 });
   await expect(page.locator(".mobile-sliders-view .slider-group").first()).toBeVisible();
@@ -98,7 +99,7 @@ test.describe("mobile slider value never overflows the panel", () => {
         }
       }
     });
-    await page.waitForTimeout(200);
+    await waitForCanvasLoopToPark(page);
     await assertNoOverflow(page, "fractional metric");
   });
 
@@ -108,8 +109,7 @@ test.describe("mobile slider value never overflows the panel", () => {
     await page.evaluate(() => {
       document.dispatchEvent(new CustomEvent("toggle-units"));
     });
-    // Wait through the 350ms unit transition
-    await page.waitForTimeout(450);
+    await waitForCanvasLoopToPark(page);
     await assertNoOverflow(page, "imperial default");
   });
 
@@ -125,7 +125,7 @@ test.describe("mobile slider value never overflows the panel", () => {
         s.dispatchEvent(new Event("input", { bubbles: true }));
       }
     });
-    await page.waitForTimeout(450);
+    await waitForCanvasLoopToPark(page);
     await assertNoOverflow(page, "imperial max-bound");
   });
 
@@ -136,7 +136,7 @@ test.describe("mobile slider value never overflows the panel", () => {
 
     // Imperial after toggle on the narrow viewport
     await page.evaluate(() => document.dispatchEvent(new CustomEvent("toggle-units")));
-    await page.waitForTimeout(450);
+    await waitForCanvasLoopToPark(page);
     await assertNoOverflow(page, "320px imperial");
 
     // Max-bound imperial on narrow viewport
@@ -149,7 +149,7 @@ test.describe("mobile slider value never overflows the panel", () => {
         s.dispatchEvent(new Event("input", { bubbles: true }));
       }
     });
-    await page.waitForTimeout(200);
+    await waitForCanvasLoopToPark(page);
     await assertNoOverflow(page, "320px imperial max-bound");
   });
 

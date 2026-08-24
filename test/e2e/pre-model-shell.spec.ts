@@ -85,9 +85,14 @@ test.describe("pre-model shell", () => {
     ).toBe(false);
     expect(clicked, "no scatter point was hoverable pre-model — hover is broken").toBe(true);
 
-    await page.waitForTimeout(800);
-    const after = await page.evaluate(() =>
-      JSON.stringify((window as any).__test.currentComposition));
-    expect(after, "clicking a point pre-model must still select it").not.toBe(before);
+    await expect
+      .poll(() => page.evaluate((previous) => {
+        const testState = (window as any).__test;
+        return {
+          changed: JSON.stringify(testState.currentComposition) !== previous,
+          active: testState.isCompositionTransitionActive,
+        };
+      }, before))
+      .toEqual({ changed: true, active: false });
   });
 });

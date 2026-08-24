@@ -348,7 +348,21 @@ test.describe("mobile slider multi-row layout", () => {
     // Switch back to sliders view to inspect the markers
     await page.locator("#mobile-show-sliders").click();
     await expect(page.locator(".mobile-sliders-view")).toBeVisible();
-    await page.waitForTimeout(300);
+    await expect
+      .poll(() => page.evaluate(() => {
+        const groups = Array.from(document.querySelectorAll(".mobile-sliders-view .slider-group"));
+        return groups.every((group) => {
+          const slider = group.querySelector("input[type=range]") as HTMLElement | null;
+          const marker = group.querySelector(".slider-preview-marker") as HTMLElement | null;
+          if (!slider) return true;
+          if (!marker || marker.style.display === "none") return false;
+          const sliderRect = slider.getBoundingClientRect();
+          const markerRect = marker.getBoundingClientRect();
+          const markerCenter = markerRect.left + markerRect.width / 2;
+          return markerCenter >= sliderRect.left - 1 && markerCenter <= sliderRect.right + 1;
+        });
+      }))
+      .toBe(true);
 
     const verdict = await page.evaluate(() => {
       const groups = Array.from(document.querySelectorAll(".mobile-sliders-view .slider-group"));
