@@ -7,13 +7,21 @@ import {
   installCanvasFrameProbe,
   resetCanvasFrameProbe,
   snapshotCanvasFrames,
-  waitForCanvasAppReady,
   waitForCanvasLoopToPark,
 } from "./canvas-frame-probe";
+import {
+  openMobileComposition,
+  waitForDashboardLayoutReady,
+} from "./dashboard-helpers";
 
-test.beforeEach(async ({ page }) => {
-  await installCanvasFrameProbe(page);
-});
+async function waitForCanvasModelReady(page: import("@playwright/test").Page) {
+  await page.waitForFunction(
+    () => window.__test?.modelReady === true,
+    null,
+    { timeout: 30_000 },
+  );
+  await waitForCanvasLoopToPark(page);
+}
 
 async function expectCurveOnly(page: import("@playwright/test").Page) {
   const snapshot = await snapshotCanvasFrames(page);
@@ -34,7 +42,10 @@ test.describe("canvas scheduling", () => {
     page,
   }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop interaction");
-    await waitForCanvasAppReady(page);
+    await installCanvasFrameProbe(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+    await waitForCanvasModelReady(page);
     await hoverRenderedScatterPoint(page);
     await resetCanvasFrameProbe(page);
 
@@ -52,7 +63,10 @@ test.describe("canvas scheduling", () => {
 
   test("slider preview and return redraw only the curve", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop hover interaction");
-    await waitForCanvasAppReady(page);
+    await installCanvasFrameProbe(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+    await waitForCanvasModelReady(page);
     const slider = page.locator("#sliders input[type=range]").nth(1);
     const box = await slider.boundingBox();
     if (!box) throw new Error("slider has no bounding box");
@@ -79,7 +93,10 @@ test.describe("canvas scheduling", () => {
     page,
   }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop hover interaction");
-    await waitForCanvasAppReady(page);
+    await installCanvasFrameProbe(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+    await waitForCanvasModelReady(page);
     const inactive = page.locator(".material-source-group .toggle-btn:not(.active)").first();
     await resetCanvasFrameProbe(page);
 
@@ -98,7 +115,10 @@ test.describe("canvas scheduling", () => {
 
   test("direct slider commit redraws scatter only at the boundary", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop interaction");
-    await waitForCanvasAppReady(page);
+    await installCanvasFrameProbe(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+    await waitForCanvasModelReady(page);
     const slider = page.locator("#sliders input[type=range]").first();
     await resetCanvasFrameProbe(page);
 
@@ -119,7 +139,10 @@ test.describe("canvas scheduling", () => {
     page,
   }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop interaction");
-    await waitForCanvasAppReady(page);
+    await installCanvasFrameProbe(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+    await waitForCanvasModelReady(page);
     const inactive = page.locator(".material-source-group .toggle-btn:not(.active)").first();
     await resetCanvasFrameProbe(page);
 
@@ -138,7 +161,10 @@ test.describe("canvas scheduling", () => {
   for (const selector of ["#axis-selector-x", "#axis-selector-y"]) {
     test(`${selector} transition redraws only scatter`, async ({ page }, testInfo) => {
       test.skip(!testInfo.project.name.startsWith("desktop"), "desktop scatter controls");
-      await waitForCanvasAppReady(page);
+      await installCanvasFrameProbe(page);
+      await page.goto("/?test=1");
+      await waitForDashboardLayoutReady(page);
+      await waitForCanvasModelReady(page);
       await resetCanvasFrameProbe(page);
 
       await page.locator(`${selector} .axis-option-face:has(input:not(:checked))`).click();
@@ -152,7 +178,10 @@ test.describe("canvas scheduling", () => {
   test("curve observation hover redraws only the curve", async ({ page }, testInfo) => {
     test.setTimeout(60_000);
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop hover interaction");
-    await waitForCanvasAppReady(page);
+    await installCanvasFrameProbe(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+    await waitForCanvasModelReady(page);
     await resetCanvasFrameProbe(page);
 
     await hoverRenderedCurveObservation(page);
@@ -164,7 +193,10 @@ test.describe("canvas scheduling", () => {
 
   test("scatter hover redraws both canvases at most once per frame", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop hover interaction");
-    await waitForCanvasAppReady(page);
+    await installCanvasFrameProbe(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+    await waitForCanvasModelReady(page);
     await resetCanvasFrameProbe(page);
 
     await hoverRenderedScatterPoint(page);
@@ -179,7 +211,10 @@ test.describe("canvas scheduling", () => {
 
   test("theme and unit changes redraw both canvases", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop controls");
-    await waitForCanvasAppReady(page);
+    await installCanvasFrameProbe(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+    await waitForCanvasModelReady(page);
 
     for (const selector of ["#theme-toggle", "#unit-toggle"]) {
       await resetCanvasFrameProbe(page);
@@ -197,7 +232,10 @@ test.describe("canvas scheduling", () => {
 
   test("resizing a chart container coordinates both desktop canvases", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop layout");
-    await waitForCanvasAppReady(page);
+    await installCanvasFrameProbe(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+    await waitForCanvasModelReady(page);
     await resetCanvasFrameProbe(page);
 
     await page.locator(".scatter-content").evaluate((element) => {
@@ -224,7 +262,10 @@ test.describe("canvas scheduling", () => {
 
   test("filter structural motion invalidates scatter only at transaction boundaries", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop filter controls");
-    await waitForCanvasAppReady(page);
+    await installCanvasFrameProbe(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+    await waitForCanvasModelReady(page);
     await resetCanvasFrameProbe(page);
     await page.evaluate(() => {
       document.body.dataset.layoutChangeCount = "0";
@@ -251,7 +292,10 @@ test.describe("canvas scheduling", () => {
 
   test("filters redraw only scatter", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop filter controls");
-    await waitForCanvasAppReady(page);
+    await installCanvasFrameProbe(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+    await waitForCanvasModelReady(page);
     await page.locator("#filter-add").click();
     await resetCanvasFrameProbe(page);
 
@@ -267,9 +311,11 @@ test.describe("canvas scheduling", () => {
 
   test("mobile scatter reveal invalidates only scatter", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("mobile"), "mobile-only");
-    await waitForCanvasAppReady(page);
-    await page.locator("#mobile-show-sliders").click();
-    await expect(page.locator(".mobile-sliders-view")).toBeVisible();
+    await installCanvasFrameProbe(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+    await waitForCanvasModelReady(page);
+    await openMobileComposition(page);
     await resetCanvasFrameProbe(page);
 
     await page.locator("#mobile-show-scatter").click();

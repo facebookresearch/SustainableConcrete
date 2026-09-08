@@ -6,13 +6,16 @@ import { test, expect } from "@playwright/test";
  *   2. Choice persists across reloads via localStorage.
  */
 test.describe("theme toggle", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      if (localStorage.getItem("boxcrete-theme") === null) {
+        localStorage.setItem("boxcrete-theme", "dark");
+      }
+    });
+  });
+
   test("clicking flips html[data-theme] between light and dark", async ({ page }) => {
     await page.goto("/");
-    // Force a known starting state
-    await page.evaluate(() => {
-      localStorage.setItem("boxcrete-theme", "dark");
-    });
-    await page.reload();
 
     const before = await page.evaluate(() =>
       document.documentElement.getAttribute("data-theme"),
@@ -32,8 +35,6 @@ test.describe("theme toggle", () => {
 
   test("theme choice persists across page reload", async ({ page }) => {
     await page.goto("/");
-    await page.evaluate(() => localStorage.setItem("boxcrete-theme", "dark"));
-    await page.reload();
 
     // Toggle to light, then reload and confirm it stuck
     await page.locator("#theme-toggle").click();

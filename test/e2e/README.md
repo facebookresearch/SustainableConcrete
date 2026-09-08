@@ -87,7 +87,13 @@ property on a PR, add a spec for it before merging.
 npm install
 npx playwright install --with-deps chromium webkit
 
-# run all tests
+# fast local loop: desktop + mobile Chromium
+make test-e2e
+
+# comprehensive pre-merge loop: all four Chromium/WebKit projects
+make test-e2e-all
+
+# run every configured project in a single Playwright invocation
 npm run test:e2e
 
 # run only mobile Chromium project
@@ -162,6 +168,13 @@ Visual specs are tagged `@visual`. Verify a regeneration by re-running
 4. Add a row to the table above.
 5. Run locally to confirm it passes.
 6. PR it.
+
+## Authoring rules
+
+- Apply custom viewport, media emulation, init scripts, and preload state before the initial navigation.
+- Install canvas init-script probes before navigation.
+- Use the `request` fixture without page navigation for asset-only tests.
+- Synchronize on observable DOM, geometry, animation, focus, or `window.__test` state instead of sleeping for a guessed duration unless timing itself is the contract.
 
 ## Anti-patterns to avoid
 

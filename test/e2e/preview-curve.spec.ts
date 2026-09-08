@@ -1,4 +1,8 @@
 import { test, expect } from "@playwright/test";
+import {
+  hoverRenderedScatterPoint,
+  waitForCanvasLoopToPark,
+} from "./canvas-frame-probe";
 
 /**
  * Regression pin for two related Material Source toggle bugs:
@@ -25,21 +29,6 @@ async function openPreviewTestPage(page: import("@playwright/test").Page) {
     await page.locator("#mobile-show-sliders").click();
   }
   await expect(firstSlider).toBeVisible();
-}
-
-async function hoverRenderedScatterPoint(page: import("@playwright/test").Page) {
-  const canvas = page.locator("#scatter-canvas");
-  const box = await canvas.boundingBox();
-  if (!box) throw new Error("scatter canvas has no bounding box");
-  for (let y = 30; y < box.height - 30; y += 8) {
-    for (let x = 75; x < box.width - 20; x += 8) {
-      await page.mouse.move(box.x + x, box.y + y);
-      if (await page.evaluate(() => (window as any).__test.hoveredPointIdx !== null)) {
-        return canvas;
-      }
-    }
-  }
-  throw new Error("could not locate a rendered scatter point");
 }
 
 async function waitForPreviewToSettle(page: import("@playwright/test").Page) {
@@ -105,8 +94,7 @@ test.describe("preview curve composition sync", () => {
 
     for (const idx of [1, 2, 0]) {
       await toggleButtons.nth(idx).click();
-      // Curve transition is 350ms; wait it out before sampling state.
-      await page.waitForTimeout(450);
+      await waitForCanvasLoopToPark(page);
       const result = await page.evaluate(() => {
         const t = (window as any).__test;
         return { current: t.currentComposition, preview: t.displayPreviewComp };
@@ -168,17 +156,39 @@ test.describe("mix insight refreshes on Material Source toggle", () => {
       },
       { timeout: 5000 },
     );
-    // Settle any in-flight content swap animation
-    await page.waitForTimeout(700);
+    await expect
+      .poll(() => insightText.evaluate((text) => {
+        const body = text.closest(".mix-insight-body")!;
+        const panel = text.closest("#mix-insight")!;
+        return {
+          populated: Boolean(text.textContent?.trim()),
+          ghosts: body.querySelectorAll(".content-swap-ghost").length,
+          running: panel
+            .getAnimations({ subtree: true })
+            .filter((animation) => animation.playState === "running").length,
+        };
+      }))
+      .toEqual({ populated: true, ghosts: 0, running: 0 });
     const before = (await insightText.textContent())?.trim() ?? "";
 
     // Click whichever Material Source toggle is currently inactive
     const inactive = page.locator(".material-source-group .toggle-btn:not(.active)");
     await inactive.first().click();
 
-    // Wait for: 350ms curve transition + 300ms scheduleInsightUpdate delay +
-    // 300ms content-swap animation = ~950ms. Use 1300ms to be safe.
-    await page.waitForTimeout(1300);
+    await expect
+      .poll(() => insightText.evaluate((text, previous) => {
+        const after = text.textContent?.trim() ?? "";
+        const body = text.closest(".mix-insight-body")!;
+        const panel = text.closest("#mix-insight")!;
+        return {
+          changed: after !== previous,
+          ghosts: body.querySelectorAll(".content-swap-ghost").length,
+          running: panel
+            .getAnimations({ subtree: true })
+            .filter((animation) => animation.playState === "running").length,
+        };
+      }, before))
+      .toEqual({ changed: true, ghosts: 0, running: 0 });
 
     const after = (await insightText.textContent())?.trim() ?? "";
 
@@ -188,9 +198,9 @@ test.describe("mix insight refreshes on Material Source toggle", () => {
     // placeholder text. The one thing it must NOT be is the same text as
     // before (which would indicate the bug).
     expect(
-      after === "" || after !== before,
+      after,
       `mix-insight-text must update on Material Source toggle (still: "${after.slice(0, 80)}...")`,
-    ).toBe(true);
+    ).not.toBe(before);
   });
 });
 
@@ -215,9 +225,17 @@ test.describe("strength curve transitions smoothly on Material Source toggle", (
     // The shell renders before the GP finishes building in the worker, so
     // wait for the model itself before asserting on predictions.
     await page.waitForFunction(() => (window as any).__test.modelReady === true, null, { timeout: 20000 });
-    await page.waitForTimeout(800); // settle initial fade-ins / WASM init
+    await waitForCanvasLoopToPark(page);
 
     const curve = page.locator("canvas#curve-canvas");
+    await expect
+      .poll(() => curve.evaluate((element) =>
+        element
+          .closest(".fade-in-up")
+          ?.getAnimations({ subtree: true })
+          .filter((animation) => animation.playState === "running").length ?? 0,
+      ))
+      .toBe(0);
     const before = await curve.screenshot();
 
     const inactive = page.locator(".material-source-group .toggle-btn:not(.active)").first();
@@ -1169,7 +1187,7 @@ test.describe("hover preview aligns with the committed prediction", () => {
     // The shell renders before the GP finishes building in the worker, so
     // wait for the model itself before asserting on predictions.
     await page.waitForFunction(() => (window as any).__test.modelReady === true, null, { timeout: 20000 });
-    await page.waitForTimeout(800);
+    await waitForCanvasLoopToPark(page);
 
     const canvas = page.locator("canvas#scatter-canvas");
     await expect(canvas).toBeVisible();
@@ -1221,7 +1239,7 @@ test.describe("hover preview aligns with the committed prediction", () => {
     // The shell renders before the GP finishes building in the worker, so
     // wait for the model itself before asserting on predictions.
     await page.waitForFunction(() => (window as any).__test.modelReady === true, null, { timeout: 20000 });
-    await page.waitForTimeout(800);
+    await waitForCanvasLoopToPark(page);
 
     const idx = msIdx >= 0 ? msIdx : await page.evaluate(async () => {
       const r = await fetch("model/compositions.json");

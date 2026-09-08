@@ -1,4 +1,8 @@
 import { test, expect } from "@playwright/test";
+import {
+  openMobileComposition,
+  waitForDashboardLayoutReady,
+} from "./dashboard-helpers";
 
 /**
  * Accessibility invariants for the explorer.
@@ -18,14 +22,10 @@ import { test, expect } from "@playwright/test";
 // sliders are actually rendered before we inspect them.
 async function openApp(page: import("@playwright/test").Page, project: string) {
   await page.goto("/");
+  await waitForDashboardLayoutReady(page);
   if (project === "mobile") {
-    await page.locator("#mobile-show-sliders").click();
-    await expect(page.locator(".mobile-sliders-view")).toBeVisible({ timeout: 5000 });
+    await openMobileComposition(page);
   }
-  await page
-    .locator("input[type=range]")
-    .first()
-    .waitFor({ state: "visible", timeout: 15000 });
 }
 
 // Strength unit currently quoted by the summary, or undefined.
@@ -234,7 +234,7 @@ test.describe("accessibility", () => {
 
   test("controls inside a closed modal are not reachable", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "one project is enough");
-    await openApp(page, testInfo.project.name);
+    await page.goto("/");
     // The overlays were hidden with opacity + pointer-events only, so every
     // control inside stayed in the tab order and the a11y tree, and their
     // headings polluted the document outline.

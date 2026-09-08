@@ -1,17 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-
-async function waitForDashboard(page: Page) {
-  await page.goto("/?test=1");
-  await expect(page.locator("#sliders .slider-group").first()).toBeAttached({ timeout: 15_000 });
-  await page.evaluate(async () => {
-    await document.fonts.ready;
-    await Promise.all(
-      [...document.querySelectorAll(".fade-in-up")].flatMap((element) =>
-        element.getAnimations().map((animation) => animation.finished),
-      ),
-    );
-  });
-}
+import { waitForDashboardLayoutReady } from "./dashboard-helpers";
 
 async function overflowState(page: Page) {
   return page.locator(".ref-list").evaluate((element) => ({
@@ -21,7 +9,10 @@ async function overflowState(page: Page) {
 }
 
 test.describe("compact reference disclosures", () => {
-  test.beforeEach(async ({ page }) => waitForDashboard(page));
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+  });
 
   test("keeps bibliography and citation actions visible while descriptions are collapsed", async ({ page }) => {
     const disclosures = page.locator(".ref-details");
@@ -45,7 +36,8 @@ test.describe("compact reference disclosures", () => {
       ? { width: 1728, height: 1000 }
       : { width: 844, height: 390 };
     await page.setViewportSize(wide);
-    await waitForDashboard(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
 
     const read = () => page.locator(".ref-item").first().evaluate((item) => {
       const content = item.querySelector(".ref-content")!.getBoundingClientRect();
@@ -302,7 +294,8 @@ test.describe("compact reference disclosures", () => {
   test("one open description grows naturally without local overflow when it fits", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop reference capacity contract");
     await page.setViewportSize({ width: 1728, height: 1000 });
-    await waitForDashboard(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
     await page.locator(".ref-details > summary").first().click();
     await expect.poll(() => page.locator(".ref-description-motion").first().evaluate((element) =>
       element.getAnimations().length,
@@ -321,7 +314,8 @@ test.describe("compact reference disclosures", () => {
   test("oversized References stop at the usable cap and make only the list focusable", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop reference overflow contract");
     await page.setViewportSize({ width: 1280, height: 700 });
-    await waitForDashboard(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
     await page.locator(".ref-list").evaluate((element) => {
       const filler = document.createElement("div");
       filler.dataset.testFiller = "true";

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { waitForDashboardLayoutReady } from "./dashboard-helpers";
 
 type Geometry = {
   scatter: { canvas: DOMRectJSON; plot: DOMRectJSON };
@@ -15,19 +16,6 @@ type DOMRectJSON = {
   bottom: number;
   left: number;
 };
-
-async function waitForDashboard(page: Page) {
-  await page.goto("/?test=1");
-  await expect(page.locator("#sliders .slider-group").last()).toBeAttached({ timeout: 15_000 });
-  await page.evaluate(async () => {
-    await document.fonts.ready;
-    await Promise.all(
-      [...document.querySelectorAll(".fade-in-up")].flatMap((element) =>
-        element.getAnimations().map((animation) => animation.finished),
-      ),
-    );
-  });
-}
 
 async function readGeometry(page: Page): Promise<Geometry> {
   return page.evaluate(async () => {
@@ -109,7 +97,8 @@ test.describe("shared plot geometry", () => {
       ? [{ width: 1900, height: 1000 }, { width: 1051, height: 900 }]
       : [{ width: 844, height: 390 }, { width: 412, height: 915 }]) {
       await page.setViewportSize(viewport);
-      await waitForDashboard(page);
+      await page.goto("/?test=1");
+      await waitForDashboardLayoutReady(page);
       await expect.poll(() => page.evaluate(() => {
         const selector = document.querySelector("#axis-selector-x")!.getBoundingClientRect();
         const canvas = document.querySelector<HTMLCanvasElement>("#scatter-canvas")! as HTMLCanvasElement & {
@@ -180,7 +169,8 @@ test.describe("shared plot geometry", () => {
       { width: 1051, height: 900 },
     ]) {
       await page.setViewportSize(viewport);
-      await waitForDashboard(page);
+      await page.goto("/?test=1");
+      await waitForDashboardLayoutReady(page);
       const geometry = await stableGeometry(page);
       expectLandscape(geometry);
       expectDesktopPeers(geometry);
@@ -196,7 +186,8 @@ test.describe("shared plot geometry", () => {
   test("crossing responsive and managed-laptop thresholds restores valid geometry", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop resize contract");
     await page.setViewportSize({ width: 1051, height: 900 });
-    await waitForDashboard(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
     let beforeManaged: Geometry | null = null;
     for (const viewport of [
       { width: 1050, height: 900 },
@@ -243,7 +234,8 @@ test.describe("shared plot geometry", () => {
       { width: 844, height: 390 },
     ]) {
       await page.setViewportSize(viewport);
-      await waitForDashboard(page);
+      await page.goto("/?test=1");
+      await waitForDashboardLayoutReady(page);
       const geometry = await stableGeometry(page);
       expectLandscape(geometry);
       expect(Math.abs(geometry.scatter.plot.width - geometry.strength.plot.width)).toBeLessThanOrEqual(1);
@@ -254,7 +246,8 @@ test.describe("shared plot geometry", () => {
   test("visible Strength resizes while mobile Scatter is hidden", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("mobile"), "mobile hidden-view geometry contract");
     await page.setViewportSize({ width: 412, height: 915 });
-    await waitForDashboard(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
     await page.locator("#mobile-show-sliders").click();
     await expect(page.locator(".scatter-content")).toBeHidden();
 
@@ -272,7 +265,8 @@ test.describe("shared plot geometry", () => {
   });
 
   test("canvas backing stores track CSS geometry and DPR after resize", async ({ page }) => {
-    await waitForDashboard(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
     for (const viewport of [
       { width: 1280, height: 800 },
       { width: 1050, height: 900 },
@@ -303,7 +297,8 @@ test.describe("shared plot geometry", () => {
   test("opening References does not change scatter or strength geometry", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop cross-column geometry contract");
     await page.setViewportSize({ width: 1728, height: 1000 });
-    await waitForDashboard(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
     const before = await stableGeometry(page);
 
     await page.locator(".ref-details > summary").first().click();
@@ -321,7 +316,8 @@ test.describe("shared plot geometry", () => {
   });
 
   test("filter count never changes scatter or strength geometry", async ({ page }) => {
-    await waitForDashboard(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
     const before = await stableGeometry(page);
     const beforeScrollY = await page.evaluate(() => scrollY);
     const add = page.locator("#filter-add");

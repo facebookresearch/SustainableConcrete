@@ -27,9 +27,8 @@ test.describe("Open Graph + Twitter Card metadata", () => {
     expect(await get('meta[name="twitter:image"]')).toContain("og-image.jpg");
   });
 
-  test("og-image.jpg loads as a JPEG within a reasonable size budget", async ({ page, request }, testInfo) => {
+  test("og-image.jpg loads as a JPEG within a reasonable size budget", async ({ request }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "asset fetch is identical across viewports");
-    await page.goto("/");
     const resp = await request.get("/og-image.jpg");
     expect(resp.status(), "og-image.jpg must be reachable").toBe(200);
     const ct = resp.headers()["content-type"] ?? "";

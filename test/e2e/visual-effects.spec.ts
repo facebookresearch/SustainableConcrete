@@ -1,25 +1,19 @@
 import { expect, test } from "@playwright/test";
 import { expectEffectInsideClippingAncestors } from "./effect-envelope";
-
-async function waitForDashboard(page: import("@playwright/test").Page) {
-  await page.goto("/?test=1");
-  await expect(page.locator("#sliders .slider-group").last()).toBeAttached({ timeout: 15_000 });
-  await page.evaluate(async () => {
-    await document.fonts.ready;
-    await Promise.all(
-      [...document.querySelectorAll(".fade-in-up")].flatMap((element) =>
-        element.getAnimations().map((animation) => animation.finished),
-      ),
-    );
-  });
-}
+import {
+  openMobileComposition,
+  waitForDashboardLayoutReady,
+} from "./dashboard-helpers";
 
 test.describe("all-sided visual-effect safe areas", () => {
-  test.beforeEach(async ({ page }) => waitForDashboard(page));
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+  });
 
   test("Material Source preview pulse and hover lift fit every clipping ancestor", async ({ page }) => {
     if (await page.locator("#sliders").isHidden()) {
-      await page.locator("#mobile-show-sliders").click();
+      await openMobileComposition(page);
     }
     for (const button of await page.locator(".material-source-group .toggle-btn").all()) {
       await button.scrollIntoViewIfNeeded();
@@ -29,7 +23,7 @@ test.describe("all-sided visual-effect safe areas", () => {
 
   test("Composition edge controls reserve their outward focus envelopes", async ({ page }) => {
     if (await page.locator("#sliders").isHidden()) {
-      await page.locator("#mobile-show-sliders").click();
+      await openMobileComposition(page);
     }
     for (const control of [
       page.locator("#sliders input[type=range]").first(),

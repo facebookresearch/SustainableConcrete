@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 export type CanvasName = "curve" | "scatter";
 
@@ -173,7 +173,7 @@ export function expectAtMostOneDrawPerCanvasPerFrame(
   ).toBeLessThanOrEqual(1);
 }
 
-export async function hoverRenderedScatterPoint(page: Page): Promise<void> {
+export async function hoverRenderedScatterPoint(page: Page): Promise<Locator> {
   const canvas = page.locator("#scatter-canvas");
   const box = await canvas.boundingBox();
   if (!box) throw new Error("scatter canvas has no bounding box");
@@ -181,7 +181,7 @@ export async function hoverRenderedScatterPoint(page: Page): Promise<void> {
   for (let y = 30; y < box.height - 30; y += 8) {
     for (let x = 75; x < box.width - 20; x += 8) {
       await page.mouse.move(box.x + x, box.y + y);
-      if (await page.evaluate(() => window.__test?.hoveredPointIdx !== null)) return;
+      if (await page.evaluate(() => window.__test?.hoveredPointIdx !== null)) return canvas;
     }
   }
   throw new Error("could not locate a rendered scatter point");

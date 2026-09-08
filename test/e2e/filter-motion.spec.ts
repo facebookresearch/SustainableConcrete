@@ -1,16 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
+import { waitForDashboardLayoutReady } from "./dashboard-helpers";
 
 async function openDashboard(page: Page) {
   await page.goto("/?test=1");
-  await expect(page.locator("#filter-add")).toBeVisible({ timeout: 15_000 });
-  await page.evaluate(async () => {
-    await document.fonts.ready;
-    await Promise.all(
-      [...document.querySelectorAll(".fade-in-up")].flatMap((element) =>
-        element.getAnimations().map((animation) => animation.finished),
-      ),
-    );
-  });
+  await waitForDashboardLayoutReady(page);
+  await expect(page.locator("#filter-add")).toBeVisible();
 }
 
 async function waitForFilterMotion(page: Page) {

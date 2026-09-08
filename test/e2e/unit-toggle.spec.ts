@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { waitForCanvasLoopToPark } from "./canvas-frame-probe";
 
 /**
  * Unit-toggle behaviour for the composition setter panel:
@@ -15,7 +16,7 @@ import { test, expect } from "@playwright/test";
 test.describe("composition panel — unit toggle", () => {
   test.beforeEach(async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "desktop only");
-    await page.goto("/");
+    await page.goto("/?test=1");
     await expect(page.locator("#sliders .slider-group").first()).toBeVisible({
       timeout: 5000,
     });
@@ -36,8 +37,7 @@ test.describe("composition panel — unit toggle", () => {
     await page.evaluate(() =>
       document.dispatchEvent(new CustomEvent("toggle-units")),
     );
-    // Wait for the 350ms unit transition to settle
-    await page.waitForTimeout(450);
+    await waitForCanvasLoopToPark(page);
     const units = await page.locator("#sliders .slider-unit").allInnerTexts();
     expect(units).toContain("lb/yd³");
     expect(units).toContain("°F");
@@ -61,7 +61,7 @@ test.describe("composition panel — unit toggle", () => {
     await page.evaluate(() =>
       document.dispatchEvent(new CustomEvent("toggle-units")),
     );
-    await page.waitForTimeout(450);
+    await waitForCanvasLoopToPark(page);
 
     const valueAfter = await tempRow.locator(".slider-value").inputValue();
     const fahrenheit = parseFloat(valueAfter);
@@ -83,11 +83,11 @@ test.describe("composition panel — unit toggle", () => {
     await page.evaluate(() =>
       document.dispatchEvent(new CustomEvent("toggle-units")),
     );
-    await page.waitForTimeout(450);
+    await waitForCanvasLoopToPark(page);
     await page.evaluate(() =>
       document.dispatchEvent(new CustomEvent("toggle-units")),
     );
-    await page.waitForTimeout(450);
+    await waitForCanvasLoopToPark(page);
 
     const after = await tempRow.locator(".slider-value").inputValue();
     expect(parseFloat(after)).toBeCloseTo(parseFloat(before), 1);
@@ -106,7 +106,7 @@ test.describe("composition panel — unit toggle", () => {
     await page.evaluate(() =>
       document.dispatchEvent(new CustomEvent("toggle-units")),
     );
-    await page.waitForTimeout(450);
+    await waitForCanvasLoopToPark(page);
     const imperialBounds = (await tempRow.locator(".info-row span").allInnerTexts()).map(
       (s) => parseInt(s, 10),
     );

@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { waitForDashboardLayoutReady } from "./dashboard-helpers";
 
 const GAP_TOLERANCE = 1;
 
@@ -15,15 +16,6 @@ type Metrics = {
   paddingBottom: number;
   tabIndex: number;
 };
-
-async function waitForDashboard(page: Page) {
-  await page.goto("/?test=1");
-  await expect(page.locator("#sliders .slider-group").last()).toBeAttached({ timeout: 15_000 });
-  await page.evaluate(async () => {
-    await document.fonts.ready;
-    await Promise.all([...document.querySelectorAll(".fade-in-up")].flatMap((element) => element.getAnimations().map((animation) => animation.finished)));
-  });
-}
 
 async function metrics(locator: Locator): Promise<Metrics> {
   return locator.evaluate((element) => {
@@ -68,7 +60,10 @@ async function configuredGap(page: Page) {
 }
 
 test.describe("intrinsic capped dashboard panels", () => {
-  test.beforeEach(async ({ page }) => waitForDashboard(page));
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
+  });
 
   test("desktop columns are top-aligned intrinsic stacks separated only by the configured gap", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop column contract");
@@ -103,7 +98,8 @@ test.describe("intrinsic capped dashboard panels", () => {
     test(`desktop Composition is intrinsic at ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
       test.skip(!testInfo.project.name.startsWith("desktop"), "desktop Composition contract");
       await page.setViewportSize(viewport);
-      await waitForDashboard(page);
+      await page.goto("/?test=1");
+      await waitForDashboardLayoutReady(page);
 
       const panel = page.locator("#sliders-panel");
       const body = page.locator("#sliders");
@@ -170,7 +166,8 @@ test.describe("intrinsic capped dashboard panels", () => {
   test("each managed panel cap leaves oversized content scrolling only in its established body", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "managed cap ownership contract");
     await page.setViewportSize({ width: 1728, height: 1000 });
-    await waitForDashboard(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
 
     for (const contract of [
       { shell: "#mix-insight", body: ".mix-insight-body", cap: 14 * 16 },
@@ -203,7 +200,8 @@ test.describe("intrinsic capped dashboard panels", () => {
   test("References uses a stable viewport/header cap and keeps overflow in its list", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop References cap contract");
     await page.setViewportSize({ width: 1280, height: 700 });
-    await waitForDashboard(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
 
     const readCap = () => page.evaluate(() => ({
       css: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--references-usable-cap")),
@@ -293,7 +291,8 @@ test.describe("intrinsic capped dashboard panels", () => {
     const measurements: number[] = [];
     for (const height of [1000, 1117]) {
       await page.setViewportSize({ width: 1728, height });
-      await waitForDashboard(page);
+      await page.goto("/?test=1");
+      await waitForDashboardLayoutReady(page);
       measurements.push((await metrics(page.locator("#sliders-panel"))).height);
     }
     expect(Math.abs(measurements[1] - measurements[0])).toBeLessThanOrEqual(1);
@@ -302,7 +301,8 @@ test.describe("intrinsic capped dashboard panels", () => {
   test("desktop document scrolling reaches the final Composition control", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "desktop document-scroll contract");
     await page.setViewportSize({ width: 1280, height: 700 });
-    await waitForDashboard(page);
+    await page.goto("/?test=1");
+    await waitForDashboardLayoutReady(page);
     const finalControl = page.getByRole("button", { name: "Temperature ingredient insight" });
     const documentRange = await page.evaluate(() =>
       document.documentElement.scrollHeight - document.documentElement.clientHeight,

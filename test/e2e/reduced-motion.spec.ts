@@ -86,18 +86,18 @@ test.describe("reduced motion", () => {
   test("no infinite CSS animation is left running", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("desktop"), "one project is enough");
     await openReducedMotion(page);
-    await page.waitForTimeout(500);
 
-    const running = await page.evaluate(() =>
-      document
-        .getAnimations()
-        .filter((a) => a.playState === "running" && a.effect?.getTiming().iterations === Infinity)
-        .map((a) => (a as any).animationName || "unnamed"),
-    );
-    expect(
-      running,
-      `infinite animations still running under reduced motion: ${JSON.stringify(running)}`,
-    ).toEqual([]);
+    await expect
+      .poll(() => page.evaluate(() =>
+        document
+          .getAnimations()
+          .filter((animation) =>
+            animation.playState === "running" &&
+            animation.effect?.getTiming().iterations === Infinity
+          )
+          .map((animation) => (animation as any).animationName || "unnamed"),
+      ))
+      .toEqual([]);
   });
 
   test("the Material Source preview curve completes on the next frame", async ({ page }, testInfo) => {

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { waitForCanvasAppReady } from "./canvas-frame-probe";
 
 /**
  * Smoke tests — page loads cleanly with no errors and the core
@@ -13,13 +14,14 @@ test.describe("home page smoke", () => {
     });
     page.on("pageerror", (err) => errors.push(err.message));
 
-    await page.goto("/");
+    await waitForCanvasAppReady(page);
 
     await expect(page.locator("h1", { hasText: "BOxCrete" })).toBeVisible();
     await expect(page.locator("canvas#scatter-canvas")).toBeVisible();
     await expect(page.locator("canvas#curve-canvas")).toBeVisible();
 
-    // Wait for any deferred WASM/init work to settle, then assert no errors
+    // initWASM() is intentionally non-blocking and has no completion hook. Keep
+    // observing after model readiness so deferred startup errors still fail.
     await page.waitForTimeout(1500);
     expect(
       errors,

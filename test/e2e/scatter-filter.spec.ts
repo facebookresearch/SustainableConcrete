@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { waitForDashboardLayoutReady } from "./dashboard-helpers";
 
 /**
  * Scatter filter UI invariants. Filters are a multi-row "+/−" interface
@@ -37,21 +38,9 @@ test.describe("scatter filter rows", () => {
 });
 
 test.describe("two-row filter viewport and focus containment", () => {
-  async function waitForDashboard(page: import("@playwright/test").Page) {
-    await expect(page.locator("#sliders .slider-group").first()).toBeAttached({ timeout: 15_000 });
-    await page.evaluate(async () => {
-      await document.fonts.ready;
-      await Promise.all(
-        [...document.querySelectorAll(".fade-in-up")].flatMap((element) =>
-          element.getAnimations().map((animation) => animation.finished),
-        ),
-      );
-    });
-  }
-
   test.beforeEach(async ({ page }) => {
     await page.goto("/?test=1");
-    await waitForDashboard(page);
+    await waitForDashboardLayoutReady(page);
   });
 
   async function waitForRows(page: import("@playwright/test").Page, count: number) {
@@ -106,7 +95,7 @@ test.describe("two-row filter viewport and focus containment", () => {
     ]) {
       await page.setViewportSize(scenario.viewport);
       await page.reload();
-      await waitForDashboard(page);
+      await waitForDashboardLayoutReady(page);
       const zero = await geometry(page);
       const snapshots = [zero];
       for (let count = 1; count <= scenario.expanded; count += 1) {

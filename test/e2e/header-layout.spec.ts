@@ -129,15 +129,16 @@ test.describe("header layout", () => {
     expect(before?.y).toBeLessThan(10);
 
     // Scroll the references panel into view (it's near the bottom of the page)
-    await page.locator(".references-panel").scrollIntoViewIfNeeded();
-    // Allow any scroll-snap / momentum to settle
-    await page.waitForTimeout(400);
+    const references = page.locator(".references-panel");
+    await references.scrollIntoViewIfNeeded();
+    await expect(references).toBeInViewport();
 
     // Header is still pinned at top (within a few px for sticky offset)
-    const after = await page.locator(".site-header").boundingBox();
-    expect(after?.y, "header should still be sticky at top after scrolling").toBeLessThan(
-      10,
-    );
+    await expect
+      .poll(() => page.locator(".site-header").evaluate(
+        (header) => header.getBoundingClientRect().top,
+      ))
+      .toBeLessThan(10);
   });
 
   test("mobile: page does not scroll horizontally when dragged left", async ({
