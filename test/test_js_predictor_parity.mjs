@@ -1,3 +1,9 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+// All rights reserved.
+//
+// This source code is licensed under the MIT license found in the
+// LICENSE file in the root directory of this source tree.
+
 // Variance-contract parity: the single-point `predictStrength` and the
 // batched `predictStrengthCurve` MUST return the same total variance for
 // the same (composition, time). The contract is documented in

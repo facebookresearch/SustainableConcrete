@@ -1,3 +1,9 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+// All rights reserved.
+//
+// This source code is licensed under the MIT license found in the
+// LICENSE file in the root directory of this source tree.
+
 /**
  * Post-process docs/model/test_vectors.json to add GWP/cost fields for
  * each test vector. Called immediately after experiments/regenerate_strength_json.py

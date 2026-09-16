@@ -1,3 +1,9 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
 [flake8]
 # E203, W503: black and flake8 disagree on whitespace/operator placement
 ignore = E203, W503
