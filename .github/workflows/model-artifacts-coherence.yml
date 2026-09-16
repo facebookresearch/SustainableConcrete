@@ -1,3 +1,9 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
 # Verifies that docs/model/*.json artifacts are coherent with the
 # Python V2 strength GP fit. Runs the regen pipeline and asserts no
 # diff — any uncommitted drift in strength.json / test_vectors.json /

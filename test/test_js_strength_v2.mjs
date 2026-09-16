@@ -1,3 +1,9 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+// All rights reserved.
+//
+// This source code is licensed under the MIT license found in the
+// LICENSE file in the root directory of this source tree.
+
 // Regression test: verify the JS-side predictions match the Python
 // reference (stored in docs/model/test_vectors.json) for the V2
 // strength GP model schema (gated multi-Matern + engineered features).

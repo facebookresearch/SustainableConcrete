@@ -1,3 +1,9 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
 # Playwright end-to-end tests for the BOxCrete website.
 # Runs on PRs that touch the website or the test specs themselves.
 # See test/e2e/README.md for the catalogue of invariants and how to add new tests.

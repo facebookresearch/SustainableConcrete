@@ -1,3 +1,9 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+// All rights reserved.
+//
+// This source code is licensed under the MIT license found in the
+// LICENSE file in the root directory of this source tree.
+
 // Pure unit-system definitions and converters for the web UI.
 //
 // All native (stored) values are in metric — see `boxcrete/units.py` for the
