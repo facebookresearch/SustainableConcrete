@@ -39,6 +39,7 @@ import torch
 from botorch.models.kernels import CategoricalKernel
 from botorch.utils.constraints import LogTransformedInterval
 from gpytorch.kernels import (
+    IndexKernel,
     Kernel,
     MaternKernel,
     ProductKernel,
@@ -59,11 +60,11 @@ NUM_MATERIAL_CLASSES = 3
 """3-class Material Source dimensionality. Synced with
 :data:`boxcrete.mix_naming.NUM_MATERIAL_CLASSES`."""
 
-SOURCE_KERNEL = "hamming"
-"""The categorical source-kernel topology used by
-:func:`build_strength_kernel_for_aug_dim`. Hamming was selected as the v5
-production kernel by the leave-one-class-out + prior-decomposition
-ablation:
+DEFAULT_SOURCE_KERNEL = "hamming"
+"""Default categorical source-kernel topology used by
+:func:`build_strength_kernel_for_aug_dim`. Hamming is the v5 production
+default per the leave-one-class-out + prior-decomposition ablation
+(``experiments/THREE_CLASS_AND_PRIOR_BENCHMARK.md``):
 
   * Hamming has 1 free task-covar param (``rho`` shared across all
     distinct-class pairs); IndexKernel has 6-12 task-covar params,
@@ -81,28 +82,960 @@ ablation:
   * Hamming does NOT need rail-prevention priors — its max blind
     lengthscale on v5 is 40 (well below the 100 cap), unlike
     IndexKernel which rails to 194+.
-"""
+
+Override via the ``source_kernel`` parameter of
+:func:`build_strength_kernel_for_aug_dim` /
+:func:`make_gated_strength_kernel_builder` for ablation study sub-variants
+(``hamming``, ``indexkernel_r1``, ``indexkernel_r2``, ``indexkernel_r3``,
+``onehot_ard``)."""
+
+_SUPPORTED_SOURCE_KERNELS = (
+    "indexkernel_r1",
+    "indexkernel_r2",
+    "indexkernel_r3",
+    # Partial-pooling categorical source kernels (close the under-pooling
+    # gap vs the continuous-ARD champion): task-space row shrinkage, and
+    # residual-amplitude shrinkage on top of the shared blind map.
+    "indexkernel_r2_pooled",
+    "indexkernel_r2_pooled_t0.1",
+    "indexkernel_r2_pooled_t0.2",
+    "indexkernel_r2_pooled_t0.5",
+    "indexkernel_r2_shrunk",
+    "joint_hamming_matern_pooled",
+    "hamming",
+    "fixed_chem_task",
+    "joint_chain_matern_regprior",
+    "joint_hamming_matern_regprior",
+    "onehot_ard",
+    "legacy_continuous_ard",
+    "rbf_embedding_d1",
+    "rbf_embedding_d2",
+    "rbf_embedding_d3",
+    # New variants for the lengthscale-and-init ablation
+    # (suffix conventions: ``_fixed_ell`` = lengthscale frozen at 1;
+    # ``_linear_init`` = init at integer class labels along axis 0
+    # instead of the equilateral-simplex projection).
+    "rbf_embedding_d1_fixed_ell",
+    "rbf_embedding_d2_fixed_ell",
+    "rbf_embedding_d3_fixed_ell",
+    "rbf_embedding_d1_linear_init",
+    "rbf_embedding_d1_linear_init_fixed_ell",
+    # Joint feature + categorical Matern (one kernel, not a product):
+    # K = Matern_3/2(sqrt(d^2_feat + alpha * d^2_cat)) with learnable
+    # per-feature ARD lengthscales and a learnable categorical-penalty
+    # alpha. Closes the joint-vs-product architectural gap to
+    # legacy_continuous_ard while preserving proper categorical
+    # handling.
+    "joint_hamming_matern",
+    "joint_chain_matern",
+    "joint_hamming_matern_nu05",
+    "joint_hamming_matern_nu25",
+    # Joint kernel with learnable per-class embeddings replacing the
+    # Hamming/chain categorical penalty. ``embedding_dim``-suffix
+    # controls expressivity. d=1 is the natural categorical sibling
+    # of legacy_continuous_ard (with learnable class-coordinate scalar
+    # instead of integer label).
+    "joint_embedding_matern_d1",
+    "joint_embedding_matern_d2",
+    "joint_embedding_matern_d3",
+    "joint_embedding_matern_d2_pooled",
+    "joint_embedding_matern_d1_linear_init",
+    # Additive hybrid: ScaleKernel(joint_hamming_matern) +
+    # ScaleKernel(rbf_embedding_d2_product). Combines the joint
+    # kernel topology (in-distribution accuracy) with the categorical
+    # embedding kernel (Class-2 LOCO extrapolation). Tests whether
+    # an additive composition recovers BOTH Pareto corners
+    # simultaneously.
+    "additive_joint_hamming_rbf_d2",
+    "additive_joint_hamming_nu25_rbf_d2",
+)
+
+
+class RBFEmbeddingKernel(Kernel):
+    """Categorical kernel with a learned per-class embedding + RBF.
+
+    Each of the ``num_classes`` source labels is associated with a
+    free embedding vector ``x_c \\in R^{embedding_dim}``, and the
+    inter-class covariance is computed as
+
+        ``K(c_i, c_j) = exp(- ||x_{c_i} - x_{c_j}||^2 / (2 * ell^2))``.
+
+    Embeddings and lengthscale are co-optimized with the rest of the
+    kernel hyperparameters via marginal likelihood.
+
+    Comparison with existing source kernels:
+
+    * **Hamming** is the limiting case where embeddings sit on the
+      vertices of an (n-1)-simplex with unit spacing and ``ell -> 0``
+      collapses cross-class similarity to zero.
+    * **IndexKernel-rank-r** parameterises ``K = B B^T`` where rows of
+      ``B`` are class embeddings and similarity is the inner product.
+      The RBF formulation here uses *distances* in embedding space,
+      which gives strictly positive cross-class similarities in
+      ``(0, 1]`` and is invariant to translations / scale-of-embedding
+      (the latter absorbed into the lengthscale).
+
+    Initialisation: embeddings are placed at the rows of an equilateral
+    simplex in ``R^{embedding_dim}`` (Hamming-equivalent starting point).
+    For ``embedding_dim < num_classes - 1`` the simplex is projected
+    down (which warm-starts a low-rank embedding by collapsing nearby
+    class differences along projected dims).
+
+    Identifiability: the kernel is invariant to global translations
+    and rotations of the embeddings. We pin ``x_0`` at the origin and
+    ``x_1[1:]`` at zero to fix the gauge for ``embedding_dim >= 2``.
+    For ``embedding_dim == 1`` we pin ``x_0 = 0`` and let ``x_1`` be
+    free (sign-symmetry remains but does not affect the kernel value).
+    """
+
+    has_lengthscale = True
+
+    def __init__(
+        self,
+        num_classes: int,
+        embedding_dim: int = 2,
+        active_dims: torch.Tensor | None = None,
+        learn_lengthscale: bool = True,
+        init_strategy: str = "simplex",
+        **kwargs,
+    ) -> None:
+        """Initialise the RBF-embedding kernel.
+
+        Args:
+            num_classes: number of categorical classes (e.g. 3 for v5).
+            embedding_dim: dimension of the learnable embedding space.
+            active_dims: which dim of the input tensor carries the class
+                label. Forwarded to ``Kernel.__init__``.
+            learn_lengthscale: if False, fix the lengthscale at 1 and
+                disable its gradient. The kernel then becomes
+                ``K(c_i, c_j) = exp(-||x_{c_i} - x_{c_j}||^2 / 2)``,
+                with the embedding scale absorbing what the lengthscale
+                would otherwise control. Removes a redundant
+                degree of freedom (the scale-vs-lengthscale ridge in
+                the loss surface). Default True for backward
+                compatibility.
+            init_strategy: one of ``"simplex"`` (default;
+                equilateral-simplex projection) or ``"linear"``
+                (embeddings initialised at integer class labels along
+                the first axis, mimicking the legacy continuous-ARD
+                treatment of source as a numeric coordinate). Only
+                ``"simplex"`` is supported for ``embedding_dim >= 2``;
+                ``"linear"`` is most meaningful at d=1.
+        """
+        super().__init__(
+            ard_num_dims=None,
+            active_dims=active_dims,
+            lengthscale_constraint=LogTransformedInterval(1e-2, 1e2, initial_value=1.0),
+            **kwargs,
+        )
+        if num_classes < 2:
+            raise ValueError("num_classes must be >= 2")
+        if embedding_dim < 1:
+            raise ValueError("embedding_dim must be >= 1")
+        if init_strategy not in ("simplex", "linear"):
+            raise ValueError(
+                f"init_strategy must be 'simplex' or 'linear', got {init_strategy!r}"
+            )
+        self.num_classes = num_classes
+        self.embedding_dim = embedding_dim
+        self.learn_lengthscale = learn_lengthscale
+        self.init_strategy = init_strategy
+
+        # ``num_free`` = num embedding entries that are NOT pinned.
+        # Class 0 is always pinned at the origin (embedding_dim free
+        # entries removed). For embedding_dim >= 2, class 1's last
+        # (embedding_dim - 1) coords are pinned at 0 (an additional
+        # rotation lock) — class 1 lives on the first axis only.
+        if embedding_dim >= 2:
+            num_pinned = embedding_dim + (embedding_dim - 1)
+        else:
+            num_pinned = embedding_dim  # only translation lock
+        num_free_entries = num_classes * embedding_dim - num_pinned
+        # Embedding warm start. Two strategies:
+        #
+        # ``"simplex"`` (default): rows of an equilateral simplex
+        #     in R^{num_classes-1} projected to R^{embedding_dim}.
+        #     For d >= num_classes-1 this is exact (Hamming-equivalent
+        #     at ell = 1/sqrt(2)); for d < num_classes-1, project via
+        #     SVD on the standard simplex.
+        #
+        # ``"linear"``: each class c is initialised at coordinate
+        #     (c, 0, 0, ..., 0) along the first embedding axis. Mimics
+        #     the legacy_continuous_ard treatment of source as an
+        #     ordered numeric coordinate (0, 1, 2, ...). Most useful
+        #     at d=1 for testing whether the simplex projection's
+        #     non-monotone d=1 init (-1, 0, +1) traps the optimizer in
+        #     a different basin than the legacy (0, 1, 2) init.
+        if init_strategy == "linear":
+            init = torch.zeros(num_classes, embedding_dim)
+            init[:, 0] = torch.arange(num_classes, dtype=init.dtype)
+            # Pin x_0 at origin: subtract row 0 from every row. (For
+            # linear init this is a no-op since x_0 = 0 already.)
+            init = init - init[0:1]
+        else:
+            init = self._equilateral_simplex_init(num_classes, embedding_dim)
+        pin_mask = self._build_pin_mask(num_classes, embedding_dim)
+        # Initialise the trainable free entries from the chosen init at
+        # the unpinned positions — NOT zero (else the parameter starts
+        # at the origin which collapses cross-class similarity to 1).
+        free_init = init[~pin_mask]
+        assert free_init.numel() == num_free_entries, (
+            f"free init size {free_init.numel()} != "
+            f"num_free_entries {num_free_entries}"
+        )
+        self.register_parameter(
+            name="raw_embedding_free",
+            parameter=torch.nn.Parameter(free_init.clone()),
+        )
+        # The init buffer carries pinned entries (zeros at gauge-fixing
+        # positions) plus the chosen init values at free positions.
+        # Only the pinned entries are read at forward time.
+        self.register_buffer("_embedding_init", init)
+        self.register_buffer("_pin_mask", pin_mask)
+
+        # Optionally fix the lengthscale at 1 (i.e. disable its
+        # gradient). Equivalent to letting the embedding scale absorb
+        # the lengthscale degree of freedom, which removes the
+        # ell ↔ |x| redundancy in the loss surface.
+        if not learn_lengthscale:
+            self.raw_lengthscale.requires_grad_(False)
+
+    @staticmethod
+    def _equilateral_simplex_init(num_classes: int, embedding_dim: int) -> torch.Tensor:
+        """Equilateral simplex in ``R^{num_classes-1}``, projected to
+        ``R^{embedding_dim}`` via the leading eigenvectors of its Gram
+        matrix.
+        """
+        # Standard simplex: e_i in R^{num_classes}. Centre + drop one
+        # coord -> equilateral simplex in R^{num_classes - 1}.
+        e = torch.eye(num_classes)
+        centred = e - e.mean(dim=0, keepdim=True)
+        # SVD-project to embedding_dim dims (leading components).
+        u, s, _ = torch.linalg.svd(centred, full_matrices=False)
+        keep = min(embedding_dim, u.shape[-1])
+        proj = u[:, :keep] * s[:keep].unsqueeze(0)
+        # Normalise so that pairwise distances are ~1 (matches Hamming
+        # at ell = 1 / sqrt(2)).
+        scale = float((proj[1] - proj[0]).pow(2).sum().sqrt().clamp_min(1e-9).item())
+        proj = proj / scale
+        if embedding_dim > keep:
+            pad = torch.zeros(num_classes, embedding_dim - keep)
+            proj = torch.cat([proj, pad], dim=-1)
+        # Pin x_0 to origin: subtract row 0 from every row.
+        proj = proj - proj[0:1]
+        if embedding_dim >= 2:
+            # Rotate so that x_1 lies on the first axis: rotate by the
+            # inverse of the rotation that sends x_1 / ||x_1|| to e_1.
+            v1 = proj[1].clone()
+            n1 = float(v1.norm().clamp_min(1e-9).item())
+            if n1 > 1e-9:
+                e1 = torch.zeros_like(v1)
+                e1[0] = 1.0
+                # Householder reflection sending v1 / n1 -> e1.
+                u_ref = v1 / n1 - e1
+                u_norm = float(u_ref.norm().clamp_min(1e-9).item())
+                if u_norm > 1e-9:
+                    u_ref = u_ref / u_norm
+                    proj = proj - 2.0 * (proj @ u_ref).unsqueeze(-1) * u_ref
+        return proj
+
+    @staticmethod
+    def _build_pin_mask(num_classes: int, embedding_dim: int) -> torch.Tensor:
+        """Bool mask of shape (num_classes, embedding_dim) where True =
+        pinned (not optimised).
+        """
+        mask = torch.zeros(num_classes, embedding_dim, dtype=torch.bool)
+        # Class 0 fully pinned at the origin.
+        mask[0, :] = True
+        # Class 1's last (embedding_dim - 1) coords pinned at 0 to
+        # remove rotation freedom (only when embedding_dim >= 2).
+        if embedding_dim >= 2:
+            mask[1, 1:] = True
+        return mask
+
+    @property
+    def embeddings(self) -> torch.Tensor:
+        """Materialise the (num_classes, embedding_dim) embedding
+        matrix: pinned entries take their init values; free entries
+        come from ``raw_embedding_free``.
+        """
+        emb = self._embedding_init.clone().to(self.raw_embedding_free)
+        # Scatter free params into the unpinned positions.
+        free_mask = ~self._pin_mask
+        emb = emb.clone()
+        # Use indexing to write — preserves the autograd graph.
+        emb[free_mask] = emb[free_mask].detach() * 0.0 + self.raw_embedding_free
+        return emb
+
+    def forward(
+        self,
+        x1: torch.Tensor,
+        x2: torch.Tensor,
+        diag: bool = False,
+        last_dim_is_batch: bool = False,
+        **params,
+    ) -> torch.Tensor:
+        if last_dim_is_batch:
+            raise NotImplementedError(
+                "RBFEmbeddingKernel does not support last_dim_is_batch."
+            )
+        # x1, x2 contain integer-valued class labels (potentially
+        # post-Normalize float). Cast to long.
+        idx1 = x1.squeeze(-1).round().long().clamp_(0, self.num_classes - 1)
+        idx2 = x2.squeeze(-1).round().long().clamp_(0, self.num_classes - 1)
+        emb = self.embeddings  # (num_classes, embedding_dim)
+        e1 = emb[idx1]  # (..., n1, embedding_dim)
+        e2 = emb[idx2]  # (..., n2, embedding_dim)
+        ell = self.lengthscale.squeeze(-1)  # scalar; .squeeze for any
+        if diag:
+            d2 = (e1 - e2).pow(2).sum(dim=-1)
+        else:
+            diff = e1.unsqueeze(-2) - e2.unsqueeze(-3)
+            d2 = diff.pow(2).sum(dim=-1)
+        return torch.exp(-0.5 * d2 / ell.pow(2))
+
+
+class JointHammingMaternKernel(Kernel):
+    r"""Single Matern kernel over a joint feature + categorical distance.
+
+    Defines a joint squared distance combining ARD-scaled continuous
+    feature distances with a categorical penalty:
+
+    .. math::
+        d^2(z_i, z_j) = \sum_{f} \frac{(x_{i,f} - x_{j,f})^2}{\ell_f^2}
+        + \alpha \cdot d^2_{\text{cat}}(c_i, c_j)
+
+    where the categorical squared distance is one of:
+
+    * **``categorical_mode="hamming"``** (default):
+      :math:`d^2_{\text{cat}}(c_i, c_j) = \mathbb{1}[c_i \ne c_j]`.
+    * **``categorical_mode="chain"``**:
+      :math:`d^2_{\text{cat}}(c_i, c_j) = (c_i - c_j)^2`. Encodes a
+      natural ordering of the classes (e.g. mortar → Set-2 → Set-3
+      along binder chemistry); cross-class similarity decays
+      geometrically with the integer class-distance.
+
+    Then applies Matern (default Matern_3/2; smoothness is selectable
+    via the ``nu`` parameter):
+
+    .. math::
+        K(z_i, z_j) = M_\nu\!\big(\sqrt{d^2(z_i, z_j)}\big).
+    """
+
+    has_lengthscale = False  # we manage feature lengthscales ourselves
+
+    def __init__(
+        self,
+        feature_dims: list[int],
+        source_dim: int,
+        nu: float = 1.5,
+        ard_num_dims: int | None = None,  # unused; kept for API compat
+        active_dims: torch.Tensor | None = None,
+        lengthscale_constraint=None,
+        alpha_constraint=None,
+        alpha_initial_value: float = 1.0,
+        categorical_mode: str = "hamming",
+        **kwargs,
+    ) -> None:
+        if nu not in (0.5, 1.5, 2.5):
+            raise ValueError(f"nu must be in {{0.5, 1.5, 2.5}}; got {nu}")
+        if categorical_mode not in ("hamming", "chain"):
+            raise ValueError(
+                "categorical_mode must be 'hamming' or 'chain'; "
+                f"got {categorical_mode!r}"
+            )
+        if lengthscale_constraint is None:
+            lengthscale_constraint = LogTransformedInterval(
+                1e-2, 1e3, initial_value=1.0
+            )
+        if alpha_constraint is None:
+            alpha_constraint = LogTransformedInterval(
+                1e-3, 1e3, initial_value=alpha_initial_value
+            )
+        # Pass ``ard_num_dims=None`` so GPyTorch's ARD-num-dims check
+        # in ``Kernel.__call__`` doesn't fire (our input includes both
+        # feature dims AND the source-class dim, which is more dims
+        # than our feature ARD).
+        super().__init__(
+            ard_num_dims=None,
+            active_dims=active_dims,
+            **kwargs,
+        )
+        del ard_num_dims  # explicitly unused
+        self.feature_dims = list(feature_dims)
+        self.source_dim = int(source_dim)
+        self.nu = float(nu)
+        self.categorical_mode = categorical_mode
+        self._n_features = len(feature_dims)
+
+        # Per-feature lengthscale managed explicitly (not via the
+        # ``has_lengthscale`` machinery) since GPyTorch's ARD check
+        # collides with our mixed feature+categorical input layout.
+        self.register_parameter(
+            name="raw_feat_lengthscale",
+            parameter=torch.nn.Parameter(torch.zeros(1, self._n_features)),
+        )
+        self.register_constraint("raw_feat_lengthscale", lengthscale_constraint)
+        with torch.no_grad():
+            init_ell = torch.full(
+                (1, self._n_features),
+                float(getattr(lengthscale_constraint, "initial_value", 1.0) or 1.0),
+            )
+            self.raw_feat_lengthscale.copy_(
+                self.raw_feat_lengthscale_constraint.inverse_transform(init_ell)
+            )
+
+        # Learnable categorical-penalty alpha (positive scalar).
+        self.register_parameter(
+            name="raw_alpha",
+            parameter=torch.nn.Parameter(torch.zeros(1)),
+        )
+        self.register_constraint("raw_alpha", alpha_constraint)
+        with torch.no_grad():
+            self.raw_alpha.copy_(
+                self.raw_alpha_constraint.inverse_transform(
+                    torch.tensor(alpha_initial_value)
+                )
+            )
+
+    @property
+    def lengthscale(self) -> torch.Tensor:
+        """Per-feature ARD lengthscales, shape (1, n_features)."""
+        return self.raw_feat_lengthscale_constraint.transform(self.raw_feat_lengthscale)
+
+    @property
+    def alpha(self) -> torch.Tensor:
+        return self.raw_alpha_constraint.transform(self.raw_alpha)
+
+    def _matern(self, d: torch.Tensor) -> torch.Tensor:
+        """Apply Matern_nu to a (joint) distance tensor."""
+        if self.nu == 0.5:
+            return torch.exp(-d)
+        if self.nu == 1.5:
+            sqrt3_d = math.sqrt(3.0) * d
+            return (1.0 + sqrt3_d) * torch.exp(-sqrt3_d)
+        if self.nu == 2.5:
+            sqrt5_d = math.sqrt(5.0) * d
+            return (1.0 + sqrt5_d + sqrt5_d.pow(2) / 3.0) * torch.exp(-sqrt5_d)
+        raise NotImplementedError(f"Matern nu={self.nu} not supported.")
+
+    def forward(
+        self,
+        x1: torch.Tensor,
+        x2: torch.Tensor,
+        diag: bool = False,
+        last_dim_is_batch: bool = False,
+        **params,
+    ) -> torch.Tensor:
+        if last_dim_is_batch:
+            raise NotImplementedError(
+                "JointHammingMaternKernel does not support last_dim_is_batch."
+            )
+        # The active_dims slice has already been applied by the
+        # base Kernel forward; ``x1`` and ``x2`` are restricted to
+        # ``self.active_dims`` columns. We need to map our absolute
+        # ``feature_dims`` / ``source_dim`` to positions within
+        # ``self.active_dims``.
+        if self.active_dims is None:
+            feature_local = self.feature_dims
+            source_local = self.source_dim
+        else:
+            absolute = self.active_dims.tolist()
+            try:
+                feature_local = [absolute.index(f) for f in self.feature_dims]
+                source_local = absolute.index(self.source_dim)
+            except ValueError as exc:
+                raise ValueError(
+                    "feature_dims/source_dim not all in active_dims"
+                ) from exc
+
+        # ARD-scaled continuous-feature contribution to squared distance.
+        feat1 = x1[..., feature_local]
+        feat2 = x2[..., feature_local]
+        # ``self.lengthscale`` has shape (1, ard_num_dims).
+        ell = self.lengthscale.squeeze(0)
+        scaled1 = feat1 / ell
+        scaled2 = feat2 / ell
+        if diag:
+            d2_feat = (scaled1 - scaled2).pow(2).sum(dim=-1)
+        else:
+            d2_feat = (scaled1.unsqueeze(-2) - scaled2.unsqueeze(-3)).pow(2).sum(dim=-1)
+
+        # Categorical squared distance contribution.
+        c1 = x1[..., source_local].round().long()
+        c2 = x2[..., source_local].round().long()
+        if self.categorical_mode == "hamming":
+            if diag:
+                d2_cat = (c1 != c2).to(d2_feat.dtype)
+            else:
+                d2_cat = (c1.unsqueeze(-1) != c2.unsqueeze(-2)).to(d2_feat.dtype)
+        else:  # "chain"
+            # Squared difference of integer labels; class-distance grows
+            # quadratically with the number of class-steps along the
+            # natural ordering 0 < 1 < 2 < ... < (C - 1).
+            if diag:
+                d2_cat = (c1 - c2).to(d2_feat.dtype).pow(2)
+            else:
+                d2_cat = (c1.unsqueeze(-1) - c2.unsqueeze(-2)).to(d2_feat.dtype).pow(2)
+
+        d2_joint = d2_feat + self.alpha * d2_cat
+        d_joint = d2_joint.clamp_min(1e-12).sqrt()
+        return self._matern(d_joint)
+
+
+class JointEmbeddingMaternKernel(Kernel):
+    r"""Joint feature + learned-class-embedding Matern kernel.
+
+    Generalises ``JointHammingMaternKernel`` by replacing the
+    Hamming/chain categorical penalty with a learnable per-class
+    embedding:
+
+    .. math::
+        d^2(z_i, z_j) = \sum_{f} \frac{(x_{i,f} - x_{j,f})^2}{\ell_f^2}
+        + \|\mathbf{x}_{c_i} - \mathbf{x}_{c_j}\|^2,
+        \quad K(z_i, z_j) = M_\nu\!\big(\sqrt{d^2(z_i, z_j)}\big).
+
+    The class embeddings :math:`\mathbf{x}_c \in \mathbb{R}^{embedding\_dim}`
+    are co-optimised with the feature lengthscales. The embedding scale
+    absorbs what ``alpha`` would do in the Hamming/chain variants
+    (no separate alpha parameter).
+
+    Gauge fixing: ``x_0`` is pinned at the origin (translation lock);
+    for ``embedding_dim >= 2``, ``x_1[1:]`` is pinned at zero (rotation
+    lock). Free entries are stored in a flat ``raw_embedding_free``
+    parameter and scattered into the full matrix at forward time.
+
+    At ``embedding_dim = 1``, this kernel is the natural categorical
+    generalisation of ``legacy_continuous_ard``: it treats the source
+    coordinate as a learnable per-class scalar with the same joint
+    ARD-Matern topology that legacy uses for source-as-numeric.
+
+    Args:
+        feature_dims, source_dim, nu, active_dims: as in
+            :class:`JointHammingMaternKernel`.
+        num_classes: number of categorical classes.
+        embedding_dim: dimensionality of the learnable per-class
+            embedding (typically 1, 2, or 3 for 3-class data).
+        init_strategy: ``"simplex"`` (default; equilateral-simplex
+            warm start, equidistant pairwise classes) or ``"linear"``
+            (init at integer class labels along axis 0).
+    """
+
+    has_lengthscale = False  # manage our own feature lengthscales
+
+    def __init__(
+        self,
+        feature_dims: list[int],
+        source_dim: int,
+        num_classes: int,
+        embedding_dim: int = 1,
+        nu: float = 1.5,
+        active_dims: torch.Tensor | None = None,
+        lengthscale_constraint=None,
+        init_strategy: str = "simplex",
+        **kwargs,
+    ) -> None:
+        if nu not in (0.5, 1.5, 2.5):
+            raise ValueError(f"nu must be in {{0.5, 1.5, 2.5}}; got {nu}")
+        if num_classes < 2:
+            raise ValueError("num_classes must be >= 2")
+        if embedding_dim < 1:
+            raise ValueError("embedding_dim must be >= 1")
+        if init_strategy not in ("simplex", "linear"):
+            raise ValueError(
+                f"init_strategy must be 'simplex' or 'linear'; got {init_strategy!r}"
+            )
+        if lengthscale_constraint is None:
+            lengthscale_constraint = LogTransformedInterval(
+                1e-2, 1e3, initial_value=1.0
+            )
+        super().__init__(
+            ard_num_dims=None,
+            active_dims=active_dims,
+            **kwargs,
+        )
+        self.feature_dims = list(feature_dims)
+        self.source_dim = int(source_dim)
+        self.num_classes = int(num_classes)
+        self.embedding_dim = int(embedding_dim)
+        self.nu = float(nu)
+        self.init_strategy = init_strategy
+        self._n_features = len(feature_dims)
+
+        # Per-feature ARD lengthscales (managed manually, like
+        # JointHammingMaternKernel, to avoid GPyTorch's ARD check).
+        self.register_parameter(
+            name="raw_feat_lengthscale",
+            parameter=torch.nn.Parameter(torch.zeros(1, self._n_features)),
+        )
+        self.register_constraint("raw_feat_lengthscale", lengthscale_constraint)
+        with torch.no_grad():
+            init_ell = torch.full(
+                (1, self._n_features),
+                float(getattr(lengthscale_constraint, "initial_value", 1.0) or 1.0),
+            )
+            self.raw_feat_lengthscale.copy_(
+                self.raw_feat_lengthscale_constraint.inverse_transform(init_ell)
+            )
+
+        # Class embeddings: same gauge-fix scheme as RBFEmbeddingKernel.
+        if self.embedding_dim >= 2:
+            num_pinned = self.embedding_dim + (self.embedding_dim - 1)
+        else:
+            num_pinned = self.embedding_dim
+        num_free_entries = self.num_classes * self.embedding_dim - num_pinned
+
+        if init_strategy == "linear":
+            init = torch.zeros(self.num_classes, self.embedding_dim)
+            init[:, 0] = torch.arange(self.num_classes, dtype=init.dtype)
+            init = init - init[0:1]
+        else:
+            init = RBFEmbeddingKernel._equilateral_simplex_init(
+                self.num_classes, self.embedding_dim
+            )
+        pin_mask = RBFEmbeddingKernel._build_pin_mask(
+            self.num_classes, self.embedding_dim
+        )
+        free_init = init[~pin_mask]
+        assert free_init.numel() == num_free_entries, (
+            f"free init size {free_init.numel()} != "
+            f"num_free_entries {num_free_entries}"
+        )
+        self.register_parameter(
+            name="raw_embedding_free",
+            parameter=torch.nn.Parameter(free_init.clone()),
+        )
+        self.register_buffer("_embedding_init", init)
+        self.register_buffer("_pin_mask", pin_mask)
+
+    @property
+    def lengthscale(self) -> torch.Tensor:
+        return self.raw_feat_lengthscale_constraint.transform(self.raw_feat_lengthscale)
+
+    @property
+    def embeddings(self) -> torch.Tensor:
+        emb = self._embedding_init.clone().to(self.raw_embedding_free)
+        free_mask = ~self._pin_mask
+        emb = emb.clone()
+        emb[free_mask] = emb[free_mask].detach() * 0.0 + self.raw_embedding_free
+        return emb
+
+    def _matern(self, d: torch.Tensor) -> torch.Tensor:
+        if self.nu == 0.5:
+            return torch.exp(-d)
+        if self.nu == 1.5:
+            sqrt3_d = math.sqrt(3.0) * d
+            return (1.0 + sqrt3_d) * torch.exp(-sqrt3_d)
+        if self.nu == 2.5:
+            sqrt5_d = math.sqrt(5.0) * d
+            return (1.0 + sqrt5_d + sqrt5_d.pow(2) / 3.0) * torch.exp(-sqrt5_d)
+        raise NotImplementedError(f"Matern nu={self.nu} not supported.")
+
+    def forward(
+        self,
+        x1: torch.Tensor,
+        x2: torch.Tensor,
+        diag: bool = False,
+        last_dim_is_batch: bool = False,
+        **params,
+    ) -> torch.Tensor:
+        if last_dim_is_batch:
+            raise NotImplementedError(
+                "JointEmbeddingMaternKernel does not support last_dim_is_batch."
+            )
+        if self.active_dims is None:
+            feature_local = self.feature_dims
+            source_local = self.source_dim
+        else:
+            absolute = self.active_dims.tolist()
+            feature_local = [absolute.index(f) for f in self.feature_dims]
+            source_local = absolute.index(self.source_dim)
+
+        # Continuous-feature contribution.
+        feat1 = x1[..., feature_local]
+        feat2 = x2[..., feature_local]
+        ell = self.lengthscale.squeeze(0)
+        scaled1 = feat1 / ell
+        scaled2 = feat2 / ell
+        if diag:
+            d2_feat = (scaled1 - scaled2).pow(2).sum(dim=-1)
+        else:
+            d2_feat = (scaled1.unsqueeze(-2) - scaled2.unsqueeze(-3)).pow(2).sum(dim=-1)
+
+        # Categorical contribution: ||x_{c_i} - x_{c_j}||^2 in the
+        # learned embedding space.
+        c1 = x1[..., source_local].round().long().clamp_(0, self.num_classes - 1)
+        c2 = x2[..., source_local].round().long().clamp_(0, self.num_classes - 1)
+        emb = self.embeddings  # (num_classes, embedding_dim)
+        e1 = emb[c1]  # (..., n1, embedding_dim)
+        e2 = emb[c2]  # (..., n2, embedding_dim)
+        if diag:
+            d2_cat = (e1 - e2).pow(2).sum(dim=-1)
+        else:
+            d2_cat = (e1.unsqueeze(-2) - e2.unsqueeze(-3)).pow(2).sum(dim=-1)
+
+        d2_joint = d2_feat + d2_cat
+        d_joint = d2_joint.clamp_min(1e-12).sqrt()
+        return self._matern(d_joint)
+
+
+def _chemistry_task_covar() -> torch.Tensor:
+    """Fixed 3x3 task covariance derived from domain chemistry.
+
+    Per-class embedding over ``[concrete-ness (weight 2), fly-ash-Class-F,
+    cement-Amrize]``. Mortar (class 0, zero coarse aggregate) is the
+    structural outlier; the two concretes (1, 2) are more similar. An RBF
+    over these FIXED embeddings (fixed lengthscale 1) yields a PSD
+    correlation matrix with NO learnable task parameters — a physics-
+    informed prior that avoids the learned-IndexKernel instability.
+    """
+    emb = torch.tensor(
+        [
+            [0.0, 0.0, 1.0],  # class 0 mortar:  not-concrete, Class C, Amrize
+            [2.0, 0.0, 0.0],  # class 1 Set 2:   concrete,     Class C, Heidelberg
+            [2.0, 1.0, 1.0],  # class 2 Set 3:   concrete,     Class F, Amrize
+        ],
+        dtype=torch.float64,
+    )
+    d2 = torch.cdist(emb, emb) ** 2
+    return torch.exp(-0.5 * d2)
+
+
+class FixedTaskKernel(Kernel):
+    """Categorical source kernel with a FIXED (non-learnable) task covariance.
+
+    Only the shared Matern half and the outputscale adapt; the 3x3 task
+    structure is a fixed buffer. This imposes proper 3-class structure
+    with zero learnable task parameters, sidestepping the instability of
+    a learned IndexKernel on held-out composition splits.
+    """
+
+    def __init__(self, task_covar: torch.Tensor, active_dims):
+        super().__init__(active_dims=active_dims)
+        self.register_buffer("task_covar", task_covar)
+
+    def forward(self, x1, x2, diag: bool = False, **params):
+        i = x1[..., 0].round().long()
+        j = x2[..., 0].round().long()
+        K = self.task_covar.to(x1)
+        if diag:
+            return K[i, j]
+        return K[i.unsqueeze(-1), j.unsqueeze(-2)]
 
 
 def _categorical_source_branch(
     d_aug: int,
     lengthscale_lower: float,
+    source_kernel: str,
 ) -> ScaleKernel:
     """Construct the source-aware sub-kernel of the strength GP.
 
-    Returns ``ScaleKernel(CategoricalKernel(source) * MaternKernel(rest))``
-    where ``rest`` is ``no_source + extras``,
+    Returns ``ScaleKernel(<categorical_source> * MaternKernel(no_source + extras))``,
     a Bonilla et al. (2008) intrinsic-coregionalization-model factorisation:
-    the Matern shape is shared across all 3 material classes; the Hamming
-    ``CategoricalKernel`` factor (1 free param — the cross-class correlation
-    ``rho = exp(-1/ell)``) modulates inter-class amplitude and correlation.
+    the Matern shape is shared across all 3 sources; the categorical
+    factor modulates inter-source amplitude and correlation.
+
+    Supported ``source_kernel`` topologies:
+
+      ``indexkernel_r{1,2,3}``  ``gpytorch.kernels.IndexKernel(num_tasks=3, rank=r)``.
+                                Free task-covar params: ``3*r + 3``. Evaluates
+                                ``k(i, j) = (B B^T + diag(v))_{i, j}``.
+
+      ``hamming``               ``botorch.models.kernels.CategoricalKernel``
+                                (``ard_num_dims=1``).
+                                Free params: 1 (single learned correlation
+                                between distinct classes; ``rho = exp(-1/ell)``).
+
+      ``onehot_ard``            One-hot encode the source dim into 3 binary
+                                indicator dims and ARD-Matern over them. Free
+                                params: 3 lengthscales. The ``onehot_ard`` path
+                                does NOT use a categorical kernel — it treats
+                                source as 3 continuous binary cols (a baseline
+                                for "is the categorical kernel actually buying
+                                anything?").
+
+      ``legacy_continuous_ard``  Pre-Commit-5 baseline: a single ARD-Matern over
+                                ALL raw dims (INCLUDING Material Source) plus
+                                the appended engineered features. Source is
+                                treated as a continuous coordinate with one
+                                ARD lengthscale, exactly as the deployed
+                                production V2 model does. Used as the "current
+                                productionised architecture" anchor in
+                                three-class ablation.
 
     The Matern half spans the non-source raw dims and the appended
-    engineered features; the source dim is handled by the categorical
-    factor.
+    engineered features (except ``legacy_continuous_ard`` which spans
+    all raw dims).
     """
+    if source_kernel not in _SUPPORTED_SOURCE_KERNELS:
+        raise ValueError(
+            f"Unsupported source_kernel: {source_kernel!r}. "
+            f"Expected one of {_SUPPORTED_SOURCE_KERNELS}."
+        )
+
     no_source_dims = [i for i in range(_N_RAW_DIMS) if i != _SOURCE_DIM]
     extra_dims = list(range(_N_RAW_DIMS, d_aug))
+
+    if source_kernel == "additive_joint_hamming_rbf_d2":
+        # Additive hybrid: K_total = ScaleKernel(joint_hamming_matern)
+        # + ScaleKernel(rbf_embedding_d2 product). Each summand has
+        # its own outputscale and lengthscales; the optimizer can
+        # rebalance between in-distribution (joint topology) and
+        # LOCO Class-2 (categorical-embedding) contributions.
+        branch_a = _categorical_source_branch(
+            d_aug, lengthscale_lower, "joint_hamming_matern"
+        )
+        branch_b = _categorical_source_branch(
+            d_aug, lengthscale_lower, "rbf_embedding_d2"
+        )
+        return branch_a + branch_b
+
+    if source_kernel == "additive_joint_hamming_nu25_rbf_d2":
+        # Additive hybrid using the Matern_5/2 joint variant (the
+        # in-distribution corner of the Pareto frontier).
+        branch_a = _categorical_source_branch(
+            d_aug, lengthscale_lower, "joint_hamming_matern_nu25"
+        )
+        branch_b = _categorical_source_branch(
+            d_aug, lengthscale_lower, "rbf_embedding_d2"
+        )
+        return branch_a + branch_b
+
+    if source_kernel.startswith("joint_hamming_matern") or source_kernel.startswith(
+        "joint_chain_matern"
+    ):
+        # Joint kernel: Matern(sqrt(d^2_feat + alpha * d^2_cat)).
+        # categorical_mode and Matern smoothness parsed from the name;
+        # optional suffixes: _pooled (shrink alpha->0), _regprior (mild
+        # weakly-informative prior on alpha to cut cross-split variance).
+        feature_dims = no_source_dims + extra_dims
+        categorical_mode = "chain" if "chain" in source_kernel else "hamming"
+        if "nu05" in source_kernel:
+            nu = 0.5
+        elif "nu25" in source_kernel:
+            nu = 2.5
+        else:
+            nu = 1.5
+        joint = JointHammingMaternKernel(
+            feature_dims=feature_dims,
+            source_dim=_SOURCE_DIM,
+            nu=nu,
+            categorical_mode=categorical_mode,
+            ard_num_dims=len(feature_dims),
+            active_dims=torch.tensor(feature_dims + [_SOURCE_DIM]),
+            lengthscale_constraint=LogTransformedInterval(
+                lengthscale_lower, 1e3, initial_value=1.0
+            ),
+            alpha_initial_value=1.0,
+        )
+        if "_pooled" in source_kernel:
+            # Increase pooling by shrinking the categorical-penalty alpha
+            # toward small values (alpha -> 0 collapses all classes into
+            # the shared feature-only metric = fully pooled).
+            from gpytorch.priors import LogNormalPrior
+
+            joint.register_prior(
+                "alpha_pooling_prior",
+                LogNormalPrior(
+                    loc=torch.tensor(-2.0, dtype=torch.float64),
+                    scale=torch.tensor(1.0, dtype=torch.float64),
+                ),
+                lambda m: m.alpha,
+            )
+        if "_regprior" in source_kernel:
+            # Weakly-informative prior centred at alpha=1 (loc=0 in log
+            # space) to keep alpha in a sane range and cut cross-split
+            # variance WITHOUT forcing pooling (unlike _pooled).
+            from gpytorch.priors import LogNormalPrior
+
+            joint.register_prior(
+                "alpha_regprior",
+                LogNormalPrior(
+                    loc=torch.tensor(0.0, dtype=torch.float64),
+                    scale=torch.tensor(0.5, dtype=torch.float64),
+                ),
+                lambda m: m.alpha,
+            )
+        return ScaleKernel(
+            joint,
+            outputscale_constraint=LogTransformedInterval(1e-2, 1e2, initial_value=1.0),
+        )
+
+    if source_kernel.startswith("joint_embedding_matern_d"):
+        # Joint kernel with learnable per-class embedding for the
+        # categorical squared distance. Suffix is
+        # ``d{embedding_dim}[_linear_init]``.
+        feature_dims = no_source_dims + extra_dims
+        suffix = source_kernel[len("joint_embedding_matern_d") :]
+        parts = suffix.split("_")
+        embedding_dim = int(parts[0])
+        flag_str = "_".join(parts[1:])
+        init_strategy = "linear" if "linear_init" in flag_str else "simplex"
+        joint = JointEmbeddingMaternKernel(
+            feature_dims=feature_dims,
+            source_dim=_SOURCE_DIM,
+            num_classes=NUM_MATERIAL_CLASSES,
+            embedding_dim=embedding_dim,
+            nu=1.5,
+            active_dims=torch.tensor(feature_dims + [_SOURCE_DIM]),
+            lengthscale_constraint=LogTransformedInterval(
+                lengthscale_lower, 1e3, initial_value=1.0
+            ),
+            init_strategy=init_strategy,
+        )
+        if "pooled" in flag_str:
+            # Partial-pooling on the per-class embeddings (shrink rows
+            # together) — the joint-metric analog of the fix that made
+            # indexkernel_r2_pooled beat the champion. Without this the
+            # embedding isolates the most-distinct class (cf. rbf).
+            from boxcrete.priors import TaskPoolingPrior
+
+            joint.register_prior(
+                "embedding_pooling_prior",
+                TaskPoolingPrior(
+                    num_tasks=NUM_MATERIAL_CLASSES, rank=embedding_dim, tau=0.2
+                ),
+                lambda m: m.embeddings,
+            )
+        return ScaleKernel(
+            joint,
+            outputscale_constraint=LogTransformedInterval(1e-2, 1e2, initial_value=1.0),
+        )
+
+    if source_kernel == "legacy_continuous_ard":
+        # Pre-Commit-5 V2 production architecture: a single ARD-Matern over
+        # all raw dims including Material Source as a continuous coordinate.
+        # This is the model deployed in docs/model/strength.json before the
+        # v5 categorical-kernel migration; here it serves as the
+        # "current-production-on-current-data" baseline for the
+        # three-class ablation's no-regression check.
+        all_orig_dims = list(range(_N_RAW_DIMS))
+        return ard_matern_with_within_group_prior(
+            ard_num_dims=_N_RAW_DIMS + len(extra_dims),
+            active_dims=torch.tensor(all_orig_dims + extra_dims),
+            prior=within_group_prior(d_in=_N_RAW_DIMS, num_extras=len(extra_dims)),
+            initial_outputscale=0.5,
+            lengthscale_lower=lengthscale_lower,
+        )
+
+    if source_kernel == "onehot_ard":
+        # In the one-hot baseline the source dim is expanded to 3 binary
+        # cols via an input transform UPSTREAM (in strength_model.py).
+        # Here we simply ARD-Matern across (no_source + 3 indicator + extras).
+        # The input-transform contract: the 3 indicator cols replace the
+        # source dim in-place (so positions 7..9 become indicator[0..2]
+        # and the rest of the raw cols shift by +2). The kernel's
+        # ``active_dims`` reflect the post-transform layout.
+        d_after = _N_RAW_DIMS - 1 + NUM_MATERIAL_CLASSES + len(extra_dims)
+        active = list(range(d_after))
+        matern = ard_matern_with_within_group_prior(
+            ard_num_dims=d_after,
+            active_dims=torch.tensor(active),
+            prior=None,  # one-hot dims aren't grouped; let MLL fit
+            initial_outputscale=0.5,
+            lengthscale_lower=lengthscale_lower,
+        )
+        return matern
 
     matern = ard_matern_with_within_group_prior(
         ard_num_dims=len(no_source_dims) + len(extra_dims),
@@ -115,14 +1048,85 @@ def _categorical_source_branch(
         initial_outputscale=1.0,
         lengthscale_lower=lengthscale_lower,
     )
-    cat = CategoricalKernel(
-        ard_num_dims=1,
-        active_dims=torch.tensor([_SOURCE_DIM]),
-    )
-    return ScaleKernel(
+    if source_kernel == "hamming":
+        cat = CategoricalKernel(
+            ard_num_dims=1,
+            active_dims=torch.tensor([_SOURCE_DIM]),
+        )
+    elif source_kernel == "fixed_chem_task":
+        cat = FixedTaskKernel(
+            _chemistry_task_covar(),
+            active_dims=torch.tensor([_SOURCE_DIM]),
+        )
+    elif source_kernel == "indexkernel_r2_shrunk" or source_kernel.startswith(
+        "indexkernel_r2_pooled"
+    ):
+        # Partial-pooling categorical source kernels (close the
+        # under-pooling gap vs the continuous-ARD champion).
+        cat = IndexKernel(
+            num_tasks=NUM_MATERIAL_CLASSES,
+            rank=2,
+            active_dims=torch.tensor([_SOURCE_DIM]),
+        )
+        if source_kernel.startswith("indexkernel_r2_pooled"):
+            from boxcrete.priors import TaskPoolingPrior
+
+            # Optional tau suffix: ``indexkernel_r2_pooled_t0.1`` etc.
+            tau = (
+                0.3
+                if source_kernel == "indexkernel_r2_pooled"
+                else float(source_kernel.split("_t")[-1])
+            )
+            cat.register_prior(
+                "task_pooling_prior",
+                TaskPoolingPrior(num_tasks=NUM_MATERIAL_CLASSES, rank=2, tau=tau),
+                lambda m: m.covar_factor,
+            )
+    elif source_kernel.startswith("rbf_embedding_d"):
+        # Parse ``rbf_embedding_d{dim}[_linear_init][_fixed_ell]``.
+        suffix = source_kernel[len("rbf_embedding_d") :]
+        # Suffix is ``{dim}`` followed by optional flags; flags are
+        # joined by underscores so we split on '_' and consume.
+        parts = suffix.split("_")
+        embedding_dim = int(parts[0])
+        flag_str = "_".join(parts[1:])
+        learn_lengthscale = "fixed_ell" not in flag_str
+        init_strategy = "linear" if "linear_init" in flag_str else "simplex"
+        cat = RBFEmbeddingKernel(
+            num_classes=NUM_MATERIAL_CLASSES,
+            embedding_dim=embedding_dim,
+            active_dims=torch.tensor([_SOURCE_DIM]),
+            learn_lengthscale=learn_lengthscale,
+            init_strategy=init_strategy,
+        )
+    else:
+        # indexkernel_r{1, 2, 3}
+        rank = int(source_kernel.split("_r")[-1])
+        cat = IndexKernel(
+            num_tasks=NUM_MATERIAL_CLASSES,
+            rank=rank,
+            active_dims=torch.tensor([_SOURCE_DIM]),
+        )
+
+    scaled = ScaleKernel(
         ProductKernel(cat, matern.base_kernel),
         outputscale_constraint=matern.raw_outputscale_constraint,
     )
+    if source_kernel == "indexkernel_r2_shrunk":
+        # Shrink the per-class residual amplitude toward zero so the
+        # shared (blind) composition map does most of the work — a
+        # partial-pooling structure via the source outputscale.
+        from gpytorch.priors import LogNormalPrior
+
+        scaled.register_prior(
+            "residual_shrinkage_prior",
+            LogNormalPrior(
+                loc=torch.tensor(-2.0, dtype=torch.float64),
+                scale=torch.tensor(1.0, dtype=torch.float64),
+            ),
+            lambda m: m.outputscale,
+        )
+    return scaled
 
 
 def additive_time_kernel(d_in: int) -> ScaleKernel:
@@ -246,10 +1250,9 @@ class TimeGatedKernel(Kernel):
         h2 = self._h(x2[..., self.time_idx])
         if diag:
             # K shape: [..., n] — element-wise multiply by h1, h2 (same shape)
-            # ``diag=True`` kernel-eval branch; BoTorch's
-            # ``posterior(...).variance`` computes the full covariance
-            # and extracts the diagonal, so kernel.forward is never
-            # called with diag=True in the production fit path.
+            # pragma: no cover -- diag=True kernel-eval branch; BoTorch's
+            # posterior(...).variance computes the full covariance and
+            # extracts the diagonal, never calling forward with diag=True
             return K * h1 * h2  # pragma: no cover
         # K shape: [..., n1, n2]; multiply by h1[...,n1,1] and h2[...,1,n2]
         return K * h1.unsqueeze(-1) * h2.unsqueeze(-2)
@@ -258,6 +1261,9 @@ class TimeGatedKernel(Kernel):
 def build_strength_kernel_for_aug_dim(
     d_aug: int,
     lengthscale_lower: float = 1e-2,
+    source_kernel: str = DEFAULT_SOURCE_KERNEL,
+    time_tying_sigma: float | None = None,
+    include_blind: bool = True,
 ) -> torch.nn.Module:
     """Build the V2 strength kernel adapted to the augmented input dim
     (raw composition + appended engineered features).
@@ -270,18 +1276,23 @@ def build_strength_kernel_for_aug_dim(
 
     The source-aware sub-kernel is a categorical-times-Matern product:
 
-        ScaleKernel(CategoricalKernel(source) * MaternKernel(rest))
+        ScaleKernel(<categorical_source> * MaternKernel(no_source + extras))
 
-    where the Hamming ``CategoricalKernel`` contributes one learned
-    cross-class correlation ``rho = exp(-1/ell)`` — a Bonilla et al.
-    (2008) intrinsic-coregionalization factorisation.
+    where ``<categorical_source>`` is one of ``IndexKernel(num_tasks=3,
+    rank=r)``, ``CategoricalKernel`` (Hamming), or one-hot ARD —
+    selected via the ``source_kernel`` parameter. The default
+    ``"indexkernel_r2"`` expresses two latent task-space axes (mortar
+    vs. concrete; Class-C-vs-Class-F fly ash) which match the dataset's
+    natural chemistry hierarchy.
 
-    Pre-v5 (the earlier deployed model) treated Material Source as a
-    continuous ARD coordinate of the source-specific Matern. The move to
-    a categorical kernel reflects that the dataset truly has three
-    discrete material classes with distinct chemistries; one ARD
-    coordinate trying to span both (Set 1 ↔ Set 2) and (Set 1+2 ↔ Set 3)
-    variation is ill-defined.
+    Pre-v5 (the deployed V2 model) treated Material Source as a
+    continuous ARD coordinate of the source-specific Matern. The v5
+    refactor moves to a categorical kernel because the dataset truly
+    has three discrete sources with three distinct chemistries; one
+    ARD coordinate trying to span both (Set 1 ↔ Set 2) and
+    (Set 1+2 ↔ Set 3) variation is ill-defined. See the plan §"Commit 5"
+    and ``experiments/THREE_CLASS_AND_PRIOR_BENCHMARK.md`` for the
+    Stage-2 ablation that picks the default rank.
 
     The within-group prior (Cement/FA/Slag tied, Fine/Coarse Aggregate
     tied) is installed on the ``blind`` Matern's lengthscales and on
@@ -289,36 +1300,106 @@ def build_strength_kernel_for_aug_dim(
     original raw feature dims; the appended engineered features get
     free lengthscales).
 
+    ``lengthscale_lower`` (default 1e-2) controls the lengthscale
+    lower constraint. The HRWR/binder ablation found that some
+    engineered features rail at this bound under the default; pass
+    ``1e-4`` to give the optimiser more room.
+
     Args:
         d_aug: post-feature-append input dim.
-        lengthscale_lower: ARD lengthscale lower constraint. Some
-            engineered features rail at the 1e-2 default; pass ``1e-4``
-            to give the optimiser more room.
+        lengthscale_lower: ARD lengthscale lower constraint.
+        source_kernel: categorical source-kernel topology
+            (see :func:`_categorical_source_branch`).
+        time_tying_sigma: optional cross-component soft-tying of the
+            three Time lengthscales (blind Matern, source-specific
+            Matern, additive RBF) via a
+            :class:`boxcrete.priors.CrossComponentLengthscalePrior`.
+            ``None`` (default) disables tying. Typical permissive value
+            is 0.5 (admits ~e^0.5 ≈ 1.65× spread between sub-components).
+            Stage-3.5 in the v5 ablation; see plan discussion.
+            The ``onehot_ard`` source-kernel path skips tying because
+            its specific branch is a bare Matern over one-hot-expanded
+            source cols — no specific Matern with a Time-active-dim
+            to tie to.
     """
     no_source_dims = [i for i in range(_N_RAW_DIMS) if i != _SOURCE_DIM]
     extra_dims = list(range(_N_RAW_DIMS, d_aug))  # appended feature indices
 
-    blind = ard_matern_with_within_group_prior(
-        ard_num_dims=len(no_source_dims) + len(extra_dims),
-        active_dims=torch.tensor(no_source_dims + extra_dims),
-        prior=within_group_prior(
-            d_in=_N_RAW_DIMS,
-            source_dim=_SOURCE_DIM,
-            num_extras=len(extra_dims),
-        ),
-        initial_outputscale=1.0,
-        lengthscale_lower=lengthscale_lower,
-    )
+    if include_blind:
+        blind = ard_matern_with_within_group_prior(
+            ard_num_dims=len(no_source_dims) + len(extra_dims),
+            active_dims=torch.tensor(no_source_dims + extra_dims),
+            prior=within_group_prior(
+                d_in=_N_RAW_DIMS,
+                source_dim=_SOURCE_DIM,
+                num_extras=len(extra_dims),
+            ),
+            initial_outputscale=1.0,
+            lengthscale_lower=lengthscale_lower,
+        )
     specific = _categorical_source_branch(
         d_aug=d_aug,
         lengthscale_lower=lengthscale_lower,
+        source_kernel=source_kernel,
     )
     time_branch = additive_time_kernel(_N_RAW_DIMS)
 
-    return blind + specific + time_branch
+    if (
+        include_blind
+        and time_tying_sigma is not None
+        and source_kernel
+        not in (
+            "onehot_ard",
+            "legacy_continuous_ard",
+        )
+    ):
+        # Wire up the cross-component soft-tying on Time lengthscales.
+        # blind_matern.active_dims = no_source_dims + extras, so Time
+        # (raw idx _TIME_DIM_RAW) sits at position
+        # no_source_dims.index(_TIME_DIM_RAW). The specific branch
+        # (categorical * Matern) has the same Matern active_dims layout.
+        from boxcrete.priors import CrossComponentLengthscalePrior
+
+        time_pos_in_blind = no_source_dims.index(IDX["time"])
+        blind_matern = blind.base_kernel  # MaternKernel
+        # The specific kernel is ScaleKernel(ProductKernel(<cat>, Matern))
+        specific_inner_matern = specific.base_kernel.kernels[1]
+        rbf_kernel = time_branch.base_kernel  # RBFKernel
+
+        cross_prior = CrossComponentLengthscalePrior(
+            lengthscale_getters=[
+                # blind Matern's Time lengthscale
+                lambda bm=blind_matern, i=time_pos_in_blind: bm.lengthscale[..., i],
+                # specific Matern's Time lengthscale (same active_dims layout)
+                lambda sm=specific_inner_matern, i=time_pos_in_blind: sm.lengthscale[
+                    ..., i
+                ],
+                # rbf_time's lengthscale (already 1D since active_dims=[time])
+                lambda rk=rbf_kernel: rk.lengthscale,
+            ],
+            sigma=time_tying_sigma,
+            attached_dim=rbf_kernel.lengthscale.numel(),
+        )
+        # Attach to the rbf kernel (smallest tensor, single-element).
+        # Registering on exactly one kernel ensures GPyTorch's MLL counts
+        # the cross-component penalty exactly once.
+        rbf_kernel.register_prior(
+            "cross_component_time_prior",
+            cross_prior,
+            lambda m: m.lengthscale,
+        )
+
+    if include_blind:
+        return blind + specific + time_branch
+    return specific + time_branch
 
 
-def make_gated_strength_kernel_builder(gate_tau: float = 0.1):
+def make_gated_strength_kernel_builder(
+    gate_tau: float = 0.1,
+    source_kernel: str = DEFAULT_SOURCE_KERNEL,
+    time_tying_sigma: float | None = None,
+    include_blind: bool = True,
+):
     """Returns a `(d_aug) -> Kernel` builder that produces the V2
     strength kernel (see :func:`build_strength_kernel_for_aug_dim`)
     wrapped in a :class:`TimeGatedKernel`. The gate makes the prior
@@ -327,6 +1408,11 @@ def make_gated_strength_kernel_builder(gate_tau: float = 0.1):
 
     Args:
         gate_tau: time-gate timescale; see :class:`TimeGatedKernel`.
+        source_kernel: categorical source-kernel topology; see
+            :func:`_categorical_source_branch` for supported values.
+            Default is :data:`DEFAULT_SOURCE_KERNEL`.
+        time_tying_sigma: optional cross-component time-lengthscale
+            tying; see :func:`build_strength_kernel_for_aug_dim`.
 
     The `time_idx` for the gate is the time dim (``IDX["time"]``), which is
     where the time column sits in the post-input-transform vector. After
@@ -335,7 +1421,12 @@ def make_gated_strength_kernel_builder(gate_tau: float = 0.1):
     """
 
     def _builder(d_aug: int) -> torch.nn.Module:
-        base = build_strength_kernel_for_aug_dim(d_aug)
+        base = build_strength_kernel_for_aug_dim(
+            d_aug,
+            source_kernel=source_kernel,
+            time_tying_sigma=time_tying_sigma,
+            include_blind=include_blind,
+        )
         return TimeGatedKernel(
             base,
             time_idx=IDX["time"],
@@ -346,8 +1437,11 @@ def make_gated_strength_kernel_builder(gate_tau: float = 0.1):
 
 
 __all__ = [
+    "DEFAULT_SOURCE_KERNEL",
+    "JointEmbeddingMaternKernel",
+    "JointHammingMaternKernel",
     "NUM_MATERIAL_CLASSES",
-    "SOURCE_KERNEL",
+    "RBFEmbeddingKernel",
     "TimeGatedKernel",
     "additive_time_kernel",
     "ard_matern_with_within_group_prior",

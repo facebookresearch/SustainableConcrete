@@ -1,0 +1,22 @@
+{
+  "baseline::25::0": 1152.596837747977,
+  "baseline::25::1": 1465.658293525266,
+  "baseline::25::2": 1644.9459853701558,
+  "baseline::50::0": 923.8373145479262,
+  "baseline::50::1": 951.1846621472595,
+  "baseline::50::2": 1110.8121185929936,
+  "baseline::100::0": 863.2176377918834,
+  "baseline::100::1": 823.8240210139263,
+  "baseline::100::2": 749.0277215333201,
+  "baseline::144::0": 843.0529981573254,
+  "B''+F5_alllog+gated_t+gated_noise+maxscale_zeromean+block_loo_only::25::0": 856.3748677762293,
+  "B''+F5_alllog+gated_t+gated_noise+maxscale_zeromean+block_loo_only::25::1": 860.020258372351,
+  "B''+F5_alllog+gated_t+gated_noise+maxscale_zeromean+block_loo_only::25::2": 906.972655689164,
+  "B''+F5_alllog+gated_t+gated_noise+maxscale_zeromean+block_loo_only::50::0": 791.3133503217731,
+  "B''+F5_alllog+gated_t+gated_noise+maxscale_zeromean+block_loo_only::50::1": 729.4634137454474,
+  "B''+F5_alllog+gated_t+gated_noise+maxscale_zeromean+block_loo_only::50::2": 756.0708272701368,
+  "B''+F5_alllog+gated_t+gated_noise+maxscale_zeromean+block_loo_only::100::0": 728.1182335459482,
+  "B''+F5_alllog+gated_t+gated_noise+maxscale_zeromean+block_loo_only::100::1": 736.2660326062835,
+  "B''+F5_alllog+gated_t+gated_noise+maxscale_zeromean+block_loo_only::100::2": 673.176515003887,
+  "B''+F5_alllog+gated_t+gated_noise+maxscale_zeromean+block_loo_only::144::0": 672.1207481013531
+}
