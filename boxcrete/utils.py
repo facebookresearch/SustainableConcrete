@@ -670,8 +670,9 @@ def get_bounds(
 def get_constraints(
     X_columns: list[str],
     equality_sums: list[tuple[list[str], float]] | None = None,
-    binder_bounds: tuple[float, float] | None = (510, 1000),
-    mass_bounds: tuple[float, float] | None = (3600, 4400),
+    # kg/m^3, converted from the original limits of 510-1000 and 3600-4400 lb/yd^3.
+    binder_bounds: tuple[float, float] | None = (303, 593),
+    mass_bounds: tuple[float, float] | None = (2136, 2611),
     paste_bounds: tuple[float, float] | None = (0.16, 0.35),
     water_binder_bounds: tuple[float, float] = (0.2, 0.5),
     hrwr_binder_bounds: tuple[float, float] | None = (0.0, 0.1),
