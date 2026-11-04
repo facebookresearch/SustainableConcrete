@@ -639,6 +639,18 @@ class TestRealDataIntegration(unittest.TestCase):
         self.assertGreater(len(eq), 0)
         self.assertGreater(len(ineq), 0)
 
+    def test_default_constraints_admit_training_concrete(self):
+        """Regression test: default limits must use the data's kg/m^3 units."""
+        dataset = load_concrete_strength(data_path=DATA_PATH)
+        columns = dataset.X_columns[:-1]
+        X = dataset.X[:, :-1]
+        X = X[X[:, columns.index("Coarse Aggregates (kg/m3)")] > 0]
+        _, ineq = get_constraints(columns)
+        feasible = torch.ones(X.shape[0], dtype=torch.bool)
+        for indices, coeffs, value in ineq:
+            feasible &= (X[:, indices] * coeffs.to(X)).sum(dim=-1) >= value
+        self.assertTrue(feasible.any())
+
     def test_concrete_bounds_within_training_range(self):
         """Regression test: bounds should not be wildly wider than training data."""
         dataset = load_concrete_strength(data_path=DATA_PATH)
