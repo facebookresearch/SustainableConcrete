@@ -137,7 +137,10 @@ def _get_v2_input_transform(
     """
     augmented = augmented_bounds(X_for_bounds, bounds, feature_names)
     d_aug = d_in + len(feature_names)
-    time_index = [d_in - 1]
+    # Located by name rather than as the last column, because extra inputs may
+    # follow Time (see ``fit_strength_gp``). The gate, the additive time kernel
+    # and the likelihood all read ``IDX["time"]``, so this must match them.
+    time_index = [IDX["time"]]
     derive = AppendFeatures(
         f=append_engineered_features_callable(feature_names),
         indices=list(range(d_in)),
@@ -306,7 +309,7 @@ def _fit_v2_strength_gp(
     # research scripts) that read ``model._study_y_std`` directly.
     model._study_y_mean = model._study_y_mean_buf
     model._study_y_std = model._study_y_std_buf
-    # Stash raw 10-dim training X (real rows only) for use by
+    # Stash raw training X (real rows only) for use by
     # phantom_anchor_metrics to construct virtual (c, t=0) test points.
     model._study_X_train_raw = X.detach().clone()
     return model
@@ -335,14 +338,22 @@ def fit_strength_gp(
     block-LOO objective.
 
     Args:
-        X: ``[n, 10]`` raw input — composition (9 dims) + time (1 dim).
+        X: ``[n, d]`` raw input, ``d >= 10`` — composition (9 dims) + time
+            (1 dim), optionally followed by extra inputs.
             Composition order matches ``boxcrete.utils.DEFAULT_X_COLUMNS``:
             Cement, Fly Ash, Slag, Water, HRWR, Fine Aggregate,
             Coarse Aggregates, Material Source, Temperature, Time.
+            Columns after Time are normalised to ``[0, 1]`` and get their own
+            free ARD lengthscales, like the engineered features. Rows that
+            differ only in Time are treated as one strength curve by
+            :func:`boxcrete.block_loo.train_block_loo`, so an extra input
+            should be constant along a curve (see
+            :func:`boxcrete.block_loo.block_loo_loss`). Extra inputs are
+            supported by this function, not by ``SustainableConcreteModel``.
         Y: ``[n, 1]`` strength values in psi.
         Yvar: Ignored — V2 uses a learnable global heteroscedastic-gated
             noise rather than per-row Yvar. Kept for backward compat.
-        X_bounds: ``[2, 10]`` optional lower/upper bounds; if ``None``,
+        X_bounds: ``[2, d]`` optional lower/upper bounds; if ``None``,
             derived from X.
         seed: Torch RNG seed for fit determinism.
         max_optimizer_iter: Optional cap on the inner L-BFGS iteration
@@ -391,6 +402,14 @@ def fit_strength_gp(
         if X.shape[0] < 1:
             raise ValueError("fit_strength_gp: X_bounds=None requires X.shape[0] >= 1.")
         X_bounds = derive_bounds_from_X(X)
+    elif X_bounds.shape[-1] != X.shape[-1]:
+        # Not left to Normalize: it also accepts bounds as wide as its index
+        # list, so the dataset's 10-wide bounds with exactly 2 extra columns
+        # would silently land on the wrong columns.
+        raise ValueError(
+            "fit_strength_gp: X_bounds must have one column per column of X; "
+            f"got {X_bounds.shape[-1]} for X with {X.shape[-1]}."
+        )
 
     # Build the optimizer-override dict from kwargs. ``None`` for both
     # = production defaults; a non-None value sets the override around
