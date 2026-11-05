@@ -79,7 +79,7 @@ CONCRETE_BOUNDS_DICT = {
 DEFAULT_BOUNDS_DICT = CONCRETE_BOUNDS_DICT
 
 MORTAR_CONSTRAINTS = dict(
-    equality_sums=[(_MORTAR_BINDER_PLUS_AGGREGATE, 1875.0)],
+    equality_sums=[(_MORTAR_BINDER_PLUS_AGGREGATE, 2500.0)],
     binder_bounds=(100.0, 950.0),
     mass_bounds=None,
     paste_bounds=None,
@@ -671,10 +671,10 @@ def get_constraints(
     X_columns: list[str],
     equality_sums: list[tuple[list[str], float]] | None = None,
     # kg/m^3, converted from the original limits of 510-1000 and 3600-4400 lb/yd^3.
-    binder_bounds: tuple[float, float] | None = (303, 593),
-    mass_bounds: tuple[float, float] | None = (2136, 2611),
+    binder_bounds: tuple[float, float] | None = (250.0, 1000.0),
+    mass_bounds: tuple[float, float] | None = (2280.0, 2930.0),
     paste_bounds: tuple[float, float] | None = (0.16, 0.35),
-    water_binder_bounds: tuple[float, float] = (0.2, 0.5),
+    water_binder_bounds: tuple[float, float] = (0.2, 0.52),
     hrwr_binder_bounds: tuple[float, float] | None = (0.0, 0.1),
 ) -> tuple[list[T_CONSTRAINT], list[T_CONSTRAINT]]:
     """Returns equality and inequality constraints for concrete/mortar optimisation.

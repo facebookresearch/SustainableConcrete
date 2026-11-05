@@ -649,7 +649,37 @@ class TestRealDataIntegration(unittest.TestCase):
         feasible = torch.ones(X.shape[0], dtype=torch.bool)
         for indices, coeffs, value in ineq:
             feasible &= (X[:, indices] * coeffs.to(X)).sum(dim=-1) >= value
-        self.assertTrue(feasible.any())
+        n_admitted = int(feasible.sum())
+        # The unit-sensitive limits (total mass, binder, w/b, HRWR/b) admit every
+        # concrete mix. The residual exclusions come from paste_bounds
+        # (0.16, 0.35), a dimensionless design preference unaffected by the
+        # kg/m^3 vs lb/yd^3 error: 6 of 80 mixes fall outside that paste band.
+        self.assertGreater(
+            n_admitted,
+            0.9 * X.shape[0],
+            f"default limits admit only {n_admitted}/{X.shape[0]} concrete rows",
+        )
+
+    def test_mortar_equality_matches_training_scale(self):
+        """Regression test: mortar equality must match the data kg/m^3 scale."""
+        dataset = load_concrete_strength(
+            data_path=DATA_PATH,
+            bounds_dict=MORTAR_BOUNDS_DICT,
+        )
+        columns = dataset.X_columns[:-1]
+        X = dataset.X[:, :-1]
+        X = X[X[:, columns.index("Coarse Aggregates (kg/m3)")] == 0]
+        eq, _ = get_constraints(columns, **MORTAR_CONSTRAINTS)
+        self.assertGreater(len(eq), 0)
+        for indices, coeffs, value in eq:
+            totals = (X[:, indices] * coeffs.to(X)).sum(dim=-1)
+            max_dev = (totals - value).abs().max().item()
+            self.assertLess(
+                max_dev,
+                0.10 * value,
+                f"mortar equality {value} off training scale "
+                f"({totals.min():.1f}-{totals.max():.1f})",
+            )
 
     def test_concrete_bounds_within_training_range(self):
         """Regression test: bounds should not be wildly wider than training data."""
