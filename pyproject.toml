@@ -50,7 +50,7 @@ dev = [
     # identical between contributors' machines and the CI lint job.
     # Bumping requires updating .pre-commit-config.yaml and the
     # `pip install` line in .github/workflows/tests.yml in lockstep.
-    "black==26.3.1",
+    "black==26.10.1",
     "flake8>=6.0.0",
     "pre-commit>=3.0.0",
     "pytest>=7.0.0",
