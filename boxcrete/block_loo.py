@@ -42,7 +42,22 @@ import torch
 from botorch.models import SingleTaskGP
 from gpytorch.utils.cholesky import psd_safe_cholesky
 
+from boxcrete.features import IDX
+
 __all__ = ["block_loo_loss", "train_block_loo"]
+
+
+def _block_fingerprints(train_X: torch.Tensor, n_composition_dims: int) -> torch.Tensor:
+    """The columns that identify a row's block: the leading composition dims
+    plus any extra inputs after Time.
+
+    With the default 10 input columns the second slice is empty, so this is
+    exactly ``train_X[..., :n_composition_dims]``.
+    """
+    return torch.cat(
+        [train_X[..., :n_composition_dims], train_X[..., IDX["time"] + 1 :]],
+        dim=-1,
+    )
 
 
 def _model_prior_log_prob(model: SingleTaskGP) -> torch.Tensor:
@@ -71,11 +86,19 @@ def block_loo_loss(
     """Differentiable mean block-LOO negative-log-likelihood per real row.
 
     Args:
-        model: a ``SingleTaskGP`` whose hyperparameters require grad.
+        model: a ``SingleTaskGP`` whose hyperparameters require grad, in train
+            mode (as :func:`train_block_loo` sets it), so that ``train_inputs``
+            holds the raw inputs and the covariance below is the prior's.
         n_real: number of real rows; anchor pseudo-rows live at
             ``[n_real:]`` and are held out with their block but not scored.
         n_composition_dims: number of leading input dims that define a
-            block (default 9 = composition + temperature).
+            block (default 9 = composition + temperature). Extra inputs after
+            Time also define the block, so that rows with the same composition
+            but different extras are separate curves. An extra input that
+            changes along a curve therefore splits it: if it differs on every
+            row, every block is one row and this reduces to ordinary
+            leave-one-out, without the protection against leaking a curve's
+            other ages.
 
     Returns a scalar tensor (minimise it to improve held-out calibration).
     """
@@ -92,7 +115,7 @@ def block_loo_loss(
     alpha = torch.cholesky_solve(residuals, L).squeeze(-1)
     K_inv = torch.cholesky_solve(torch.eye(n, dtype=K.dtype, device=K.device), L)
 
-    fingerprints = train_X[..., :n_composition_dims]
+    fingerprints = _block_fingerprints(train_X, n_composition_dims)
     unique_fp, inverse = torch.unique(fingerprints, dim=0, return_inverse=True)
 
     log_two_pi = math.log(2.0 * math.pi)
