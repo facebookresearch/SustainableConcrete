@@ -398,11 +398,14 @@ def load_concrete_strength(
       the column to R² ≈ 1 per Material Source class (see
       `test_gwp_linearity` in `test/test_utils.py`).
     - **HRWR** is recorded in `kg/m³`. To convert to the field-conventional
-      `oz/cwt of binder`, use:
-          ``oz/cwt = HRWR (kg/m³) / Binder (kg/m³) × 1533.3 / ρ``
+      `oz/cwt of binder`, use `boxcrete.units.convert_hrwr_dosage`, i.e.
+          ``oz/cwt = HRWR (kg/m³) / Binder (kg/m³) × 1533.8 / ρ``
       where `Binder = Cement + Fly Ash + Slag` and ρ is the assumed HRWR
       liquid density (g/mL). A reasonable global default is ρ = 1.10 g/mL
       (typical polycarboxylate-based product).
+    - **Compositions are in `kg/m³` and temperatures in `°C`.** A table
+      recorded in `lb/yd³` and `°F` can be converted with
+      `boxcrete.units.convert_composition` before it is passed in.
 
     Args:
         data_path: Path to a CSV file or a pandas DataFrame. Defaults to
@@ -492,7 +495,9 @@ def load_concrete_strength(
             not_in_names = not_in_names & (
                 ~df[mix_name_column].str.contains(batch_name)
             )
-        df = df.drop(df[not_in_names].index)
+        # boolean mask rather than ``df.drop(labels)``: the index of a
+        # user-supplied DataFrame need not be unique.
+        df = df[~not_in_names]
 
     logger.info(
         f"The data has {len(df)} rows and {len(df.columns)} columns, which are:"
@@ -521,9 +526,14 @@ def load_concrete_strength(
         ):
             logger.info("  - %s has %s missing entries.", name, missing.item())
         logger.info("Removing missing rows with missing entries from data.")
-        missing_row_ind = [i for i in range(len(df)) if is_missing[i].any()]
+        # ``is_missing`` is positional, while ``df.drop`` takes index labels.
+        # The two only agree for a default ``RangeIndex``, which the batch
+        # name filter above or a pre-filtered DataFrame does not have, so
+        # the rows are selected by position.
+        missing_row_mask = is_missing.any(dim=-1).numpy()
+        missing_row_ind = np.flatnonzero(missing_row_mask).tolist()
         logger.info(f"  -Rows indices to be removed: {missing_row_ind=}")
-        df = df.drop(missing_row_ind)
+        df = df[~missing_row_mask]
         logger.info(
             "  -Number of missing values after deletion (Should be zero): "
             f"{torch.tensor(df[required_columns].to_numpy()).isnan().sum()}"
