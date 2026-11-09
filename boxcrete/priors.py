@@ -25,6 +25,7 @@ Public re-exports go through :mod:`boxcrete` for ergonomics.
 from __future__ import annotations
 
 import math
+from typing import Callable
 
 import torch
 from gpytorch.priors import LogNormalPrior
@@ -252,6 +253,145 @@ class ComposedLengthscalePrior(LogNormalPrior):
         return lognormal + (within_total / x.numel()) * torch.ones_like(x)
 
 
+class CrossComponentLengthscalePrior(LogNormalPrior):
+    """Soft-tying prior on lengthscale parameters across DIFFERENT
+    kernel sub-modules.
+
+    Use case: the V2 strength kernel is an additive sum
+
+        ScaleKernel(blind_matern over no_source + extras)
+      + ScaleKernel(<categorical> * specific_matern over no_source + extras)
+      + ScaleKernel(rbf_time over time only)
+
+    each carrying a Time lengthscale. At the ML optimum these fit to
+    very different values (typically 97.94 / 16.13 / 72.90 in the v5
+    Stage-2c configuration) — the optimiser dumps composition × time
+    interaction onto whichever single sub-kernel can carry it and lets
+    the others drift to the lengthscale upper-bound rail. That outcome
+    is fragile (seed-dependent which sub-kernel does the work) and
+    masks model-comparison signals.
+
+    This prior penalises the variance of the log-lengthscales across
+    the three sub-kernels with a permissive ``sigma`` (default 0.5 in
+    log-space, ~1.6× spread between min and max admitted as 1-σ
+    a-priori), expressing "I expect the three time-lengthscales to be
+    in the same order of magnitude" without forcing them equal.
+
+    Mathematical form
+    -----------------
+    With handles ``ℓ_1, ℓ_2, ..., ℓ_K`` (each a positive scalar) and
+    width ``σ``, the prior contributes
+
+        log p(ℓ_1, ..., ℓ_K) = -½/σ² · Σ_k (log ℓ_k - mean_j log ℓ_j)²
+
+    to the marginal log-likelihood. The penalty is computed as a side
+    effect of evaluating ``log_prob(x)`` on whichever single tensor
+    GPyTorch passes in (the parameter the prior is registered against)
+    and is distributed across the elements of that tensor so the
+    framework's element-wise sum re-aggregates to exactly the scalar
+    penalty above. **Register this prior on EXACTLY ONE of the
+    lengthscale parameters** (typically the rbf_time's, which has
+    ``numel() == 1``); registering it on multiple would multi-count
+    the same penalty.
+
+    Implementation notes
+    --------------------
+    The cross-component coupling is implemented via callable handles
+    (``lengthscale_getters``) rather than direct tensor references
+    because GPyTorch may rebuild parameter tensors during the fit's
+    state-dict round-trips; the callables fetch the live tensor at
+    each ``log_prob`` evaluation. Autograd flows through the handles
+    correctly because each ``getter()`` returns the current
+    Parameter, and PyTorch's autograd tracks the dependency.
+
+    Args:
+        lengthscale_getters: list of zero-arg callables; each returns
+            the live lengthscale tensor for one kernel sub-component.
+            For the strength GP's three time lengthscales the callables
+            slice into the relevant Matern's ARD lengthscale tensor at
+            the appropriate active-dim index for the time column.
+        sigma: shrinkage strength (in log-space). Smaller = harder
+            tying. Default 0.5 admits ~e^0.5 ≈ 1.65× spread between
+            sub-components at 1-σ a-priori.
+        attached_dim: ``numel()`` of the ARD lengthscale tensor this
+            prior is attached to. Used to pre-shape the parent
+            ``LogNormalPrior``'s ``loc``/``scale`` tensors (matches the
+            existing :class:`WithinGroupShrinkagePrior` pattern that
+            avoids PyTorch 2.12+'s aliased-storage error).
+    """
+
+    def __init__(
+        self,
+        lengthscale_getters: list[Callable[[], torch.Tensor]],
+        sigma: float = 0.5,
+        attached_dim: int = 1,
+    ):
+        if len(lengthscale_getters) < 2:
+            raise ValueError(
+                "CrossComponentLengthscalePrior needs >=2 lengthscale "
+                "handles to define a cross-component variance"
+            )
+        super().__init__(
+            loc=torch.zeros(1, attached_dim, dtype=torch.float64),
+            scale=torch.ones(1, attached_dim, dtype=torch.float64),
+        )
+        self._getters = lengthscale_getters
+        self._sigma = float(sigma)
+
+    def log_prob(self, x):
+        # Stack the live lengthscale values from all sub-components.
+        log_ls = torch.stack(
+            [getter().squeeze().log() for getter in self._getters]
+        ).flatten()
+        sq_dev = ((log_ls - log_ls.mean()) ** 2).sum()
+        total = -0.5 * sq_dev / (self._sigma**2)
+        return (total / x.numel()) * torch.ones_like(x)
+
+
+class TaskPoolingPrior(LogNormalPrior):
+    """Partial-pooling prior on an ``IndexKernel``'s ``covar_factor``.
+
+    The source (3-class) ``IndexKernel`` parameterises the task
+    covariance as ``K_task = B Bᵀ + diag(v)`` with per-class embedding
+    rows ``B_i ∈ ℝ^rank``. Categorical kernels under-pool when a class
+    is data-poor (Set 2 = 135 rows), losing to the continuous-ARD
+    champion which borrows strength across the ordered sources. This
+    prior pulls the embedding rows together — shrinking toward a shared
+    (fully-pooled) task map — with strength ``tau`` (smaller = harder
+    pooling):
+
+        log p(B) = -1/(2·tau²) · Σ_{i<j} ‖B_i − B_j‖²
+
+    Registered on exactly one parameter (the ``covar_factor``); the
+    scalar penalty is distributed across that tensor's elements so
+    GPyTorch's element-wise ``log_prob(...).sum()`` re-aggregates it
+    exactly once (mirrors :class:`CrossComponentLengthscalePrior`).
+    """
+
+    def __init__(self, num_tasks: int, rank: int, tau: float = 0.3):
+        super().__init__(
+            loc=torch.zeros(num_tasks, rank, dtype=torch.float64),
+            scale=torch.ones(num_tasks, rank, dtype=torch.float64),
+        )
+        self.num_tasks = int(num_tasks)
+        self.rank = int(rank)
+        self._tau = float(tau)
+
+    def log_prob(self, x):
+        B = x.reshape(self.num_tasks, self.rank)
+        sq = x.new_zeros(())
+        for i in range(self.num_tasks):
+            for j in range(i + 1, self.num_tasks):
+                sq = sq + ((B[i] - B[j]) ** 2).sum()
+        total = -0.5 * sq / (self._tau**2)
+        # Return a fresh CONTIGUOUS tensor: the closure value (e.g. a
+        # gauge-fixed ``embeddings`` property) may be non-contiguous, and
+        # GPyTorch's MLL does ``prior_term.view(...)`` which requires
+        # contiguous strides.
+        out = torch.ones(x.shape, dtype=x.dtype, device=x.device)
+        return (total / x.numel()) * out
+
+
 # --- Factory ----------------------------------------------------------------
 
 
@@ -334,6 +474,7 @@ def within_group_prior(
 
 __all__ = [
     "ComposedLengthscalePrior",
+    "CrossComponentLengthscalePrior",
     "WithinGroupShrinkagePrior",
     "within_group_prior",
 ]

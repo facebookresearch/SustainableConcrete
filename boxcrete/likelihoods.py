@@ -223,4 +223,144 @@ class GatedGaussianLikelihood(_GaussianLikelihoodBase):
 __all__ = [
     "GatedGaussianLikelihood",
     "PartialFixedNoiseLikelihood",
+    "PerClassGatedGaussianLikelihood",
 ]
+
+
+class PerClassGatedGaussianLikelihood(_GaussianLikelihoodBase):
+    r"""Per-class heteroscedastic gated Gaussian likelihood.
+
+    Like :class:`GatedGaussianLikelihood`, but with **C separate
+    learnable noise variances** :math:`\sigma_c^2` (one per categorical
+    class):
+
+    .. math::
+        \mathrm{Var}[\,y(x_i, t_i)\,] = h(t_i)^2 \cdot \sigma_{c(i)}^2
+
+    where :math:`c(i)` is the class label of row :math:`i` (read from
+    ``X[..., source_idx]``). The time gate :math:`h(t)` is unchanged.
+
+    Motivated by the noise audit (see ``experiments/NOISE_AUDIT.md``):
+    the homoscedastic ``GatedGaussianLikelihood`` fits :math:`\sigma_gp
+    \approx 370` psi globally, which is ~5× larger than Set-3's actual
+    measurement noise (~76 psi). Per-class :math:`\sigma_c` lets the
+    optimiser separately calibrate each class's noise floor.
+
+    Args:
+        num_classes: number of categorical classes (typically 3 for v5).
+        source_idx: index of the source-class column in the input
+            tensor (typically 7 = ``IDX["source"]``).
+        time_idx: index of the time column. Default 9 = ``IDX["time"]``.
+        gate_tau: time-gate timescale (same as ``GatedGaussianLikelihood``).
+        noise_constraint: optional GPyTorch constraint applied to each
+            per-class :math:`\sigma_c`.
+        noise_prior: optional GPyTorch prior applied to the per-class
+            noise tensor (shape ``(num_classes,)``).
+    """
+
+    def __init__(
+        self,
+        num_classes: int,
+        source_idx: int,
+        time_idx: int = 9,
+        gate_tau: float = 0.05,
+        noise_constraint=None,
+        noise_prior=None,
+        **kwargs,
+    ):
+        if num_classes < 1:
+            raise ValueError("num_classes must be >= 1")
+        if noise_constraint is None:
+            noise_constraint = LogTransformedInterval(1e-6, 1.0, initial_value=1e-1)
+        # Placeholder HomoskedasticNoise so _GaussianLikelihoodBase
+        # is happy. We don't use it; per-class noise is stored
+        # separately and assembled in _shaped_noise_covar.
+        noise_covar = HomoskedasticNoise(noise_constraint=noise_constraint)
+        super().__init__(noise_covar=noise_covar)
+        self.num_classes = int(num_classes)
+        self.source_idx = int(source_idx)
+        self.time_idx = int(time_idx)
+        self.register_buffer(
+            "_gate_log_tau",
+            torch.tensor(math.log(gate_tau), dtype=torch.double),
+        )
+        # Per-class noise: register one parameter of shape (C,).
+        # Initialise to log(0.1) ≈ -2.30 so softplus/exp maps to ~0.1
+        # — same neighbourhood as GatedGaussianLikelihood's init.
+        init_log = math.log(0.1)
+        self.register_parameter(
+            "raw_per_class_noise",
+            torch.nn.Parameter(
+                torch.full((num_classes,), init_log, dtype=torch.double)
+            ),
+        )
+        self.register_constraint("raw_per_class_noise", noise_constraint)
+        if noise_prior is not None:
+            self.register_prior(
+                "per_class_noise_prior",
+                noise_prior,
+                lambda m: m.per_class_noise,
+            )
+
+    @property
+    def gate_tau(self) -> torch.Tensor:
+        return torch.exp(self._gate_log_tau)
+
+    @property
+    def per_class_noise(self) -> torch.Tensor:
+        """Returns per-class noise variances (shape ``(C,)``)."""
+        return self.raw_per_class_noise_constraint.transform(self.raw_per_class_noise)
+
+    @property
+    def noise(self) -> torch.Tensor:
+        """Mean of per-class noise — for backward compatibility with
+        APIs that read ``likelihood.noise`` (e.g. notebooks)."""
+        return self.per_class_noise.mean().unsqueeze(0)
+
+    def set_train_inputs(self, X: torch.Tensor) -> None:
+        """Stash the full training input tensor so the MLL path
+        (which doesn't pass X to the likelihood) can compute per-row
+        class indices AND time gating."""
+        self._train_X = X.detach().clone().to(dtype=torch.double)
+        self._train_times = (
+            X[..., self.time_idx].detach().clone().to(dtype=torch.double)
+        )
+
+    def set_train_times(self, time_values: torch.Tensor) -> None:
+        """Backward-compat alias for two-phase MLL contract; only
+        time values are stashed (used when classes are not yet
+        available). Prefer :meth:`set_train_inputs` once X is built."""
+        self._train_times = time_values.detach().clone().to(dtype=torch.double)
+
+    def _gate(self, t: torch.Tensor) -> torch.Tensor:
+        return 1.0 - torch.exp(-t.clamp_min(0.0) / self.gate_tau.to(t))
+
+    def _shaped_noise_covar(self, base_shape, *params, **kwargs):
+        # Determine which (t, c) vectors to use.
+        if params and hasattr(params[0], "shape") and params[0].dim() >= 2:
+            X = params[0]
+            t = X[..., self.time_idx]
+            c = X[..., self.source_idx].round().long().clamp(0, self.num_classes - 1)
+        elif getattr(self, "_train_X", None) is not None:
+            X = self._train_X
+            t = X[..., self.time_idx]
+            c = X[..., self.source_idx].round().long().clamp(0, self.num_classes - 1)
+        else:
+            # Fallback: no class info — use mean per-class noise as
+            # scalar (matches GatedGaussianLikelihood behaviour).
+            return super()._shaped_noise_covar(base_shape, *params, **kwargs)
+
+        h = self._gate(t)
+        h2 = h * h  # element-wise [n]
+        per_class_var = self.per_class_noise  # shape (C,)
+        # Look up sigma^2_c for each row's class.
+        sigma2_row = per_class_var[c.flatten()]
+        per_row_var = sigma2_row * h2.flatten()
+        n = int(base_shape[-1])
+        if per_row_var.shape[0] >= n:
+            per_row_var = per_row_var[:n]
+        else:  # pragma: no cover - defensive padding
+            mean_var = per_class_var.mean()
+            pad = mean_var.expand(n - per_row_var.shape[0])
+            per_row_var = torch.cat([per_row_var, pad], dim=0)
+        return DiagLinearOperator(per_row_var)
