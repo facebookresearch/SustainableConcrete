@@ -398,11 +398,14 @@ def load_concrete_strength(
       the column to R² ≈ 1 per Material Source class (see
       `test_gwp_linearity` in `test/test_utils.py`).
     - **HRWR** is recorded in `kg/m³`. To convert to the field-conventional
-      `oz/cwt of binder`, use:
-          ``oz/cwt = HRWR (kg/m³) / Binder (kg/m³) × 1533.3 / ρ``
+      `oz/cwt of binder`, use `boxcrete.units.convert_hrwr_dosage`, i.e.
+          ``oz/cwt = HRWR (kg/m³) / Binder (kg/m³) × 1533.8 / ρ``
       where `Binder = Cement + Fly Ash + Slag` and ρ is the assumed HRWR
       liquid density (g/mL). A reasonable global default is ρ = 1.10 g/mL
       (typical polycarboxylate-based product).
+    - **Compositions are in `kg/m³` and temperatures in `°C`.** A table
+      recorded in `lb/yd³` and `°F` can be converted with
+      `boxcrete.units.convert_composition` before it is passed in.
 
     Args:
         data_path: Path to a CSV file or a pandas DataFrame. Defaults to

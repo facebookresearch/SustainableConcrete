@@ -73,6 +73,26 @@ compositions[1, cols.index("Fly Ash (kg/m3)")] = 300.0  # 60% fly ash
 plot_strength_curve(model, compositions)
 ```
 
+### Mix Designs in Imperial Units
+
+The models take compositions in kg/m³ and temperatures in °C. A table of mixes
+recorded in lb/yd³ and °F, with the HRWR optionally given as a dosage in
+fl oz/cwt of binder, can be converted before loading:
+
+```python
+import pandas as pd
+from boxcrete.units import convert_composition
+from boxcrete.utils import load_concrete_strength
+
+df = pd.read_csv("my_mixes.csv")  # "Cement (lb/yd3)", ..., "HRWR (oz/cwt)", "Temp (F)"
+data = load_concrete_strength(convert_composition(df))
+```
+
+Columns are recognized by the unit at the end of their name and renamed to the
+names the models expect (`"Cement (lb/yd3)"` becomes `"Cement (kg/m3)"`); all
+other columns are left unchanged. Pass `to=UnitSystem.IMPERIAL` to convert
+model-native compositions, such as suggested mixes, back to lb/yd³ and °F.
+
 ### Slump Prediction
 
 The slump model uses a `SingleTaskGP` with an `AppendDerivedFeatures` input transform
