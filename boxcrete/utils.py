@@ -492,7 +492,9 @@ def load_concrete_strength(
             not_in_names = not_in_names & (
                 ~df[mix_name_column].str.contains(batch_name)
             )
-        df = df.drop(df[not_in_names].index)
+        # boolean mask rather than ``df.drop(labels)``: the index of a
+        # user-supplied DataFrame need not be unique.
+        df = df[~not_in_names]
 
     logger.info(
         f"The data has {len(df)} rows and {len(df.columns)} columns, which are:"
@@ -521,9 +523,14 @@ def load_concrete_strength(
         ):
             logger.info("  - %s has %s missing entries.", name, missing.item())
         logger.info("Removing missing rows with missing entries from data.")
-        missing_row_ind = [i for i in range(len(df)) if is_missing[i].any()]
+        # ``is_missing`` is positional, while ``df.drop`` takes index labels.
+        # The two only agree for a default ``RangeIndex``, which the batch
+        # name filter above or a pre-filtered DataFrame does not have, so
+        # the rows are selected by position.
+        missing_row_mask = is_missing.any(dim=-1).numpy()
+        missing_row_ind = np.flatnonzero(missing_row_mask).tolist()
         logger.info(f"  -Rows indices to be removed: {missing_row_ind=}")
-        df = df.drop(missing_row_ind)
+        df = df[~missing_row_mask]
         logger.info(
             "  -Number of missing values after deletion (Should be zero): "
             f"{torch.tensor(df[required_columns].to_numpy()).isnan().sum()}"
