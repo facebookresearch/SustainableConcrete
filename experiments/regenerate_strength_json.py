@@ -392,10 +392,10 @@ def main() -> None:
         with torch.no_grad():
             x_pred = X[idx : idx + 1].clone()
             posterior = model.posterior(x_pred)
-            mean_pred = float(posterior.mean.item()) * y_max + y_mean_offset
-            var_pred = float(posterior.variance.item()) * (
-                y_max**2
-            ) + _gated_aleatoric_psi2(time_val)
+            mean_pred = float(posterior.mean.item())
+            var_pred = float(posterior.variance.item()) + _gated_aleatoric_psi2(
+                time_val
+            )
         # Per-day predictions (legacy format expected by test_js_gp.mjs)
         strength_per_day = {}
         for d in standard_days:
@@ -403,10 +403,8 @@ def main() -> None:
                 x_d = X[idx : idx + 1].clone()
                 x_d[..., IDX["time"]] = float(d)
                 pos_d = model.posterior(x_d)
-                m_d = float(pos_d.mean.item()) * y_max + y_mean_offset
-                v_d = float(pos_d.variance.item()) * (
-                    y_max**2
-                ) + _gated_aleatoric_psi2(float(d))
+                m_d = float(pos_d.mean.item())
+                v_d = float(pos_d.variance.item()) + _gated_aleatoric_psi2(float(d))
             strength_per_day[str(d)] = {"mean": m_d, "variance": v_d}
         test_vectors.append(
             {
@@ -426,12 +424,10 @@ def main() -> None:
             x_pred = X[i : i + 1].clone()
             x_pred[..., IDX["time"]] = 0.0
             posterior = model.posterior(x_pred)
-            mean_pred = float(posterior.mean.item()) * y_max + y_mean_offset
+            mean_pred = float(posterior.mean.item())
             # At t=0, h(0) = 0, so aleatoric is zero by construction —
             # but still call the helper for symmetry / clarity.
-            var_pred = float(posterior.variance.item()) * (
-                y_max**2
-            ) + _gated_aleatoric_psi2(0.0)
+            var_pred = float(posterior.variance.item()) + _gated_aleatoric_psi2(0.0)
         # Per-day predictions (legacy format expected by test_js_gp.mjs).
         # Even for the t=0 constraint-check vectors, include the per-day
         # dict so the legacy test can iterate over them uniformly.
@@ -441,10 +437,8 @@ def main() -> None:
                 x_d = X[i : i + 1].clone()
                 x_d[..., IDX["time"]] = float(d)
                 pos_d = model.posterior(x_d)
-                m_d = float(pos_d.mean.item()) * y_max + y_mean_offset
-                v_d = float(pos_d.variance.item()) * (
-                    y_max**2
-                ) + _gated_aleatoric_psi2(float(d))
+                m_d = float(pos_d.mean.item())
+                v_d = float(pos_d.variance.item()) + _gated_aleatoric_psi2(float(d))
             strength_per_day[str(d)] = {"mean": m_d, "variance": v_d}
         test_vectors.append(
             {
