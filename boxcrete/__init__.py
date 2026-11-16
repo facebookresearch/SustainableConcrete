@@ -35,8 +35,12 @@ from boxcrete.slump_model import fit_slump_gp
 from boxcrete.strength_model import fit_strength_gp, load_pretrained_strength_gp
 from boxcrete.strength_model_legacy import get_strength_gp_input_transform
 from boxcrete.units import (
+    convert_composition,
+    convert_density,
+    convert_hrwr_dosage,
     convert_slump,
     convert_strength,
+    convert_temperature,
     DEFAULT_UNIT_SYSTEM,
     SLUMP_DISPLAY_SCALE,
     STRENGTH_DISPLAY_SCALE,
@@ -108,8 +112,12 @@ __all__ = [
     "augmented_bounds",
     "build_strength_kernel_for_aug_dim",
     "compute_loo_cv",
+    "convert_composition",
+    "convert_density",
+    "convert_hrwr_dosage",
     "convert_slump",
     "convert_strength",
+    "convert_temperature",
     "fit_slump_gp",
     "fit_strength_gp",
     "get_bounds",

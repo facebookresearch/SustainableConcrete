@@ -512,6 +512,48 @@ class TestDataLoading(unittest.TestCase):
         dataset = load_concrete_strength(data_path=df, batch_names=["BatchA"])
         self.assertLessEqual(dataset.X.shape[0], len(df))
 
+    def _assert_loads_rows(self, dataset, expected_cement):
+        """The loaded rows are exactly ``expected_cement``, with no NaNs left."""
+        cement = dataset.X[:, DEFAULT_X_COLUMNS.index("Cement (kg/m3)")]
+        self.assertEqual(cement.tolist(), [float(c) for c in expected_cement])
+        self.assertFalse(dataset.X.isnan().any())
+        self.assertFalse(dataset.Y.isnan().any())
+        self.assertFalse(dataset.Ystd.isnan().any())
+
+    def test_missing_data_with_batch_filter(self):
+        # The batch filter leaves index labels 5..9, so the incomplete row
+        # sits at position 2 but carries label 7.
+        df = _create_test_dataframe(inject_nan_at=[(7, "Strength (Mean)")])
+        df["Mix Name"] = [
+            f"BatchA_{i}" if i < 5 else f"BatchB_{i}" for i in range(len(df))
+        ]
+        dataset = load_concrete_strength(data_path=df, batch_names=["BatchB"])
+        self._assert_loads_rows(dataset, [450, 460, 480, 490])
+
+    def test_missing_data_with_filtered_dataframe(self):
+        df = _create_test_dataframe(inject_nan_at=[(7, "Strength (Mean)")])
+        dataset = load_concrete_strength(data_path=df[df["Cement (kg/m3)"] >= 450])
+        self._assert_loads_rows(dataset, [450, 460, 480, 490])
+
+    def test_missing_data_with_permuted_index(self):
+        # Reversing the rows keeps every label valid, so dropping by label
+        # removes a complete row and keeps the incomplete one.
+        df = _create_test_dataframe(inject_nan_at=[(7, "Strength (Mean)")])
+        dataset = load_concrete_strength(data_path=df.iloc[::-1])
+        self._assert_loads_rows(dataset, [490, 480, 460, 450, 440, 430, 420, 410, 400])
+
+    def test_duplicate_index_labels(self):
+        # ``pd.concat`` without ``ignore_index`` repeats the labels 0..4.
+        df = _create_test_dataframe(inject_nan_at=[(2, "Strength (Mean)")])
+        df["Mix Name"] = [
+            f"BatchA_{i}" if i < 5 else f"BatchB_{i}" for i in range(len(df))
+        ]
+        df = pd.concat([df.iloc[:5], df.iloc[5:].reset_index(drop=True)])
+        dataset = load_concrete_strength(data_path=df)
+        self._assert_loads_rows(dataset, [400, 410, 430, 440, 450, 460, 470, 480, 490])
+        dataset = load_concrete_strength(data_path=df, batch_names=["BatchB"])
+        self._assert_loads_rows(dataset, [450, 460, 470, 480, 490])
+
     def test_load_with_slump_column(self):
         """Test loading data that includes a Slump column."""
         df = _create_test_dataframe(include_slump=True)
