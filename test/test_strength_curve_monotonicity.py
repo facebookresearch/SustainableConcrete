@@ -130,8 +130,6 @@ def _predict_grid_for_committed_model() -> np.ndarray:
     times = _log_spaced_times()
     n_comp = len(compositions)
     pred_grid = np.zeros((n_comp, N_TIMES))
-    y_max = float(getattr(model, "_study_y_std", 1.0))
-    y_mean = float(getattr(model, "_study_y_mean", 0.0))
     with torch.no_grad():
         for c_idx, comp in enumerate(compositions):
             full = torch.tensor(
@@ -140,7 +138,7 @@ def _predict_grid_for_committed_model() -> np.ndarray:
             )
             posterior = model.posterior(full)
             mean = posterior.mean.squeeze().cpu().numpy()
-            pred_grid[c_idx, :] = mean * y_max + y_mean
+            pred_grid[c_idx, :] = mean
     return pred_grid
 
 
@@ -158,8 +156,6 @@ def _predict_grid_for_fresh_fit() -> np.ndarray:
     times = _log_spaced_times()
     n_comp = len(compositions)
     pred_grid = np.zeros((n_comp, N_TIMES))
-    y_max = float(getattr(model, "_study_y_std", 1.0))
-    y_mean = float(getattr(model, "_study_y_mean", 0.0))
     with torch.no_grad():
         for c_idx, comp in enumerate(compositions):
             full = torch.tensor(
@@ -168,7 +164,7 @@ def _predict_grid_for_fresh_fit() -> np.ndarray:
             )
             posterior = model.posterior(full)
             mean = posterior.mean.squeeze().cpu().numpy()
-            pred_grid[c_idx, :] = mean * y_max + y_mean
+            pred_grid[c_idx, :] = mean
     return pred_grid
 
 

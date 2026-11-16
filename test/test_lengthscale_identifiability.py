@@ -436,21 +436,13 @@ class TestStrengthLengthscaleIdentifiability(unittest.TestCase):
 
         gp = _fit_bloo_trained_strength_gp()
         gp.eval()
-        # The V2 fit factory stores the un-standardisation stats as
-        # buffers (``_study_y_mean_buf`` / ``_study_y_std_buf``) so they
-        # round-trip through state_dict; the legacy attribute aliases
-        # (``_study_y_mean`` / ``_study_y_std``) read the same buffers.
-        y_std = float(gp._study_y_std)
-        y_mean = float(gp._study_y_mean)
-
         worst_abs = 0.0
         worst_rel = 0.0
         worst_label = ""
         for v in test_vectors:
             x = torch.tensor([v["composition"] + [v["time"]]], dtype=torch.float64)
             with torch.no_grad():
-                pred_scaled = gp.posterior(x).mean.item()
-            predicted = pred_scaled * y_std + y_mean
+                predicted = gp.posterior(x).mean.item()
             expected = v["expected_mean"]
             abs_diff = abs(predicted - expected)
             rel_diff = abs_diff / max(abs(expected), 1.0)

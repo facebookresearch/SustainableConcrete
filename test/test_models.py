@@ -14,6 +14,7 @@ from botorch.models import SingleTaskGP
 from boxcrete import fit_strength_gp
 from boxcrete.concrete_model import SustainableConcreteModel
 from boxcrete.model_utils import FixedFeatureModel
+from boxcrete.plotting import compute_loo_cv
 from boxcrete.slump_model import fit_slump_gp
 from boxcrete.strength_model_legacy import get_strength_gp_input_transform
 from boxcrete.utils import DATA_PATH, load_concrete_strength, SLUMP_Y_COLUMNS
@@ -432,6 +433,33 @@ class TestPredictiveQualityRegression(unittest.TestCase):
     def test_strength_loo_r2(self):
         r2 = self._loo_r2(self.shared_model.strength_model)
         self.assertGreater(r2, 0.90, f"Strength LOO R² = {r2:.3f}, expected > 0.90")
+
+    def test_strength_predictions_are_in_psi(self):
+        """The strength GP trains on ``Y / y_max`` internally, but its
+        posterior must be in psi: ``predict_pareto`` and qLogNEHVI compare the
+        strength objectives with reference points in psi, and
+        ``plot_strength_curve`` plots them on a psi axis."""
+        model = self.shared_model
+        X, Y, _, _ = self.data.strength_data
+        with torch.no_grad():
+            pred = model.strength_model.posterior(X).mean.squeeze(-1)
+        rmse = (pred - Y.squeeze(-1)).pow(2).mean().sqrt().item()
+        self.assertLess(rmse, 1000.0, f"training RMSE {rmse:.1f} psi")
+
+        X28, Y28, _ = self.data.strength_data_by_time(28)
+        day28 = model.output_index("28-day Strength")
+        with torch.no_grad():
+            pred28 = model.get_model_list().posterior(X28[:, :-1]).mean[..., day28]
+        rmse28 = (pred28 - Y28.squeeze(-1)).pow(2).mean().sqrt().item()
+        self.assertLess(rmse28, 1000.0, f"28-day RMSE {rmse28:.1f} psi")
+
+    def test_strength_loo_cv_is_in_psi(self):
+        X, Y, _, _ = self.data.strength_data
+        obs, pred, _ = compute_loo_cv(self.shared_model.strength_model)
+        torch.testing.assert_close(obs, Y.squeeze(-1))
+        rmse = (pred - obs).pow(2).mean().sqrt().item()
+        self.assertGreater(rmse, 100.0, f"LOO RMSE {rmse:.4f} is not in psi")
+        self.assertLess(rmse, 1000.0, f"LOO RMSE {rmse:.1f} psi")
 
     def test_slump_loo_r2(self):
         r2 = self._loo_r2(self.shared_slump_gp)

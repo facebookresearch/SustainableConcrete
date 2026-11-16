@@ -37,6 +37,11 @@ STRENGTH_JSON_PATH = REPO_ROOT / "docs" / "model" / "strength.json"
 # below atol=1e-5).
 ATOL_MEAN_PSI = 1e-5
 ATOL_VARIANCE_PSI2 = 1e-3
+# gpytorch floors posterior variances at 1e-10 (float64). The t=0 vectors
+# have zero latent variance by construction, so they sit on that floor;
+# test_vectors.json was exported when the floor applied in Y / y_max units
+# (1e-10 * y_max**2, about 0.026 psi^2). Accept either value at t=0.
+MIN_VARIANCE = 1e-10
 
 
 class TestPretrainedLoaderFidelity(unittest.TestCase):
@@ -71,15 +76,16 @@ class TestPretrainedLoaderFidelity(unittest.TestCase):
         matches the public ``variance_includes_aleatoric=True`` contract
         used by JS-side `predictStrength` / `predictStrengthCurve` and
         ``test_vectors.json``: latent f-variance + gated aleatoric
-        ``h(t_post)²·σ²``, all un-standardised by ``y_max²``.
+        ``h(t_post)²·σ²``. ``posterior`` is already in psi; only the
+        aleatoric term (``σ²`` is learned on ``Y / y_max``) needs ``y_max²``.
         """
         import math
 
         x = torch.tensor([list(composition) + [float(time)]], dtype=torch.double)
         with torch.no_grad():
             post = self.model.posterior(x)
-            mean_psi = float(post.mean.item()) * self.y_max
-            latent_var_psi2 = float(post.variance.item()) * self.y_max**2
+            mean_psi = float(post.mean.item())
+            latent_var_psi2 = float(post.variance.item())
         # Aleatoric: σ² · h(log10(t+1))² · y_max², matching the regen
         # script's ``_gated_aleatoric_psi2`` helper.
         noise_scaled = float(
@@ -113,19 +119,33 @@ class TestPretrainedLoaderFidelity(unittest.TestCase):
         for i, v in enumerate(self.test_data["test_vectors"]):
             with self.subTest(vec=i):
                 _, got_var = self._predict(v["composition"], v["time"])
+                atol = ATOL_VARIANCE_PSI2
+                if v["time"] == 0.0:
+                    atol = max(atol, MIN_VARIANCE * self.y_max**2)
                 self.assertAlmostEqual(
                     got_var,
                     v["expected_variance"],
-                    delta=ATOL_VARIANCE_PSI2,
+                    delta=atol,
                     msg=(
                         f"vec[{i}] (composition={v['composition'][:3]}..., "
                         f"time={v['time']}): loader posterior variance "
                         f"diverged from test_vectors.json's "
                         f"expected_variance by "
                         f"{abs(got_var - v['expected_variance']):.3e} psi^2 "
-                        f"(allowed atol={ATOL_VARIANCE_PSI2})."
+                        f"(allowed atol={atol})."
                     ),
                 )
+
+    def test_state_dict_keys_match_saved_artifact(self):
+        # The psi un-scaling transform is derived from ``_study_y_std_buf``
+        # and must not add keys: the regen script saves ``state_dict()`` to
+        # ``strength_model.pt`` and this loader restores it strictly.
+        saved = torch.load(
+            REPO_ROOT / "docs" / "model" / "strength_model.pt",
+            map_location="cpu",
+            weights_only=True,
+        )
+        self.assertEqual(set(self.model.state_dict()), set(saved))
 
     def test_loader_returns_singletaskgp(self):
         # Sanity check: the returned object is the same architecture as

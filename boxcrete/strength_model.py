@@ -60,6 +60,7 @@ from botorch.models.transforms.input import (
     Log10,
     Normalize,
 )
+from botorch.models.transforms.outcome import Standardize
 from botorch.utils.constraints import LogTransformedInterval
 from gpytorch.means import ZeroMean
 from gpytorch.mlls import ExactMarginalLogLikelihood
@@ -315,6 +316,35 @@ def _fit_v2_strength_gp(
     return model
 
 
+def _attach_y_untransform(model: SingleTaskGP) -> None:
+    """Make ``model.posterior`` return psi instead of ``Y / y_max``.
+
+    The GP is trained on max-scaled targets with ``outcome_transform=None``
+    (a default ``Standardize`` would re-centre them and break the gated
+    kernel's ``f(x, 0) = 0``). Attaching a fixed, multiplicative-only
+    ``Standardize`` (means ``y_mean = 0``, stdvs ``y_max``) once the
+    hyperparameters are set un-scales every posterior, so ``plot_strength_curve``,
+    ``compute_loo_cv`` and ``SustainableConcreteModel.get_model_list`` see psi.
+    The training targets, the fit and the block-LOO objective are untouched.
+
+    The buffers are registered as non-persistent: they are derived from the
+    ``_study_y_*_buf`` buffers that are already saved, so ``state_dict()``
+    (and ``docs/model/strength_model.pt``) keeps the same keys.
+    """
+    y_mean = model._study_y_mean_buf.reshape(1, 1)
+    y_std = model._study_y_std_buf.reshape(1, 1)
+    outcome_transform = Standardize(m=1)
+    for name, value in (
+        ("means", y_mean.clone()),
+        ("stdvs", y_std.clone()),
+        ("_stdvs_sq", y_std.square()),
+        ("_is_trained", torch.tensor(True)),
+    ):
+        outcome_transform.register_buffer(name, value, persistent=False)
+    outcome_transform.eval()
+    model.outcome_transform = outcome_transform
+
+
 def fit_strength_gp(
     X: Tensor,
     Y: Tensor,
@@ -366,7 +396,9 @@ def fit_strength_gp(
             restarts. ``None`` (default) preserves production behaviour.
 
     Returns:
-        A ``SingleTaskGP`` with the V2 architecture installed.
+        A ``SingleTaskGP`` with the V2 architecture installed. Its
+        ``posterior`` is in psi (the model is trained on ``Y / y_max``
+        internally and un-scales its predictions).
 
     Example:
         >>> from boxcrete import fit_strength_gp, load_concrete_strength
@@ -440,6 +472,7 @@ def fit_strength_gp(
         model = _fit_v2_strength_gp(X, Y, Yvar, X_bounds, seed=seed)
     finally:
         _OPTIMIZER_OVERRIDE = prior_override
+    _attach_y_untransform(model)
     return model
 
 
@@ -526,6 +559,7 @@ def load_pretrained_strength_gp(
     #    artifacts.
     state = torch.load(state_dict_path, map_location="cpu", weights_only=True)
     model.load_state_dict(state)
+    _attach_y_untransform(model)
 
     # 3. Switch to eval mode and force GPyTorch to recompute the
     #    cached Cholesky / alpha from the just-loaded hyperparameters.
